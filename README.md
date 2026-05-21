@@ -48,3 +48,4 @@ pokeapi help
 ## Configuration
 
 See [docs/configuration.md](docs/configuration.md).
+
