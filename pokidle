@@ -1159,6 +1159,10 @@ pokidle_setup() {
         ln -sf -- "$POKIDLE_REPO_ROOT/pokidle" "$bindir/pokidle"
         printf 'symlinked %s -> %s\n' "$bindir/pokidle" "$POKIDLE_REPO_ROOT/pokidle"
     fi
+    if (( force )) || [[ ! -e "$bindir/pokeapi" ]]; then
+        ln -sf -- "$POKIDLE_REPO_ROOT/pokeapi" "$bindir/pokeapi"
+        printf 'symlinked %s -> %s\n' "$bindir/pokeapi" "$POKIDLE_REPO_ROOT/pokeapi"
+    fi
     case ":$PATH:" in
         *":$bindir:"*) ;;
         *) printf 'warning: %s is not in PATH — add it to your shell rc\n' "$bindir" >&2 ;;
@@ -1192,6 +1196,7 @@ pokidle_uninstall() {
     systemctl --user disable --now pokidle.service 2>/dev/null || true
     rm -f -- "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/pokidle.service"
     rm -f -- "$HOME/.local/bin/pokidle"
+    rm -f -- "$HOME/.local/bin/pokeapi"
     local asset
     for asset in biomes notify sounds; do
         local dst="$POKIDLE_DATA_DIR/$asset"
