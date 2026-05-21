@@ -48,11 +48,3 @@ pokeapi help
 ## Configuration
 
 See [docs/configuration.md](docs/configuration.md).
-
-## Notes
-
-- Data is rolled against the live [PokeAPI](https://pokeapi.co) (cached on disk)
-  and stored in a local SQLite database at `$POKIDLE_DB_PATH`.
-- Shipped pools skip the cold rebuild, but the first `tick` of each kind still
-  fetches species/nature/move data from PokeAPI (cached after), so the daemon
-  needs network on first run.
