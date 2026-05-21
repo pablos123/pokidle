@@ -1,8 +1,6 @@
 # Configuration
 
-Every knob is an environment variable. The daemon reads them from its
-environment, and the supported way to set them is a **systemd drop-in
-override**:
+Every knob is an environment variable. The daemon reads them from its environment, and the supported way to set them is a **systemd drop-in override**:
 
 ```
 systemctl --user edit pokidle.service
@@ -48,9 +46,7 @@ PokeAPI client (shared with the standalone `pokeapi` CLI):
 
 ## Tick cadence
 
-Each event kind has its own interval in **seconds**. The daemon fires a kind
-when its timer elapses; intervals get a small random jitter within the next
-clock hour.
+Each event kind has its own interval in **seconds**. The daemon fires a kind when its timer elapses; intervals get a small random jitter within the next clock hour.
 
 | Variable | Default | Event |
 |----------|---------|-------|
@@ -64,9 +60,7 @@ clock hour.
 
 ## Enable / disable event kinds
 
-Each kind has an `*_ENABLED` toggle (default `1`). Set to `0` to skip that
-tick in the daemon loop; the timer still advances, so it simply does nothing
-on fire.
+Each kind has an `*_ENABLED` toggle (default `1`). Set to `0` to skip that tick in the daemon loop; the timer still advances, so it simply does nothing on fire.
 
 | Variable | Default | Kind |
 |----------|---------|------|
@@ -93,8 +87,7 @@ on fire.
 
 ## Evolution
 
-Per-tick evolution chance is tier-derived. Each eligible catch with a viable
-evolution path rolls against its tier's percent chance.
+Per-tick evolution chance is tier-derived. Each eligible catch with a viable evolution path rolls against its tier's percent chance.
 
 | Variable | Default | Tier |
 |----------|---------|------|
@@ -103,9 +96,7 @@ evolution path rolls against its tier's percent chance.
 | `POKIDLE_EVOLVE_CHANCE_RARE` | `8` | rare |
 | `POKIDLE_EVOLVE_CHANCE_VERY_RARE` | `3` | very_rare |
 
-Item-based evolutions require a matching item in `item_drops`, which is
-consumed on use. Enable/disable the whole tick with `POKIDLE_EVOLVE_ENABLED`
-(see [Enable / disable event kinds](#enable--disable-event-kinds)).
+Item-based evolutions require a matching item in `item_drops`, which is consumed on use. Enable/disable the whole tick with `POKIDLE_EVOLVE_ENABLED`.
 
 ## Legendaries
 
@@ -115,9 +106,7 @@ consumed on use. Enable/disable the whole tick with `POKIDLE_EVOLVE_ENABLED`
 | `POKIDLE_LEGENDARY_LEVEL_MIN` | `50` | Lower bound of legendary spawn level. |
 | `POKIDLE_LEGENDARY_LEVEL_MAX` | `70` | Upper bound of legendary spawn level. |
 
-The species is chosen at random among legendaries whose types intersect the
-active biome's types (roster: `LEGENDARY_TYPES` in `lib/legendary.bash`).
-Enable/disable the tick with `POKIDLE_LEGENDARY_ENABLED`.
+The species is chosen at random among legendaries whose types intersect the active biome's types (roster: `LEGENDARY_TYPES` in `lib/legendary.bash`). Enable/disable the tick with `POKIDLE_LEGENDARY_ENABLED`.
 
 ## Display
 
@@ -127,28 +116,20 @@ Enable/disable the tick with `POKIDLE_LEGENDARY_ENABLED`.
 
 ## Notifications and sound
 
-All desktop notifications go through `notify-send` (`lib/notify.bash`). Each
-event has a `POKIDLE_NOTIFY_*` toggle (`0` = silent, `1` = notify). The daemon
-and `pokidle tick ...` both honor them; the `--no-notify` CLI flag overrides to
-off.
+All desktop notifications go through `notify-send` (`lib/notify.bash`). Each event has a `POKIDLE_NOTIFY_*` toggle (`0` = silent, `1` = notify). The daemon and `pokidle tick ...` both honor them; the `--no-notify` CLI flag overrides to off.
 
-| Event | Trigger | Notify default | Notify var | Urgency | Sound (file) | Sound default |
-|-------|---------|----------------|------------|---------|--------------|---------------|
-| pokemon | wild encounter (`tick pokemon`) | on | `POKIDLE_NOTIFY_POKEMON` | normal | encounter.ogg | off |
-| shiny | shiny encounter (subset of pokemon) | on | `POKIDLE_NOTIFY_POKEMON` | critical\* | shiny.ogg | on |
-| legendary | legendary encounter (`tick legendary`) | on | `POKIDLE_NOTIFY_POKEMON` | critical\*\* | legendary.ogg\*\*\* | on |
-| item | held-item drop (`tick item`) | on | `POKIDLE_NOTIFY_ITEM` | low | item.ogg | off |
-| biome | biome rotation (daemon) | on | `POKIDLE_NOTIFY_BIOME` | low | biome.ogg | off |
-| evolve | evolution (`tick evolve`, per mon) | on | `POKIDLE_NOTIFY_EVOLVE` | normal | encounter.ogg | off |
-| level | +1 level on current-week mon (per mon) | off | `POKIDLE_NOTIFY_LEVEL` | low | level.ogg | off |
-| friendship | +5 friendship on current-week mon (per mon) | off | `POKIDLE_NOTIFY_FRIENDSHIP` | low | friendship.ogg | off |
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `POKIDLE_NOTIFY_POKEMON` | `1` | Wild, shiny, and legendary encounter notifications. |
+| `POKIDLE_NOTIFY_ITEM` | `1` | Held-item drop notifications. |
+| `POKIDLE_NOTIFY_BIOME` | `1` | Biome rotation notifications. |
+| `POKIDLE_NOTIFY_EVOLVE` | `1` | Evolution notifications. |
+| `POKIDLE_NOTIFY_LEVEL` | `0` | Level-up tick notifications (per mon). |
+| `POKIDLE_NOTIFY_FRIENDSHIP` | `0` | Friendship tick notifications (per mon). |
+| `POKIDLE_NOTIFY_URGENCY_SHINY` | `critical` | `notify-send` urgency for shiny encounters. |
+| `POKIDLE_NOTIFY_URGENCY_LEGENDARY` | `critical` | `notify-send` urgency for legendary encounters. |
 
-\* Shiny urgency override: `POKIDLE_NOTIFY_URGENCY_SHINY` (default `critical`).
-\*\* Legendary urgency override: `POKIDLE_NOTIFY_URGENCY_LEGENDARY` (default `critical`).
-\*\*\* Legendary sound falls back `POKIDLE_SOUND_LEGENDARY` → `POKIDLE_SOUND_SHINY` → encounter sound if the file is missing.
-
-`level` and `friendship` only iterate the **current-week** encounters; older
-catches are never touched and never notify.
+`level` and `friendship` only iterate the **current-week** encounters; older catches are never touched and never notify.
 
 ### Global toggles
 
@@ -159,9 +140,7 @@ catches are never touched and never notify.
 
 ### Sound toggles
 
-Each sound kind has its own enable toggle, mirroring `POKIDLE_NOTIFY_<KIND>`.
-There is no global sound switch — to mute everything set every toggle to `0`;
-to hear everything set them all to `1`.
+Each sound kind has its own enable toggle, mirroring `POKIDLE_NOTIFY_<KIND>`. There is no global sound switch — to mute everything set every toggle to `0`; to hear everything set them all to `1`.
 
 | Variable | Default | Kind |
 |----------|---------|------|
@@ -175,11 +154,7 @@ to hear everything set them all to `1`.
 
 ### Sprites
 
-Sprite art goes through the pokeapi lib (`pokemon_sprite` / `item_sprite`),
-which resolves the URL from the cached API JSON and caches the image under
-`$POKEAPI_CACHE_DIR/sprites/` (pokemon: `<name>-<variant>.<ext>`, items:
-`sprites/items/<name>.<ext>`). Encounters/items fetch at tick time and lazily
-when listing (if the cached file is gone).
+Sprite art goes through the pokeapi lib (`pokemon_sprite` / `item_sprite`), which resolves the URL from the cached API JSON and caches the image under `$POKEAPI_CACHE_DIR/sprites/` (pokemon: `<name>-<variant>.<ext>`, items: `sprites/items/<name>.<ext>`). Encounters/items fetch at tick time and lazily when listing (if the cached file is gone).
 
 | Variable | Default | Effect |
 |----------|---------|--------|
@@ -187,9 +162,7 @@ when listing (if the cached file is gone).
 
 ### Sound file paths
 
-For an enabled kind, the clip resolves to `$POKIDLE_SOUND_<KIND>` if set, else
-`$POKIDLE_SOUND_DIR/<kind>.ogg`. A missing file is a silent skip. Playback uses
-`paplay` (PulseAudio) if available, else `aplay` (ALSA).
+For an enabled kind, the clip resolves to `$POKIDLE_SOUND_<KIND>` if set, else `$POKIDLE_SOUND_DIR/<kind>.ogg`. A missing file is a silent skip. Playback uses `paplay` (PulseAudio) if available, else `aplay` (ALSA).
 
 | Variable | Default |
 |----------|---------|
