@@ -12,7 +12,7 @@ The world has 36 type-themed biomes that rotate every few hours and decide which
 
 Required:
 
-- `bash` 4+, `jq`, `curl`, `sqlite3`, `awk`
+- `bash 4+`, `jq`, `curl`, `sqlite3`, `awk`
 - `notify-send` (libnotify)
 - `systemd` (user instance) — the daemon runs as a user service
 
