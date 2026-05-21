@@ -1,0 +1,20 @@
+{
+  "id": 3,
+  "chain": {
+    "species": {"name":"caterpie"},
+    "evolution_details": [],
+    "evolves_to": [
+      {
+        "species": {"name":"metapod"},
+        "evolution_details": [{"min_level":7, "trigger":{"name":"level-up"}}],
+        "evolves_to": [
+          {
+            "species": {"name":"butterfree"},
+            "evolution_details": [{"min_level":10, "trigger":{"name":"level-up"}}],
+            "evolves_to": []
+          }
+        ]
+      }
+    ]
+  }
+}

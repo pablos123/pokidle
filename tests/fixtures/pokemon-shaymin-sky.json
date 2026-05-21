@@ -1,0 +1,32 @@
+{
+    "id": 10006,
+    "name": "shaymin-sky",
+    "species": { "name": "shaymin" },
+    "stats": [
+        {"base_stat": 100, "stat": {"name": "hp"}},
+        {"base_stat": 103, "stat": {"name": "attack"}},
+        {"base_stat": 75,  "stat": {"name": "defense"}},
+        {"base_stat": 120, "stat": {"name": "special-attack"}},
+        {"base_stat": 75,  "stat": {"name": "special-defense"}},
+        {"base_stat": 127, "stat": {"name": "speed"}}
+    ],
+    "sprites": {
+        "front_default": "https://example.test/shaymin-sky.png",
+        "front_shiny": "https://example.test/shaymin-sky-shiny.png"
+    },
+    "abilities": [
+        {"ability": {"name": "serene-grace"}, "is_hidden": false}
+    ],
+    "moves": [
+        {
+            "move": {"name": "air-slash"},
+            "version_group_details": [
+                {"level_learned_at": 1, "move_learn_method": {"name": "level-up"}}
+            ]
+        }
+    ],
+    "types": [
+        {"slot": 1, "type": {"name": "grass"}},
+        {"slot": 2, "type": {"name": "flying"}}
+    ]
+}

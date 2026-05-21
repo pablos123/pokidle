@@ -1,0 +1,1236 @@
+#!/usr/bin/env bash
+# pokidle — passive pokemon encounter daemon + CLI.
+
+set -euo pipefail
+
+# Resolve through symlinks so invoking via e.g. ~/.local/bin/pokidle still
+# finds lib/ next to the real script.
+_pokidle_src="${BASH_SOURCE[0]}"
+while [[ -L "$_pokidle_src" ]]; do
+    _pokidle_link="$(readlink -- "$_pokidle_src")"
+    [[ "$_pokidle_link" == /* ]] && _pokidle_src="$_pokidle_link" \
+        || _pokidle_src="$(dirname -- "$_pokidle_src")/$_pokidle_link"
+done
+POKIDLE_REPO_ROOT="$(cd -- "$(dirname -- "$_pokidle_src")" && pwd)"
+unset _pokidle_src _pokidle_link
+export POKIDLE_REPO_ROOT
+
+: "${POKIDLE_CONFIG_DIR:=${XDG_CONFIG_HOME:-$HOME/.config}/pokidle}"
+: "${POKIDLE_CACHE_DIR:=${XDG_CACHE_HOME:-$HOME/.cache}/pokidle}"
+: "${POKIDLE_DATA_DIR:=${XDG_DATA_HOME:-$HOME/.local/share}/pokidle}"
+: "${POKIDLE_DB_PATH:=$POKIDLE_DATA_DIR/pokidle.db}"
+: "${POKEAPI_RATE_LIMIT_SLEEP:=0.5}"
+export POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR POKIDLE_DATA_DIR POKIDLE_DB_PATH POKEAPI_RATE_LIMIT_SLEEP
+
+# shellcheck source=lib/cache.bash
+source "$POKIDLE_REPO_ROOT/lib/cache.bash"
+# shellcheck source=lib/http.bash
+source "$POKIDLE_REPO_ROOT/lib/http.bash"
+# shellcheck source=lib/api.bash
+source "$POKIDLE_REPO_ROOT/lib/api.bash"
+# shellcheck source=lib/db.bash
+source "$POKIDLE_REPO_ROOT/lib/db.bash"
+# shellcheck source=lib/biome.bash
+source "$POKIDLE_REPO_ROOT/lib/biome.bash"
+# shellcheck source=lib/encounter.bash
+source "$POKIDLE_REPO_ROOT/lib/encounter.bash"
+# shellcheck source=lib/evolution.bash
+source "$POKIDLE_REPO_ROOT/lib/evolution.bash"
+# shellcheck source=lib/legendary.bash
+source "$POKIDLE_REPO_ROOT/lib/legendary.bash"
+# shellcheck source=lib/notify.bash
+source "$POKIDLE_REPO_ROOT/lib/notify.bash"
+# shellcheck source=lib/showdown.bash
+source "$POKIDLE_REPO_ROOT/lib/showdown.bash"
+
+usage() {
+    cat <<'EOF'
+pokidle — passive Pokémon encounter daemon.
+
+Usage:
+  pokidle <command> [args...]
+
+Commands:
+  daemon                  Run main loop (used by systemd unit)
+  tick <kind> [flags]      Run a single roll now (default: dry-run, no DB write)
+                            kind: pokemon | item | level | friendship | evolve | legendary
+                            --no-dry-run    Persist DB writes
+                            --no-notify     Skip notify-send
+                            --json          Emit JSON to stdout
+  encounters [filters]    Pretty list of pokemon encounters
+                            --shiny           Only shinies
+                            --since DATE      Encounters at/after DATE
+                            --until DATE      Encounters at/before DATE
+                            --biome ID        Filter by biome
+                            --species NAME    Substring match on species
+                            --nature NAME     Exact nature match
+                            --min-iv-total N  Min summed IVs
+                            --limit N         Cap rows (default 50)
+                            --json            Emit raw JSON
+                            --export          Random Showdown team: up to 6
+                                              distinct species from the current
+                                              week (override window with
+                                              --since/--until), each given a
+                                              distinct held item from item drops
+                                              in the same window
+  items [filters]         Pretty list of item drops
+                            --since DATE      Drops at/after DATE
+                            --until DATE      Drops at/before DATE
+                            --biome ID        Filter by biome
+                            --item NAME       Substring match on item
+                            --limit N         Cap rows (default 50)
+                            --json            Emit raw JSON
+  stats                   Aggregates: totals, shinies, by biome, top species
+  current                 Show current biome + counts
+  rebuild-pool [biome] [--yes]
+                          Force pool rebuild (one or all; type-derived).
+                          --yes skips the all-mode confirm prompt.
+  switch-biome <biome>    Close active session, open new session in <biome>
+  clean <pools|db|all> [--yes]
+                          pools = wipe pool cache
+                          db    = wipe sqlite DB at $POKIDLE_DB_PATH
+                          all   = both
+                          Prompts for confirmation unless --yes is given.
+  setup [--no-enable]     Install + enable/start the systemd unit (--no-enable: install only)
+  uninstall               Disable + remove unit (DB/cache untouched)
+  status                  systemctl status + last tick + current biome
+  help, -h, --help        Show this help
+EOF
+}
+
+# Tests source the script for unit testing helper functions.
+if [[ "${POKIDLE_TEST_SOURCE_ONLY:-0}" == "1" ]]; then
+    POKIDLE_TEST_SKIP_DISPATCH=1
+fi
+
+# Daemon scheduler helpers.
+# Default: target is in [next clock hour, next clock hour + interval) so ticks
+# fire ~hourly with a small random jitter (matches passive-game spec).
+# POKIDLE_TICK_FAST=1: cadence-based mode for smoke tests; target is in
+# [now, now + interval). Useful for `timeout 200 ./pokidle daemon` runs.
+_pokidle_next_tick_target() {
+    local now="$1" interval="$2"
+    if [[ "${POKIDLE_TICK_FAST:-0}" == "1" ]]; then
+        printf '%d' "$(( now + RANDOM % interval ))"
+        return
+    fi
+    local next_hour=$(( (now / 3600 + 1) * 3600 ))
+    printf '%d' "$(( next_hour + RANDOM % interval ))"
+}
+
+_pokidle_should_rotate_biome() {
+    local started_at="$1" now="$2"
+    local hours="${POKIDLE_BIOME_HOURS:-3}"
+    (( now - started_at >= hours * 3600 ))
+}
+
+# Stubs filled in by subsequent tasks.
+pokidle_daemon() {
+    # Single-instance guard: hold an exclusive lock for the daemon's lifetime.
+    if command -v flock > /dev/null; then
+        local lock_file="${POKIDLE_RUNTIME_DIR:-$POKIDLE_CACHE_DIR}/pokidle.daemon.lock"
+        mkdir -p -- "$(dirname -- "$lock_file")"
+        exec {POKIDLE_LOCK_FD}>"$lock_file"
+        if ! flock -n "$POKIDLE_LOCK_FD"; then
+            printf 'daemon: another pokidle daemon is already running (lock: %s)\n' "$lock_file" >&2
+            return 1
+        fi
+    fi
+
+    db_init
+    biome_validate || { printf 'daemon: biome config invalid; aborting\n' >&2; return 1; }
+
+    local active biome sid biome_started_at
+    active="$(db_active_biome_session)"
+    if [[ -z "$active" ]]; then
+        biome="$(biome_pick_random)"
+        biome_started_at="$(date +%s)"
+        sid="$(db_open_biome_session "$biome" "$biome_started_at")"
+    else
+        IFS=$'\t' read -r sid biome biome_started_at <<< "$active"
+        # If active session is older than the rotation window, close + rotate now.
+        if _pokidle_should_rotate_biome "$biome_started_at" "$(date +%s)"; then
+            db_close_biome_session "$sid" "$(date +%s)"
+            biome="$(biome_pick_random_excluding "$biome")"
+            biome_started_at="$(date +%s)"
+            sid="$(db_open_biome_session "$biome" "$biome_started_at")"
+            _pokidle_announce_biome "$biome"
+        fi
+    fi
+
+    # Restore tick targets, or schedule fresh.
+    local now next_pokemon next_item
+    now="$(date +%s)"
+    next_pokemon="$(db_state_get last_pokemon_tick_target)"
+    next_item="$(db_state_get last_item_tick_target)"
+    if [[ -z "$next_pokemon" || "$next_pokemon" -le "$now" ]]; then
+        next_pokemon="$(_pokidle_next_tick_target "$now" "${POKIDLE_POKEMON_INTERVAL:-3600}")"
+        db_state_set last_pokemon_tick_target "$next_pokemon" || \
+            printf 'daemon: persist last_pokemon_tick_target failed (continuing)\n' >&2
+    fi
+    if [[ -z "$next_item" || "$next_item" -le "$now" ]]; then
+        next_item="$(_pokidle_next_tick_target "$now" "${POKIDLE_ITEM_INTERVAL:-3600}")"
+        db_state_set last_item_tick_target "$next_item" || \
+            printf 'daemon: persist last_item_tick_target failed (continuing)\n' >&2
+    fi
+    local next_level next_friendship
+    next_level="$(db_state_get last_level_tick_target)"
+    next_friendship="$(db_state_get last_friendship_tick_target)"
+    if [[ -z "$next_level" || "$next_level" -le "$now" ]]; then
+        next_level="$(_pokidle_next_tick_target "$now" "${POKIDLE_LEVEL_INTERVAL:-3600}")"
+        db_state_set last_level_tick_target "$next_level" || \
+            printf 'daemon: persist last_level_tick_target failed (continuing)\n' >&2
+    fi
+    if [[ -z "$next_friendship" || "$next_friendship" -le "$now" ]]; then
+        next_friendship="$(_pokidle_next_tick_target "$now" "${POKIDLE_FRIENDSHIP_INTERVAL:-1800}")"
+        db_state_set last_friendship_tick_target "$next_friendship" || \
+            printf 'daemon: persist last_friendship_tick_target failed (continuing)\n' >&2
+    fi
+    local next_evolve
+    next_evolve="$(db_state_get last_evolve_tick_target)"
+    if [[ -z "$next_evolve" || "$next_evolve" -le "$now" ]]; then
+        next_evolve="$(_pokidle_next_tick_target "$now" "${POKIDLE_EVOLVE_INTERVAL:-10800}")"
+        db_state_set last_evolve_tick_target "$next_evolve" || \
+            printf 'daemon: persist last_evolve_tick_target failed (continuing)\n' >&2
+    fi
+    local next_legendary
+    next_legendary="$(db_state_get last_legendary_tick_target)"
+    if [[ -z "$next_legendary" || "$next_legendary" -le "$now" ]]; then
+        next_legendary="$(_pokidle_next_tick_target "$now" "${POKIDLE_LEGENDARY_INTERVAL:-86400}")"
+        db_state_set last_legendary_tick_target "$next_legendary" || \
+            printf 'daemon: persist last_legendary_tick_target failed (continuing)\n' >&2
+    fi
+
+    trap '_pokidle_shutdown $sid; exit 0' INT TERM
+
+    while :; do
+        now="$(date +%s)"
+
+        if _pokidle_should_rotate_biome "$biome_started_at" "$now"; then
+            db_close_biome_session "$sid" "$now"
+            biome="$(biome_pick_random_excluding "$biome")"
+            biome_started_at="$now"
+            sid="$(db_open_biome_session "$biome" "$biome_started_at")"
+            _pokidle_announce_biome "$biome"
+        fi
+
+        if (( now >= next_pokemon )); then
+            if [[ "${POKIDLE_POKEMON_ENABLED:-1}" == "1" ]]; then
+                pokidle_tick pokemon --no-dry-run || printf 'daemon: pokemon tick failed (continuing)\n' >&2
+            fi
+            next_pokemon="$(_pokidle_next_tick_target "$now" "${POKIDLE_POKEMON_INTERVAL:-3600}")"
+            db_state_set last_pokemon_tick_target "$next_pokemon" || \
+                printf 'daemon: persist last_pokemon_tick_target failed (continuing)\n' >&2
+        fi
+        if (( now >= next_item )); then
+            if [[ "${POKIDLE_ITEM_ENABLED:-1}" == "1" ]]; then
+                pokidle_tick item --no-dry-run || printf 'daemon: item tick failed (continuing)\n' >&2
+            fi
+            next_item="$(_pokidle_next_tick_target "$now" "${POKIDLE_ITEM_INTERVAL:-3600}")"
+            db_state_set last_item_tick_target "$next_item" || \
+                printf 'daemon: persist last_item_tick_target failed (continuing)\n' >&2
+        fi
+        if (( now >= next_level )); then
+            if [[ "${POKIDLE_LEVEL_ENABLED:-1}" == "1" ]]; then
+                pokidle_tick level --no-dry-run --json > /dev/null \
+                    || printf 'daemon: level tick failed (continuing)\n' >&2
+            fi
+            next_level="$(_pokidle_next_tick_target "$now" "${POKIDLE_LEVEL_INTERVAL:-3600}")"
+            db_state_set last_level_tick_target "$next_level" || \
+                printf 'daemon: persist last_level_tick_target failed (continuing)\n' >&2
+        fi
+        if (( now >= next_friendship )); then
+            if [[ "${POKIDLE_FRIENDSHIP_ENABLED:-1}" == "1" ]]; then
+                pokidle_tick friendship --no-dry-run --json > /dev/null \
+                    || printf 'daemon: friendship tick failed (continuing)\n' >&2
+            fi
+            next_friendship="$(_pokidle_next_tick_target "$now" "${POKIDLE_FRIENDSHIP_INTERVAL:-1800}")"
+            db_state_set last_friendship_tick_target "$next_friendship" || \
+                printf 'daemon: persist last_friendship_tick_target failed (continuing)\n' >&2
+        fi
+        if (( now >= next_evolve )); then
+            if [[ "${POKIDLE_EVOLVE_ENABLED:-1}" == "1" ]]; then
+                pokidle_tick evolve --no-dry-run --json > /dev/null \
+                    || printf 'daemon: evolve tick failed (continuing)\n' >&2
+            fi
+            next_evolve="$(_pokidle_next_tick_target "$now" "${POKIDLE_EVOLVE_INTERVAL:-10800}")"
+            db_state_set last_evolve_tick_target "$next_evolve" || \
+                printf 'daemon: persist last_evolve_tick_target failed (continuing)\n' >&2
+        fi
+        if (( now >= next_legendary )); then
+            if [[ "${POKIDLE_LEGENDARY_ENABLED:-1}" == "1" ]]; then
+                pokidle_tick legendary --no-dry-run --json > /dev/null \
+                    || printf 'daemon: legendary tick failed (continuing)\n' >&2
+            fi
+            next_legendary="$(_pokidle_next_tick_target "$now" "${POKIDLE_LEGENDARY_INTERVAL:-86400}")"
+            db_state_set last_legendary_tick_target "$next_legendary" || \
+                printf 'daemon: persist last_legendary_tick_target failed (continuing)\n' >&2
+        fi
+
+        local biome_end=$((biome_started_at + ${POKIDLE_BIOME_HOURS:-3} * 3600))
+        local next_event=$next_pokemon
+        (( next_item < next_event )) && next_event=$next_item
+        (( next_level < next_event )) && next_event=$next_level
+        (( next_friendship < next_event )) && next_event=$next_friendship
+        (( next_evolve < next_event )) && next_event=$next_evolve
+        (( next_legendary < next_event )) && next_event=$next_legendary
+        (( biome_end < next_event )) && next_event="$biome_end"
+        local sleep_for=$(( next_event - now ))
+        (( sleep_for < 1 )) && sleep_for=1
+        sleep "$sleep_for"
+    done
+}
+
+_pokidle_announce_biome() {
+    local biome="$1"
+    [[ "${POKIDLE_NOTIFY_BIOME:-1}" == "1" ]] || return 0
+    local label pool_size berry_count
+    label="$(biome_get "$biome" | jq -r '.label')"
+    local p
+    p="$(encounter_pool_path "$biome")"
+    if [[ -f "$p" ]]; then
+        pool_size="$(jq '[.tiers[] | length] | add // 0' "$p")"
+        berry_count="$(jq '.berries | length' "$p")"
+    else
+        pool_size=0
+        berry_count=0
+    fi
+    notify_biome_change "$biome" "$label" "$pool_size" "$berry_count"
+}
+
+_pokidle_shutdown() {
+    local sid="$1"
+    # Don't close session; daemon may restart.
+    printf 'pokidle: shutting down (session #%s left open)\n' "$sid" >&2
+}
+pokidle_tick() {
+    local kind="${1:-pokemon}"
+    shift || true
+
+    # Sub-commands that manage their own flags and DB init are dispatched early.
+    case "$kind" in
+        level)
+            pokidle_tick_level "$@"
+            return
+            ;;
+        friendship)
+            pokidle_tick_friendship "$@"
+            return
+            ;;
+        evolve)
+            pokidle_tick_evolve "$@"
+            return
+            ;;
+        legendary)
+            pokidle_tick_legendary "$@"
+            return
+            ;;
+    esac
+
+    local dry_run=1 no_notify=0 emit_json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)    dry_run=1; shift ;;
+            --no-dry-run) dry_run=0; shift ;;
+            --no-notify)  no_notify=1; shift ;;
+            --json)       emit_json=1; shift ;;
+            *) printf 'tick: unknown flag %s\n' "$1" >&2; return 2 ;;
+        esac
+    done
+
+    db_init
+
+    local row sid biome
+    row="$(db_active_biome_session)"
+    if [[ -z "$row" ]]; then
+        biome="$(biome_pick_random)"
+        sid="$(db_open_biome_session "$biome" "$(date +%s)")"
+    else
+        IFS=$'\t' read -r sid biome _ <<< "$row"
+    fi
+    local label
+    label="$(biome_get "$biome" | jq -r '.label')"
+
+    case "$kind" in
+        pokemon)
+            local pool entry enc
+            if [[ ! -f "$(encounter_pool_path "$biome")" ]]; then
+                printf 'tick: no pool for %s — run rebuild-pool first\n' "$biome" >&2
+                return 1
+            fi
+            pool="$(encounter_pool_load "$biome")"
+            entry="$(encounter_roll_pool_entry "$pool")"
+            enc="$(encounter_roll_pokemon "$entry" "$biome")"
+
+            local sprite_path
+            sprite_path="$(_pokidle_pokemon_sprite \
+                "$(jq -r '.species' <<< "$enc")" "$(jq -r '.shiny' <<< "$enc")")"
+
+            local enc_with_meta
+            enc_with_meta="$(jq -c \
+                --arg label "$label" --arg sp "$sprite_path" --arg bid "$biome" '
+                . + {biome_label: $label, sprite_path: $sp, biome_id: $bid}
+            ' <<< "$enc")"
+
+            if (( dry_run == 0 )); then
+                local enc_for_db
+                enc_for_db="$(jq -c \
+                    --argjson sid "$sid" --argjson ts "$(date +%s)" --arg sp "$sprite_path" '
+                    . + {session_id: $sid, encountered_at: $ts, sprite_path: $sp}
+                ' <<< "$enc")"
+                db_insert_encounter "$enc_for_db"
+            fi
+            if (( no_notify == 0 )) && [[ "${POKIDLE_NOTIFY_POKEMON:-1}" == "1" ]]; then
+                notify_pokemon "$enc_with_meta"
+            fi
+            if (( emit_json )); then
+                printf '%s\n' "$enc_with_meta"
+            else
+                jq -r '"pokemon: \(.species) lvl \(.level) \(.nature) [\(.biome_label)]"' <<< "$enc_with_meta"
+            fi
+            ;;
+        item)
+            local item_json
+            item_json="$(encounter_roll_item "$biome")"
+            local item_name sprite_path
+            item_name="$(jq -r '.item' <<< "$item_json")"
+            sprite_path="$(_pokidle_item_sprite "$item_name")"
+            local item_with_meta
+            item_with_meta="$(jq -c --arg l "$label" --arg sp "$sprite_path" --arg bid "$biome" '
+                . + {biome_label: $l, sprite_path: $sp, biome_id: $bid}
+            ' <<< "$item_json")"
+            if (( dry_run == 0 )); then
+                db_insert_item_drop "$sid" "$(date +%s)" "$item_name" "$sprite_path"
+            fi
+            if (( no_notify == 0 )) && [[ "${POKIDLE_NOTIFY_ITEM:-1}" == "1" ]]; then
+                notify_item "$item_with_meta"
+            fi
+            if (( emit_json )); then
+                printf '%s\n' "$item_with_meta"
+            else
+                jq -r '"item: \(.item) [\(.biome_label)]"' <<< "$item_with_meta"
+            fi
+            ;;
+        *)
+            printf 'tick: kind must be pokemon or item\n' >&2
+            return 2
+            ;;
+    esac
+}
+pokidle_tick_level() {
+    local dry_run=1 no_notify=0 emit_json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)    dry_run=1; shift ;;
+            --no-dry-run) dry_run=0; shift ;;
+            --no-notify)  no_notify=1; shift ;;
+            --json)       emit_json=1; shift ;;
+            *) printf 'tick level: unknown flag %s\n' "$1" >&2; return 2 ;;
+        esac
+    done
+
+    db_init
+    local rows
+    rows="$(db_list_current_week_encounters)"
+    local notify_on=0
+    if (( no_notify == 0 )) && [[ "${POKIDLE_NOTIFY_LEVEL:-0}" == "1" ]]; then
+        notify_on=1
+    fi
+    local leveled='[]'
+    local n
+    n="$(jq 'length' <<< "$rows")"
+    local i
+    for (( i=0; i<n; i++ )); do
+        local r id species level nature
+        r="$(jq -c ".[$i]" <<< "$rows")"
+        id="$(jq -r '.id' <<< "$r")"
+        species="$(jq -r '.species' <<< "$r")"
+        level="$(jq -r '.level' <<< "$r")"
+        (( level >= 100 )) && continue
+        (( RANDOM % 100 >= ${POKIDLE_LEVEL_CHANCE:-25} )) && continue
+
+        nature="$(jq -r '.nature' <<< "$r")"
+        local ivs evs new_level
+        ivs="$(jq -r '"\(.iv_hp) \(.iv_atk) \(.iv_def) \(.iv_spa) \(.iv_spd) \(.iv_spe)"' <<< "$r")"
+        evs="$(jq -r '"\(.ev_hp) \(.ev_atk) \(.ev_def) \(.ev_spa) \(.ev_spd) \(.ev_spe)"' <<< "$r")"
+        new_level=$(( level + ${POKIDLE_LEVEL_GAIN:-1} ))
+        (( new_level > 100 )) && new_level=100
+
+        local poke base_stats mods stats
+        poke="$(pokeapi_get "pokemon/$species")" || continue
+        base_stats="$(jq -c '.stats' <<< "$poke")"
+        mods="$(encounter_nature_mods "$nature")" || continue
+        stats="$(encounter_compute_all_stats "$base_stats" "$ivs" "$evs" "$new_level" "$mods")" || continue
+
+        if (( dry_run == 0 )); then
+            db_update_encounter_level_stats "$id" "$new_level" "$stats"
+        fi
+        (( notify_on )) && notify_level "$species" "$level" "$new_level"
+        leveled="$(jq -c --argjson id "$id" --arg sp "$species" \
+            --argjson from "$level" --argjson to "$new_level" \
+            '. + [{id:$id, species:$sp, from:$from, to:$to}]' <<< "$leveled")"
+    done
+
+    if (( emit_json )); then
+        jq -n --argjson l "$leveled" '{leveled: $l}'
+    else
+        local lc
+        lc="$(jq 'length' <<< "$leveled")"
+        if (( lc == 0 )); then
+            printf 'level: no candidates leveled this tick\n'
+        else
+            jq -r '.[] | "level: \(.species) #\(.id)  \(.from) -> \(.to)"' <<< "$leveled"
+        fi
+    fi
+}
+pokidle_tick_friendship() {
+    local dry_run=1 no_notify=0 emit_json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)    dry_run=1; shift ;;
+            --no-dry-run) dry_run=0; shift ;;
+            --no-notify)  no_notify=1; shift ;;
+            --json)       emit_json=1; shift ;;
+            *) printf 'tick friendship: unknown flag %s\n' "$1" >&2; return 2 ;;
+        esac
+    done
+
+    db_init
+    local rows
+    rows="$(db_list_current_week_encounters)"
+    local notify_on=0
+    if (( no_notify == 0 )) && [[ "${POKIDLE_NOTIFY_FRIENDSHIP:-0}" == "1" ]]; then
+        notify_on=1
+    fi
+    local befriended='[]'
+    local n
+    n="$(jq 'length' <<< "$rows")"
+    local i
+    for (( i=0; i<n; i++ )); do
+        local r id species fr_old fr_new
+        r="$(jq -c ".[$i]" <<< "$rows")"
+        id="$(jq -r '.id' <<< "$r")"
+        species="$(jq -r '.species' <<< "$r")"
+        fr_old="$(jq -r '.friendship' <<< "$r")"
+        (( fr_old >= 255 )) && continue
+        (( RANDOM % 100 >= ${POKIDLE_FRIENDSHIP_CHANCE:-50} )) && continue
+
+        fr_new=$(( fr_old + ${POKIDLE_FRIENDSHIP_GAIN:-5} ))
+        (( fr_new > 255 )) && fr_new=255
+
+        if (( dry_run == 0 )); then
+            db_update_encounter_friendship "$id" "$fr_new"
+        fi
+        (( notify_on )) && notify_friendship "$species" "$fr_old" "$fr_new"
+        befriended="$(jq -c --argjson id "$id" --arg sp "$species" \
+            --argjson from "$fr_old" --argjson to "$fr_new" \
+            '. + [{id:$id, species:$sp, from:$from, to:$to}]' <<< "$befriended")"
+    done
+
+    if (( emit_json )); then
+        jq -n --argjson b "$befriended" '{befriended: $b}'
+    else
+        local bc
+        bc="$(jq 'length' <<< "$befriended")"
+        if (( bc == 0 )); then
+            printf 'friendship: no candidates befriended this tick\n'
+        else
+            jq -r '.[] | "friendship: \(.species) #\(.id)  \(.from) -> \(.to)"' <<< "$befriended"
+        fi
+    fi
+}
+pokidle_tick_evolve() {
+    local dry_run=1 no_notify=0 emit_json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)    dry_run=1; shift ;;
+            --no-dry-run) dry_run=0; shift ;;
+            --no-notify)  no_notify=1; shift ;;
+            --json)       emit_json=1; shift ;;
+            *) printf 'tick evolve: unknown flag %s\n' "$1" >&2; return 2 ;;
+        esac
+    done
+
+    db_init
+
+    local active sid biome
+    active="$(db_active_biome_session)"
+    [[ -n "$active" ]] || { printf 'tick evolve: no active biome session\n' >&2; return 1; }
+    IFS=$'\t' read -r sid biome _ <<< "$active"
+
+    local rows
+    rows="$(db_list_current_week_encounters)"
+    local evolved='[]'
+    local n
+    n="$(jq 'length' <<< "$rows")"
+    local i
+    for (( i=0; i<n; i++ )); do
+        local r enc_id species enc_obj
+        r="$(jq -c ".[$i]" <<< "$rows")"
+        enc_id="$(jq -r '.id' <<< "$r")"
+        species="$(jq -r '.species' <<< "$r")"
+
+        # Build the encounter object the evolution checker expects.
+        enc_obj="$(jq -c '{
+            gender, level, friendship,
+            stats: [.stat_hp, .stat_atk, .stat_def, .stat_spa, .stat_spd, .stat_spe],
+            moves: (.moves_json | fromjson)
+        }' <<< "$r")"
+
+        local spec chain_url chain_id chain stages
+        spec="$(pokeapi_get "pokemon-species/$species" 2>/dev/null)" || continue
+        chain_url="$(jq -r '.evolution_chain.url' <<< "$spec")"
+        [[ -z "$chain_url" || "$chain_url" == "null" ]] && continue
+        chain_id="$(basename -- "${chain_url%/}")"
+        chain="$(pokeapi_get "evolution-chain/$chain_id" 2>/dev/null)" || continue
+        stages="$(evolution_next_stages "$chain" "$species")"
+        [[ "$(jq 'length' <<< "$stages")" == "0" ]] && continue
+
+        local viable
+        viable="$(evolution_enumerate_viable_paths "$enc_obj" "$stages")"
+        local v_n
+        v_n="$(jq 'length' <<< "$viable")"
+        (( v_n > 0 )) || continue
+
+        local tier chance
+        tier="$(evolution_tier_lookup "$biome" "$species")"
+        case "$tier" in
+            common)    chance="${POKIDLE_EVOLVE_CHANCE_COMMON:-25}" ;;
+            uncommon)  chance="${POKIDLE_EVOLVE_CHANCE_UNCOMMON:-15}" ;;
+            rare)      chance="${POKIDLE_EVOLVE_CHANCE_RARE:-8}" ;;
+            very_rare) chance="${POKIDLE_EVOLVE_CHANCE_VERY_RARE:-3}" ;;
+            *)         chance="${POKIDLE_EVOLVE_CHANCE_COMMON:-25}" ;;
+        esac
+        (( RANDOM % 100 < chance )) || continue
+
+        local idx pick new_species kind
+        idx=$(( RANDOM % v_n ))
+        pick="$(jq -c ".[$idx]" <<< "$viable")"
+        new_species="$(jq -r '.species' <<< "$pick")"
+        kind="$(jq -r '.kind' <<< "$pick")"
+
+        if (( dry_run == 0 )); then
+            evolution_apply "$enc_id" "$pick" || continue
+        fi
+        if (( no_notify == 0 )) && [[ "${POKIDLE_NOTIFY_EVOLVE:-1}" == "1" ]]; then
+            local sprite_meta biome_label notify_obj
+            sprite_meta="$(sqlite3 "$POKIDLE_DB_PATH" \
+                "SELECT sprite_path FROM encounters WHERE id=$enc_id;")"
+            biome_label="$(biome_get "$biome" | jq -r '.label')"
+            notify_obj="$(jq -n --arg from "$species" --arg to "$new_species" \
+                --arg label "$biome_label" --arg sp "$sprite_meta" --arg bid "$biome" \
+                '{from:$from, to:$to, biome_label:$label, sprite_path:$sp, biome_id:$bid}')"
+            notify_evolution "$notify_obj"
+        fi
+        evolved="$(jq -c \
+            --argjson id "$enc_id" --arg from "$species" --arg to "$new_species" --arg kind "$kind" \
+            '. + [{id:$id, from:$from, to:$to, kind:$kind}]' <<< "$evolved")"
+    done
+
+    if (( emit_json )); then
+        jq -n --argjson e "$evolved" '{evolved: $e}'
+    else
+        local ec
+        ec="$(jq 'length' <<< "$evolved")"
+        if (( ec == 0 )); then
+            printf 'evolve: no candidates evolved this tick\n'
+        else
+            jq -r '.[] | "evolve: #\(.id) \(.from) -> \(.to) (\(.kind))"' <<< "$evolved"
+        fi
+    fi
+}
+pokidle_tick_legendary() {
+    local dry_run=1 no_notify=0 emit_json=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run)    dry_run=1; shift ;;
+            --no-dry-run) dry_run=0; shift ;;
+            --no-notify)  no_notify=1; shift ;;
+            --json)       emit_json=1; shift ;;
+            *) printf 'tick legendary: unknown flag %s\n' "$1" >&2; return 2 ;;
+        esac
+    done
+
+    db_init
+
+    local active sid biome
+    active="$(db_active_biome_session)"
+    if [[ -z "$active" ]]; then
+        biome="$(biome_pick_random)"
+        sid="$(db_open_biome_session "$biome" "$(date +%s)")"
+    else
+        IFS=$'\t' read -r sid biome _ <<< "$active"
+    fi
+
+    local chance="${POKIDLE_LEGENDARY_CHANCE:-3}"
+    if (( RANDOM % 100 >= chance )); then
+        if (( emit_json )); then
+            jq -n '{spawned: false}'
+        else
+            printf 'legendary: no spawn this tick (chance=%s)\n' "$chance"
+        fi
+        return 0
+    fi
+
+    local species enc sprite_url sprite_path=""
+    species="$(legendary_roll_species_for_biome "$biome")" || return 1
+    enc="$(legendary_build_encounter "$species" "$biome")" || return 1
+    sprite_url="$(jq -r '.sprite_url // ""' <<< "$enc")"
+    if [[ -n "$sprite_url" && "$no_notify" == "0" ]]; then
+        sprite_path="$POKIDLE_CACHE_DIR/sprites/$species.png"
+        mkdir -p -- "$(dirname -- "$sprite_path")"
+        [[ -f "$sprite_path" ]] || curl -sS -o "$sprite_path" "$sprite_url" || sprite_path=""
+    fi
+
+    local label enc_with_meta
+    label="$(biome_get "$biome" | jq -r '.label')"
+    enc_with_meta="$(jq -c \
+        --arg label "$label" --arg sp "$sprite_path" --arg bid "$biome" '
+        . + {biome_label: $label, sprite_path: $sp, biome_id: $bid}
+    ' <<< "$enc")"
+
+    if (( dry_run == 0 )); then
+        local enc_for_db
+        enc_for_db="$(jq -c \
+            --argjson sid "$sid" --argjson ts "$(date +%s)" --arg sp "$sprite_path" '
+            . + {session_id: $sid, encountered_at: $ts, sprite_path: $sp}
+        ' <<< "$enc")"
+        db_insert_encounter "$enc_for_db"
+    fi
+
+    if (( no_notify == 0 )) && [[ "${POKIDLE_NOTIFY_POKEMON:-1}" == "1" ]]; then
+        notify_pokemon "$enc_with_meta"
+    fi
+
+    if (( emit_json )); then
+        printf '%s\n' "$enc_with_meta"
+    else
+        jq -r '"legendary: \(.species) lvl \(.level) [\(.biome_label)]"' <<< "$enc_with_meta"
+    fi
+}
+# Render a sprite inline via chafa. chafa auto-detects the terminal's graphics
+# protocol (kitty/sixel/iterm → pixel-perfect, symbol cells otherwise), so the
+# preview is as crisp as the terminal allows. No-op if chafa is absent or the
+# sprite path is empty/null.
+_pokidle_render_sprite() {
+    local sprite="$1"
+    [[ -n "$sprite" && "$sprite" != "null" ]] || return 0
+    command -v chafa > /dev/null || return 0
+    chafa --size="${POKIDLE_IMG_WIDTH:-16}" "$sprite" 2>/dev/null || true
+}
+
+# Resolve a pokemon sprite via the pokeapi lib (cache-aware, rate-limited by
+# pokeapi_get on JSON cache misses). Echoes a local path or nothing.
+# POKIDLE_FETCH_SPRITES=0 disables network entirely (used by tests/offline).
+_pokidle_pokemon_sprite() {
+    local name="$1" shiny="$2"
+    [[ "${POKIDLE_FETCH_SPRITES:-1}" == "1" ]] || return 0
+    local variant=front_default
+    [[ "$shiny" == "1" ]] && variant=front_shiny
+    pokemon_sprite "$name" "$variant" 2>/dev/null || return 0
+}
+
+_pokidle_item_sprite() {
+    local name="$1"
+    [[ "${POKIDLE_FETCH_SPRITES:-1}" == "1" ]] || return 0
+    item_sprite "$name" 2>/dev/null || return 0
+}
+# Fisher-Yates shuffle of a named array, in place, using $RANDOM.
+_pokidle_shuffle() {
+    local -n _arr="$1"
+    local i j tmp
+    for (( i=${#_arr[@]}-1; i>0; i-- )); do
+        j=$(( RANDOM % (i + 1) ))
+        tmp="${_arr[i]}"; _arr[i]="${_arr[j]}"; _arr[j]="$tmp"
+    done
+}
+
+# Build a random Showdown export team from stored encounters.
+# Picks up to 6 distinct species within a window (default: current ISO week,
+# overridable via --since/--until), one random encounter per species. Held
+# items are drawn from item_drops in the same window — distinct across the
+# team — with each mon's own berry as one additional candidate. Other list
+# filters (--shiny/--species/--biome/--nature/--min-iv-total) constrain the
+# encounter pool.
+_pokidle_export_team() {
+    local filters=() since_ts="" until_ts=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --since) since_ts="$(date -d "$2" +%s)" || return 2; shift 2 ;;
+            --until) until_ts="$(date -d "$2" +%s)" || return 2; shift 2 ;;
+            *)       filters+=("$1"); shift ;;
+        esac
+    done
+
+    # Default window = current ISO week (Mon 00:00 .. Sun 23:59:59) when the
+    # caller gave neither bound.
+    if [[ -z "$since_ts" && -z "$until_ts" ]]; then
+        local dow
+        dow="$(date +%u)"
+        since_ts="$(date -d "$(( dow - 1 )) days ago $(date +%F) 00:00:00" +%s)"
+        until_ts=$(( since_ts + 7*86400 - 1 ))
+    fi
+
+    local enc_args=("${filters[@]}" --limit 1000)
+    [[ -n "$since_ts" ]] && enc_args+=(--since "@$since_ts")
+    [[ -n "$until_ts" ]] && enc_args+=(--until "@$until_ts")
+    local rows
+    rows="$(db_list_encounters "${enc_args[@]}")"
+
+    local species=()
+    mapfile -t species < <(jq -r '[.[].species] | unique | .[]' <<< "$rows")
+    (( ${#species[@]} == 0 )) && return 0
+    _pokidle_shuffle species
+    species=("${species[@]:0:6}")
+
+    local item_args=(--limit 1000)
+    [[ -n "$since_ts" ]] && item_args+=(--since "@$since_ts")
+    [[ -n "$until_ts" ]] && item_args+=(--until "@$until_ts")
+    local items=()
+    mapfile -t items < <(db_list_item_drops "${item_args[@]}" | jq -r '[.[].item] | unique | .[]')
+    _pokidle_shuffle items
+
+    local used="|" sep=""
+    local sp
+    for sp in "${species[@]}"; do
+        local cnt enc
+        cnt="$(jq --arg s "$sp" '[.[] | select(.species==$s)] | length' <<< "$rows")"
+        enc="$(jq -c --arg s "$sp" --argjson i "$(( RANDOM % cnt ))" \
+            '[.[] | select(.species==$s)][$i]' <<< "$rows")"
+
+        # Candidate item pool: unused window items + this mon's own berry
+        # (bare berry slug normalized to "<name>-berry").
+        local cands=() it
+        for it in "${items[@]}"; do
+            [[ "$used" == *"|$it|"* ]] && continue
+            cands+=("$it")
+        done
+        local berry
+        berry="$(jq -r '.held_berry // ""' <<< "$enc")"
+        if [[ -n "$berry" && "$berry" != "null" ]]; then
+            local berry_item="$berry-berry"
+            [[ "$used" == *"|$berry_item|"* ]] || cands+=("$berry_item")
+        fi
+        local chosen=""
+        if (( ${#cands[@]} > 0 )); then
+            chosen="${cands[$(( RANDOM % ${#cands[@]} ))]}"
+            used+="$chosen|"
+        fi
+
+        local norm
+        norm="$(jq -c --arg item "$chosen" '{
+            species, level, nature, ability, is_hidden_ability, shiny,
+            held_item: ($item | select(. != "") // null),
+            ivs: [.iv_hp,.iv_atk,.iv_def,.iv_spa,.iv_spd,.iv_spe],
+            evs: [.ev_hp,.ev_atk,.ev_def,.ev_spa,.ev_spd,.ev_spe],
+            moves: (.moves_json | fromjson)
+        }' <<< "$enc")"
+        printf '%s' "$sep"
+        showdown_format "$norm"
+        sep=$'\n'
+    done
+}
+
+pokidle_list() {
+    db_init
+    local export_mode=0 json_mode=0 args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --export) export_mode=1; shift ;;
+            --json)   json_mode=1; shift ;;
+            *)        args+=("$1"); shift ;;
+        esac
+    done
+
+    if (( export_mode )); then
+        _pokidle_export_team "${args[@]}"
+        return
+    fi
+
+    local rows
+    rows="$(db_list_encounters "${args[@]}")"
+
+    if (( json_mode )); then
+        printf '%s\n' "$rows"
+        return
+    fi
+
+    local enc first=1
+    while IFS= read -r enc; do
+        [[ -z "$enc" ]] && continue
+        if (( first )); then first=0; else
+            printf -- '--------------------------------------------------------------------------------\n'
+        fi
+        local sp lvl nat abil gender shiny biome ts
+        sp="$(jq -r '.species' <<< "$enc")"
+        lvl="$(jq -r '.level' <<< "$enc")"
+        nat="$(jq -r '.nature' <<< "$enc")"
+        abil="$(jq -r '.ability' <<< "$enc")"
+        gender="$(jq -r '.gender' <<< "$enc")"
+        shiny="$(jq -r '.shiny' <<< "$enc")"
+        biome="$(jq -r '.biome_id' <<< "$enc")"
+        ts="$(jq -r '.encountered_at' <<< "$enc")"
+        local sprite
+        sprite="$(jq -r '.sprite_path // ""' <<< "$enc")"
+        [[ -n "$sprite" && -f "$sprite" ]] || sprite="$(_pokidle_pokemon_sprite "$sp" "$shiny")"
+        _pokidle_render_sprite "$sprite"
+        printf '%s   %s   Lv.%s %s%s\n' \
+            "$(date -d "@$ts" '+%F %H:%M')" "$biome" "$lvl" "$sp" \
+            "$( [[ "$shiny" == "1" ]] && printf ' ✨' )"
+        printf '   %s · %s · %s\n' "$nat" "$abil" "$gender"
+        local ivs evs stats moves
+        ivs="$(jq -r '"\(.iv_hp)/\(.iv_atk)/\(.iv_def)/\(.iv_spa)/\(.iv_spd)/\(.iv_spe)"' <<< "$enc")"
+        evs="$(jq -r '"\(.ev_hp)/\(.ev_atk)/\(.ev_def)/\(.ev_spa)/\(.ev_spd)/\(.ev_spe)"' <<< "$enc")"
+        stats="$(jq -r '"\(.stat_hp)/\(.stat_atk)/\(.stat_def)/\(.stat_spa)/\(.stat_spd)/\(.stat_spe)"' <<< "$enc")"
+        moves="$(jq -r '.moves_json | fromjson | join(", ")' <<< "$enc")"
+        printf '   Stats: %s\n   IVs:   %s\n   EVs:   %s\n   Moves: %s\n\n' \
+            "$stats" "$ivs" "$evs" "$moves"
+    done < <(jq -c '.[]' <<< "$rows")
+}
+pokidle_items() {
+    db_init
+    local json_mode=0 args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json_mode=1; shift ;;
+            *)      args+=("$1"); shift ;;
+        esac
+    done
+    local rows
+    rows="$(db_list_item_drops "${args[@]}")"
+    if (( json_mode )); then
+        printf '%s\n' "$rows"
+        return
+    fi
+    local d
+    while IFS= read -r d; do
+        [[ -z "$d" ]] && continue
+        local ts biome item sprite
+        ts="$(jq -r '.encountered_at' <<< "$d")"
+        biome="$(jq -r '.biome_id' <<< "$d")"
+        item="$(jq -r '.item' <<< "$d")"
+        sprite="$(jq -r '.sprite_path // ""' <<< "$d")"
+        [[ -n "$sprite" && -f "$sprite" ]] || sprite="$(_pokidle_item_sprite "$item")"
+        _pokidle_render_sprite "$sprite"
+        printf '%s   %s   %s\n' "$(date -d "@$ts" '+%F %H:%M')" "$biome" "$item"
+    done < <(jq -c '.[]' <<< "$rows")
+}
+
+pokidle_stats() {
+    db_init
+    local total shinies
+    total="$(db_query "SELECT COUNT(*) FROM encounters;")"
+    shinies="$(db_query "SELECT COUNT(*) FROM encounters WHERE shiny=1;")"
+    printf 'Total encounters:  %s\n' "$total"
+    printf 'Shinies:           %s' "$shinies"
+    if [[ "$shinies" != "0" && "$total" != "0" ]]; then
+        printf '   (1 / %.1f)' "$(awk -v t="$total" -v s="$shinies" 'BEGIN { printf "%.1f", t/s }')"
+    fi
+    printf '\n\nBy biome:\n'
+    db_query "SELECT s.biome_id, COUNT(*), SUM(e.shiny)
+              FROM encounters e JOIN biome_sessions s ON s.id=e.session_id
+              GROUP BY s.biome_id ORDER BY 2 DESC;" |
+        awk -F'\t' '{ printf "  %-12s %5d   (%d shiny)\n", $1, $2, $3 }'
+    printf '\nTop species:\n'
+    db_query "SELECT species, COUNT(*) FROM encounters
+              GROUP BY species ORDER BY 2 DESC LIMIT 10;" |
+        awk -F'\t' '{ printf "  %-12s %5d\n", $1, $2 }'
+}
+pokidle_current() {
+    db_init
+    local row
+    row="$(db_active_biome_session)"
+    if [[ -z "$row" ]]; then
+        printf 'no active biome\n'
+        return 0
+    fi
+    local id biome started_at
+    IFS=$'\t' read -r id biome started_at <<< "$row"
+    local now elapsed remaining
+    now="$(date +%s)"
+    elapsed=$((now - started_at))
+    remaining=$(( ${POKIDLE_BIOME_HOURS:-3} * 3600 - elapsed ))
+    local enc_count item_count
+    enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=$id;")"
+    item_count="$(db_query "SELECT COUNT(*) FROM item_drops WHERE session_id=$id;")"
+    printf 'Active biome: %s  (session #%s)\n' "$biome" "$id"
+    printf 'Started: %s\n' "$(date -d "@$started_at")"
+    printf 'Time remaining: %ds\n' "$remaining"
+    printf 'Encounters: %s   Items: %s\n' "$enc_count" "$item_count"
+}
+
+pokidle_clean() {
+    local force=0 target=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --yes|-y)        force=1; shift ;;
+            pools|db|all)    target="$1"; shift ;;
+            -*)              printf 'clean: unknown flag %s\n' "$1" >&2; return 2 ;;
+            *)               printf 'clean: unknown target %s\n' "$1" >&2; return 2 ;;
+        esac
+    done
+    if [[ -z "$target" ]]; then
+        printf 'usage: pokidle clean <pools|db|all> [--yes]\n' >&2
+        return 2
+    fi
+
+    local prompt
+    case "$target" in
+        pools) prompt="Wipe $POKIDLE_CACHE_DIR/pools?" ;;
+        db)    prompt="Wipe $POKIDLE_DB_PATH?" ;;
+        all)   prompt="Wipe $POKIDLE_CACHE_DIR/pools AND $POKIDLE_DB_PATH?" ;;
+    esac
+
+    if (( ! force )); then
+        printf '%s [y/N] ' "$prompt"
+        local ans; read -r ans
+        [[ "$ans" =~ ^[Yy]$ ]] || { printf 'aborted\n'; return 0; }
+    fi
+
+    case "$target" in
+        pools)
+            rm -rf -- "$POKIDLE_CACHE_DIR/pools"
+            printf 'cleaned: pools/\n'
+            ;;
+        db)
+            rm -f -- "$POKIDLE_DB_PATH"
+            printf 'cleaned: %s\n' "$POKIDLE_DB_PATH"
+            ;;
+        all)
+            rm -rf -- "$POKIDLE_CACHE_DIR/pools"
+            rm -f -- "$POKIDLE_DB_PATH"
+            printf 'cleaned: pools/ + %s\n' "$POKIDLE_DB_PATH"
+            ;;
+    esac
+}
+
+pokidle_rebuild_pool() {
+    local force=0 target=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --yes|-y) force=1; shift ;;
+            -*) printf 'rebuild-pool: unknown flag %s\n' "$1" >&2; return 2 ;;
+            *)  target="$1"; shift ;;
+        esac
+    done
+
+    local biomes
+    if [[ -n "$target" ]]; then
+        biomes="$target"
+    else
+        biomes="$(biome_ids)"
+        local n
+        n="$(printf '%s\n' "$biomes" | grep -c .)"
+        if (( ! force )); then
+            printf 'Rebuild all %s pools (wipes %s/pools first)? [y/N] ' \
+                "$n" "$POKIDLE_CACHE_DIR"
+            local ans; read -r ans
+            [[ "$ans" =~ ^[Yy]$ ]] || { printf 'aborted\n'; return 0; }
+        fi
+        rm -rf -- "$POKIDLE_CACHE_DIR/pools"
+    fi
+    local b
+    while IFS= read -r b; do
+        [[ -z "$b" ]] && continue
+        local pool
+        pool="$(encounter_build_pool "$b")" || {
+            printf 'rebuild-pool: build failed for %s\n' "$b" >&2
+            continue
+        }
+        encounter_pool_save "$b" "$pool"
+        local c u r v
+        c="$(jq '.tiers.common    | length' <<< "$pool")"
+        u="$(jq '.tiers.uncommon  | length' <<< "$pool")"
+        r="$(jq '.tiers.rare      | length' <<< "$pool")"
+        v="$(jq '.tiers.very_rare | length' <<< "$pool")"
+        printf 'rebuilt pool: %s (common=%s uncommon=%s rare=%s very_rare=%s)\n' \
+            "$b" "$c" "$u" "$r" "$v"
+    done <<< "$biomes"
+}
+
+pokidle_switch_biome() {
+    local biome="${1-}"
+    if [[ -z "$biome" ]]; then
+        printf 'switch-biome: missing biome id\n' >&2
+        return 2
+    fi
+    if ! biome_get "$biome" > /dev/null 2>&1; then
+        printf 'switch-biome: unknown biome %s\n' "$biome" >&2
+        return 2
+    fi
+    db_init
+    local active sid
+    active="$(db_active_biome_session)"
+    if [[ -n "$active" ]]; then
+        IFS=$'\t' read -r sid _ _ <<< "$active"
+        db_close_biome_session "$sid" "$(date +%s)"
+    fi
+    local new_sid
+    new_sid="$(db_open_biome_session "$biome" "$(date +%s)")"
+    printf 'switched to %s (session %s)\n' "$biome" "$new_sid"
+}
+
+pokidle_setup() {
+    # Setup installs *and* activates the service: pokidle is a daemon, so an
+    # install that didn't start it would be useless. Pass --no-enable to only
+    # install the unit (then start it yourself), or `uninstall` to reverse.
+    local enable=1 force=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --enable)    enable=1; shift ;;   # back-compat no-op (default)
+            --no-enable) enable=0; shift ;;
+            --force)     force=1; shift ;;
+            *) printf 'setup: unknown flag %s\n' "$1" >&2; return 2 ;;
+        esac
+    done
+
+    # 0. Dependency check. systemctl is required: the whole app runs as a
+    #    systemd user service.
+    local req missing_req=()
+    for req in jq curl sqlite3 notify-send awk systemctl; do
+        command -v "$req" >/dev/null || missing_req+=("$req")
+    done
+    if (( ${#missing_req[@]} > 0 )); then
+        printf 'setup: missing required commands: %s\n' "${missing_req[*]}" >&2
+        printf 'setup: install them via your package manager and re-run setup\n' >&2
+        return 1
+    fi
+    if ! command -v paplay >/dev/null && ! command -v aplay >/dev/null; then
+        printf 'setup: optional dep missing: paplay or aplay (sound playback will be skipped)\n'
+    fi
+    command -v chafa >/dev/null || \
+        printf 'setup: optional dep missing: chafa (sprite preview in list/items will be skipped)\n'
+
+    # 1. Config dir + biomes.json
+    mkdir -p -- "$POKIDLE_CONFIG_DIR"
+    if (( force )) || [[ ! -f "$POKIDLE_CONFIG_DIR/biomes.json" ]]; then
+        cp -- "$POKIDLE_REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
+        printf 'wrote %s\n' "$POKIDLE_CONFIG_DIR/biomes.json"
+    fi
+
+    # 2. Data + cache dirs
+    mkdir -p -- "$POKIDLE_DATA_DIR" "$POKIDLE_CACHE_DIR"
+
+    # 2b. Asset symlinks (icons + sounds) into data dir
+    local asset
+    for asset in biomes notify sounds; do
+        local src="$POKIDLE_REPO_ROOT/share/$asset"
+        local dst="$POKIDLE_DATA_DIR/$asset"
+        [[ -d "$src" ]] || continue
+        if (( force )) || [[ ! -e "$dst" ]]; then
+            ln -sfn -- "$src" "$dst"
+            printf 'symlinked %s -> %s\n' "$dst" "$src"
+        fi
+    done
+
+    # 2c. Seed encounter pools from share/pools so first run skips the
+    #     ~2 hour cold rebuild. Copies (not symlinks) so later
+    #     `pokidle rebuild-pool` writes to the cache, not the repo.
+    local ship_pools="$POKIDLE_REPO_ROOT/share/pools"
+    local cache_pools="$POKIDLE_CACHE_DIR/pools"
+    if [[ -d "$ship_pools" ]] && compgen -G "$ship_pools/*.json" > /dev/null; then
+        mkdir -p -- "$cache_pools"
+        local ship_pool seeded=0 skipped=0
+        for ship_pool in "$ship_pools"/*.json; do
+            local name
+            name="$(basename -- "$ship_pool")"
+            local dst="$cache_pools/$name"
+            if [[ -f "$dst" ]] && (( ! force )); then
+                skipped=$((skipped + 1))
+                continue
+            fi
+            local schema
+            schema="$(jq -r '.schema // 0' "$ship_pool")"
+            if [[ "$schema" != "3" ]]; then
+                printf 'setup: skipping %s (schema=%s, expected 3)\n' "$name" "$schema" >&2
+                continue
+            fi
+            cp -- "$ship_pool" "$dst"
+            seeded=$((seeded + 1))
+        done
+        (( seeded > 0 )) && printf 'seeded %d pool(s) into %s\n' "$seeded" "$cache_pools"
+        (( skipped > 0 )) && printf 'kept %d existing pool(s) (use --force to overwrite)\n' "$skipped"
+    fi
+
+    # 3. Symlink pokidle into ~/.local/bin
+    local bindir="$HOME/.local/bin"
+    mkdir -p -- "$bindir"
+    if (( force )) || [[ ! -e "$bindir/pokidle" ]]; then
+        ln -sf -- "$POKIDLE_REPO_ROOT/pokidle" "$bindir/pokidle"
+        printf 'symlinked %s -> %s\n' "$bindir/pokidle" "$POKIDLE_REPO_ROOT/pokidle"
+    fi
+    case ":$PATH:" in
+        *":$bindir:"*) ;;
+        *) printf 'warning: %s is not in PATH — add it to your shell rc\n' "$bindir" >&2 ;;
+    esac
+
+    # 4. Systemd unit
+    local sd_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    mkdir -p -- "$sd_dir"
+    if (( force )) || [[ ! -f "$sd_dir/pokidle.service" ]]; then
+        cp -- "$POKIDLE_REPO_ROOT/systemd/pokidle.service" "$sd_dir/pokidle.service"
+        printf 'wrote %s\n' "$sd_dir/pokidle.service"
+    fi
+
+    # 5. Reload systemd user units
+    systemctl --user daemon-reload || \
+        printf 'warning: systemctl --user daemon-reload failed (no logind?)\n' >&2
+
+    if (( enable )); then
+        if systemctl --user enable --now pokidle.service; then
+            printf 'enabled and started pokidle.service\n'
+        else
+            printf 'enable failed — see journalctl --user -u pokidle\n' >&2
+            return 1
+        fi
+    else
+        printf 'installed (not started). next: systemctl --user enable --now pokidle.service\n'
+    fi
+}
+
+pokidle_uninstall() {
+    systemctl --user disable --now pokidle.service 2>/dev/null || true
+    rm -f -- "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/pokidle.service"
+    rm -f -- "$HOME/.local/bin/pokidle"
+    local asset
+    for asset in biomes notify sounds; do
+        local dst="$POKIDLE_DATA_DIR/$asset"
+        [[ -L "$dst" ]] && rm -f -- "$dst"
+    done
+    systemctl --user daemon-reload || true
+    printf 'uninstalled. Config (%s), DB (%s), cache (%s) left intact.\n' \
+        "$POKIDLE_CONFIG_DIR" "$POKIDLE_DB_PATH" "$POKIDLE_CACHE_DIR"
+}
+pokidle_status() {
+    printf '=== systemctl --user status pokidle.service ===\n'
+    systemctl --user status pokidle.service --no-pager 2>&1 || true
+    printf '\n=== current biome ===\n'
+    pokidle_current
+    printf '\n=== daemon_state ===\n'
+    db_init
+    db_query "SELECT key, value FROM daemon_state ORDER BY key;" |
+        awk -F'\t' '{ printf "  %-32s %s\n", $1, $2 }'
+}
+
+if [[ "${POKIDLE_TEST_SKIP_DISPATCH:-0}" == "0" ]]; then
+    cmd="${1-}"
+    [[ -n "$cmd" ]] || { usage >&2; exit 2; }
+    shift
+
+    case "$cmd" in
+        daemon)         pokidle_daemon "$@" ;;
+        tick)           pokidle_tick "$@" ;;
+        encounters)     pokidle_list "$@" ;;
+        items)          pokidle_items "$@" ;;
+        stats)          pokidle_stats "$@" ;;
+        current)        pokidle_current "$@" ;;
+        rebuild-pool)   pokidle_rebuild_pool "$@" ;;
+        switch-biome)   pokidle_switch_biome "$@" ;;
+        clean)          pokidle_clean "$@" ;;
+        setup)          pokidle_setup "$@" ;;
+        uninstall)      pokidle_uninstall "$@" ;;
+        status)         pokidle_status "$@" ;;
+        help|-h|--help) usage ;;
+        *) printf 'unknown command: %s\n' "$cmd" >&2; usage >&2; exit 2 ;;
+    esac
+fi

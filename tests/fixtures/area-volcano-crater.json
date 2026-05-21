@@ -1,0 +1,7 @@
+{
+  "name": "mt-chimney-volcano-area",
+  "pokemon_encounters": [
+    {"pokemon": {"name": "numel"}},
+    {"pokemon": {"name": "slugma"}}
+  ]
+}

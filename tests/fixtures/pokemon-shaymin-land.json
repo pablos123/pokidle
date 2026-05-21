@@ -1,0 +1,31 @@
+{
+    "id": 492,
+    "name": "shaymin-land",
+    "species": { "name": "shaymin" },
+    "stats": [
+        {"base_stat": 100, "stat": {"name": "hp"}},
+        {"base_stat": 100, "stat": {"name": "attack"}},
+        {"base_stat": 100, "stat": {"name": "defense"}},
+        {"base_stat": 100, "stat": {"name": "special-attack"}},
+        {"base_stat": 100, "stat": {"name": "special-defense"}},
+        {"base_stat": 100, "stat": {"name": "speed"}}
+    ],
+    "sprites": {
+        "front_default": "https://example.test/shaymin-land.png",
+        "front_shiny": "https://example.test/shaymin-land-shiny.png"
+    },
+    "abilities": [
+        {"ability": {"name": "natural-cure"}, "is_hidden": false}
+    ],
+    "moves": [
+        {
+            "move": {"name": "seed-flare"},
+            "version_group_details": [
+                {"level_learned_at": 1, "move_learn_method": {"name": "level-up"}}
+            ]
+        }
+    ],
+    "types": [
+        {"slot": 1, "type": {"name": "grass"}}
+    ]
+}

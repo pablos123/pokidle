@@ -1,0 +1,14 @@
+{
+    "name": "wormadam",
+    "capture_rate": 45,
+    "base_happiness": 70,
+    "is_legendary": false,
+    "is_mythical": false,
+    "gender_rate": 8,
+    "evolution_chain": { "url": "https://pokeapi.co/api/v2/evolution-chain/210/" },
+    "varieties": [
+        { "is_default": true,  "pokemon": { "name": "wormadam-plant", "url": "https://pokeapi.co/api/v2/pokemon/413/" } },
+        { "is_default": false, "pokemon": { "name": "wormadam-sandy", "url": "https://pokeapi.co/api/v2/pokemon/10004/" } },
+        { "is_default": false, "pokemon": { "name": "wormadam-trash", "url": "https://pokeapi.co/api/v2/pokemon/10005/" } }
+    ]
+}

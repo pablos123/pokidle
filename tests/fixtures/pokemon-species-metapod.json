@@ -1,0 +1,9 @@
+{
+    "name": "metapod",
+    "capture_rate": 255,
+    "base_happiness": 70,
+    "is_legendary": false,
+    "is_mythical": false,
+    "gender_rate": 4,
+    "evolution_chain": { "url": "https://pokeapi.co/api/v2/evolution-chain/3/" }
+}

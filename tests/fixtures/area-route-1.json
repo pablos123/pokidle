@@ -1,0 +1,7 @@
+{
+  "name": "kanto-route-1-area",
+  "pokemon_encounters": [
+    {"pokemon": {"name": "pidgey"}},
+    {"pokemon": {"name": "rattata"}}
+  ]
+}

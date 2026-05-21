@@ -1,0 +1,16 @@
+[Unit]
+Description=Pokidle passive pokemon encounter daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/pokidle daemon
+Restart=on-failure
+RestartSec=30
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target

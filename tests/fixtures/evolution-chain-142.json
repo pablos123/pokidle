@@ -1,0 +1,20 @@
+{
+  "id": 142,
+  "chain": {
+    "species": {"name":"treecko"},
+    "evolution_details": [],
+    "evolves_to": [
+      {
+        "species": {"name":"grovyle"},
+        "evolution_details": [{"min_level":16, "trigger":{"name":"level-up"}}],
+        "evolves_to": [
+          {
+            "species": {"name":"sceptile"},
+            "evolution_details": [{"min_level":36, "trigger":{"name":"level-up"}}],
+            "evolves_to": []
+          }
+        ]
+      }
+    ]
+  }
+}

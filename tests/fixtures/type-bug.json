@@ -1,0 +1,8 @@
+{ "name": "bug", "pokemon": [
+    { "pokemon": { "name": "caterpie" } },
+    { "pokemon": { "name": "metapod" } },
+    { "pokemon": { "name": "butterfree" } },
+    { "pokemon": { "name": "wormadam-plant" } },
+    { "pokemon": { "name": "wormadam-sandy" } },
+    { "pokemon": { "name": "wormadam-trash" } }
+] }

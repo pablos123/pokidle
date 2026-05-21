@@ -1,0 +1,19 @@
+{
+  "id": 67,
+  "chain": {
+    "species": {"name":"eevee"},
+    "evolution_details": [],
+    "evolves_to": [
+      {
+        "species": {"name":"vaporeon"},
+        "evolution_details": [{"trigger":{"name":"use-item"}, "min_level":null, "item":{"name":"water-stone"}}],
+        "evolves_to": []
+      },
+      {
+        "species": {"name":"jolteon"},
+        "evolution_details": [{"trigger":{"name":"use-item"}, "min_level":null, "item":{"name":"thunder-stone"}}],
+        "evolves_to": []
+      }
+    ]
+  }
+}

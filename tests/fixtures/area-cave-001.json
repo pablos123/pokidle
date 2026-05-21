@@ -1,0 +1,7 @@
+{
+  "name": "cerulean-cave-1f-area",
+  "pokemon_encounters": [
+    {"pokemon": {"name": "zubat"}},
+    {"pokemon": {"name": "geodude"}}
+  ]
+}

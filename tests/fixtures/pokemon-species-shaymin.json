@@ -1,0 +1,13 @@
+{
+    "name": "shaymin",
+    "capture_rate": 45,
+    "base_happiness": 100,
+    "is_legendary": true,
+    "is_mythical": true,
+    "gender_rate": -1,
+    "evolution_chain": { "url": "https://pokeapi.co/api/v2/evolution-chain/253/" },
+    "varieties": [
+        { "is_default": true,  "pokemon": { "name": "shaymin-land", "url": "https://pokeapi.co/api/v2/pokemon/492/" } },
+        { "is_default": false, "pokemon": { "name": "shaymin-sky",  "url": "https://pokeapi.co/api/v2/pokemon/10006/" } }
+    ]
+}

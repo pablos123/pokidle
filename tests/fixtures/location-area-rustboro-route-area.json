@@ -1,0 +1,16 @@
+{
+  "name": "rustboro-route-area",
+  "pokemon_encounters": [
+    {
+      "pokemon": {"name":"treecko"},
+      "version_details": [
+        {
+          "version": {"name":"emerald"},
+          "encounter_details": [
+            {"min_level": 5, "max_level": 7, "chance": 40, "method":{"name":"walk"}}
+          ]
+        }
+      ]
+    }
+  ]
+}
