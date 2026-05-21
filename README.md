@@ -1,8 +1,8 @@
 # pokidle
 
-A passive Pokemon encounter daemon for the Linux desktop.
+A passive Pokémon encounter daemon for the Linux desktop.
 
-Non intruvise notifications that, on a slow cadence, _encounters_ wild Pokemon, drops items, levels/befriends/evolves your current-week catches, and rarely spawns a legendary. Shinies included!
+Non-intrusive notifications on a slow cadence: it encounters wild Pokémon, drops items, levels/befriends/evolves your current-week catches, and rarely spawns a legendary. Shinies included!
 
 A CLI inspects, filters, and exports your catches for battling in Showdown.
 
