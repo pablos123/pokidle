@@ -447,7 +447,14 @@ pokidle_tick_level() {
         species="$(jq -r '.species' <<< "$r")"
         level="$(jq -r '.level' <<< "$r")"
         (( level >= 100 )) && continue
-        (( RANDOM % 100 >= ${POKIDLE_LEVEL_CHANCE:-25} )) && continue
+        # Chance falls off linearly with level: from POKIDLE_LEVEL_CHANCE at
+        # low level down to POKIDLE_LEVEL_CHANCE_MIN near level 100.
+        local base_chance floor_chance chance
+        base_chance="${POKIDLE_LEVEL_CHANCE:-30}"
+        floor_chance="${POKIDLE_LEVEL_CHANCE_MIN:-5}"
+        chance=$(( floor_chance + (base_chance - floor_chance) * (100 - level) / 100 ))
+        (( chance < floor_chance )) && chance="$floor_chance"
+        (( RANDOM % 100 >= chance )) && continue
 
         nature="$(jq -r '.nature' <<< "$r")"
         local ivs evs new_level

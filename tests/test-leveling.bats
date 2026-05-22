@@ -52,7 +52,7 @@ _seed_rattata_in_current_week() {
                 17, 13, 11, 9, 10, 14);"
 }
 
-@test "pokidle tick level --json bumps eligible candidate when roll < 25" {
+@test "pokidle tick level --json bumps eligible low-level candidate" {
     _seed_rattata_in_current_week
     local i hit=0 out
     for i in {1..40}; do
@@ -129,4 +129,34 @@ _seed_rattata_in_current_week() {
     local lvl
     lvl="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT level FROM encounters WHERE id=1;")"
     [ "$lvl" = "5" ]
+}
+
+@test "pokidle tick level: chance scales down with level" {
+    # Level-90 rattata in the current week.
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    local dow mon_ts now
+    dow="$(date +%u)"
+    mon_ts="$(date -d "$(( dow - 1 )) days ago $(date +%F) 00:00:00" +%s 2>/dev/null \
+              || date -v-$(( dow - 1 ))d -v0H -v0M -v0S +%s)"
+    now=$((mon_ts + 86400))
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('plain', $mon_ts);
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json,
+            friendship, iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
+            ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe,
+            stat_hp, stat_atk, stat_def, stat_spa, stat_spd, stat_spe)
+            VALUES (1, $now, 'rattata', 19, 90, 'hardy', 'guts', 0, 'M', 0, '[]', 70,
+                10,10,10,10,10,10, 0,0,0,0,0,0, 17, 13, 11, 9, 10, 14);"
+
+    # floor 0, base 9: chance at lvl 90 = 0 + 9*(100-90)/100 = 0 (int) -> never levels,
+    # proving the level term drives effective chance down at high level.
+    local i out leveled_max=0
+    for i in {1..40}; do
+        out="$(POKIDLE_LEVEL_CHANCE=9 POKIDLE_LEVEL_CHANCE_MIN=0 \
+               "$REPO_ROOT/pokidle" tick level --dry-run --no-notify --json 2>/dev/null)"
+        local n="$(jq '.leveled | length' <<< "$out")"
+        (( n > leveled_max )) && leveled_max=$n
+    done
+    [ "$leveled_max" = "0" ]
 }

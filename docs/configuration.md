@@ -60,7 +60,8 @@ Set to `0` to skip that tick in the daemon loop; the timer still advances, so it
 | `POKIDLE_HIDDEN_ABILITY_RATE` | `5` | Percent chance an encounter rolls its hidden ability. |
 | `POKIDLE_ENCOUNTER_LEVEL_MIN` | `5` | Lower bound of a root (unevolved) species' spawn level. |
 | `POKIDLE_ENCOUNTER_LEVEL_MAX` | `15` | Upper bound of a root species' spawn level. |
-| `POKIDLE_LEVEL_CHANCE` | `25` | Percent chance each eligible current-week catch gains `+1` level per level tick. |
+| `POKIDLE_LEVEL_CHANCE` | `30` | Base level-up chance per tick, applied at low level. |
+| `POKIDLE_LEVEL_CHANCE_MIN` | `5` | Floor level-up chance, approached near level 100. |
 | `POKIDLE_LEVEL_GAIN` | `1` | Levels added on a successful roll (capped at 100). |
 | `POKIDLE_FRIENDSHIP_CHANCE` | `50` | Percent chance each eligible catch gains friendship per friendship tick. |
 | `POKIDLE_FRIENDSHIP_GAIN` | `5` | Friendship points added on a successful roll (capped at 255). |
@@ -71,10 +72,10 @@ Per-tick evolution chance is tier-derived. Each eligible catch with a viable evo
 
 | Variable | Default | Tier |
 |----------|---------|------|
-| `POKIDLE_EVOLVE_CHANCE_COMMON` | `25` | common (also the fallback for unknown tiers) |
-| `POKIDLE_EVOLVE_CHANCE_UNCOMMON` | `15` | uncommon |
-| `POKIDLE_EVOLVE_CHANCE_RARE` | `8` | rare |
-| `POKIDLE_EVOLVE_CHANCE_VERY_RARE` | `3` | very_rare |
+| `POKIDLE_EVOLVE_CHANCE_COMMON` | `25` | Common (capture_rate ≥ 150; also the fallback for unknown tiers) |
+| `POKIDLE_EVOLVE_CHANCE_UNCOMMON` | `15` | Uncommon (capture_rate ≥ 75) |
+| `POKIDLE_EVOLVE_CHANCE_RARE` | `8` | Rare (capture_rate ≥ 25) |
+| `POKIDLE_EVOLVE_CHANCE_VERY_RARE` | `3` | Very_rare (capture_rate < 25) |
 
 Item-based evolutions require a matching item in `item_drops`, which is consumed on use. Enable/disable the whole tick with `POKIDLE_EVOLVE_ENABLED`.
 
@@ -84,7 +85,7 @@ The species is chosen at random among legendaries whose types intersect the acti
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `POKIDLE_LEGENDARY_CHANCE` | `3` | Percent chance per legendary tick (daily) that one spawns. `0` = never, `100` = guaranteed (testing). |
+| `POKIDLE_LEGENDARY_CHANCE` | `3` | Percent chance per legendary tick (daily) that one spawns. `0` = never, `100` = guaranteed. |
 | `POKIDLE_LEGENDARY_LEVEL_MIN` | `50` | Lower bound of legendary spawn level. |
 | `POKIDLE_LEGENDARY_LEVEL_MAX` | `70` | Upper bound of legendary spawn level. |
 
@@ -113,7 +114,7 @@ The species is chosen at random among legendaries whose types intersect the acti
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `POKIDLE_NO_NOTIFY` | `0` | `1` = print title/body to stdout instead of `notify-send`. |
-| `POKIDLE_NOTIFY_TIMEOUT_MS` | `10000` | Display duration in ms (`notify-send -t`). Empty = daemon default. |
+| `POKIDLE_NOTIFY_TIMEOUT_MS` | `10000` | Display duration in ms. Empty = daemon default. |
 
 ### Sound toggles
 
