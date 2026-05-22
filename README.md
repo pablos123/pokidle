@@ -19,10 +19,10 @@ Optional:
 - `paplay` or `aplay` - notification sounds.
 - `chafa` - inline sprite previews.
 
-Debian:
+Debian (all):
 
 ```
-sudo apt install jq curl sqlite3 libnotify-bin systemd
+sudo apt install jq curl sqlite3 libnotify-bin pulseaudio-utils chafa
 ```
 
 ## Install
