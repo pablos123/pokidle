@@ -19,16 +19,10 @@ Optional:
 - `paplay` or `aplay` - notification sounds.
 - `chafa` - inline sprite previews.
 
-Debian (all):
-
-```
-sudo apt install jq curl sqlite3 libnotify-bin pulseaudio-utils chafa
-```
-
 ## Install
 
 ```
-git clone https://github.com/pablos123/pokidle.git && cd pokidle && ./pokidle setup
+git clone https://github.com/pablos123/pokidle.git && ./pokidle/pokidle setup
 ```
 
 Ensure `~/.local/bin` is on your `PATH`.

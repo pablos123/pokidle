@@ -36,8 +36,7 @@ _emit() {
     local body="$2"
     local urgency="$3"
     local icon="$4"
-    # Display duration in ms. notify-send -t; daemon may ignore for critical
-    # urgency (shiny/legendary often persist regardless). Empty = daemon default.
+    # Display duration in ms. notify-send -t; empty = daemon default.
     local timeout="${POKIDLE_NOTIFY_TIMEOUT_MS:-10000}"
     if [[ "${POKIDLE_NO_NOTIFY:-0}" == "1" ]]; then
         printf 'TITLE: %s\nBODY: %s\nURGENCY: %s\nICON: %s\nTIMEOUT: %s\n' \
@@ -74,15 +73,12 @@ notify_pokemon() {
     local prefix="" urgency="normal" sound_kind="encounter"
     if [[ "$shiny" == "1" && "$is_legendary" == "true" ]]; then
         prefix="[SHINY LEGENDARY ✨⚡] "
-        urgency="${POKIDLE_NOTIFY_URGENCY_LEGENDARY:-critical}"
         sound_kind="legendary"
     elif [[ "$is_legendary" == "true" ]]; then
         prefix="[LEGENDARY ⚡] "
-        urgency="${POKIDLE_NOTIFY_URGENCY_LEGENDARY:-critical}"
         sound_kind="legendary"
     elif [[ "$shiny" == "1" ]]; then
         prefix="[SHINY ✨] "
-        urgency="${POKIDLE_NOTIFY_URGENCY_SHINY:-critical}"
         sound_kind="shiny"
     fi
 

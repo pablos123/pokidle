@@ -855,11 +855,15 @@ pokidle_list() {
         return
     fi
 
+    local sep_char="${POKIDLE_SEPARATOR:--}" sep_line
+    printf -v sep_line '%*s' 80 ''
+    sep_line="${sep_line// /$sep_char}"
+
     local enc first=1
     while IFS= read -r enc; do
         [[ -z "$enc" ]] && continue
         if (( first )); then first=0; else
-            printf -- '--------------------------------------------------------------------------------\n'
+            printf -- '%s\n' "$sep_line"
         fi
         local sp lvl nat abil gender shiny biome ts
         sp="$(jq -r '.species' <<< "$enc")"

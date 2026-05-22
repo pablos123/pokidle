@@ -117,7 +117,7 @@ setup() {
     [[ "$output" == *"TIMEOUT: 30000"* ]]
 }
 
-@test "notify_pokemon: legendary encounter emits LEGENDARY prefix + critical urgency" {
+@test "notify_pokemon: legendary encounter emits LEGENDARY prefix + normal urgency" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_NO_NOTIFY=1
     POKIDLE_SOUND_DIR="$BATS_TMPDIR/nosound.$$"
@@ -127,7 +127,7 @@ setup() {
     enc='{"species":"articuno","level":60,"nature":"timid","ability":"pressure","gender":"genderless","shiny":0,"held_berry":null,"biome_label":"Ice","stats":[210,180,200,240,220,230],"moves":["ice-beam"],"sprite_path":"","is_legendary":true}'
     out="$(notify_pokemon "$enc")"
     [[ "$out" == *"LEGENDARY"* ]]
-    [[ "$out" == *"URGENCY: critical"* ]]
+    [[ "$out" == *"URGENCY: normal"* ]]
 }
 
 @test "notify_pokemon: shiny+legendary stacks prefixes" {
