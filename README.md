@@ -12,22 +12,26 @@ The world has 36 type-themed biomes that rotate every few hours and decide which
 
 Required:
 
-- `bash 4+`, `jq`, `curl`, `sqlite3`, `awk`
-- `notify-send` (libnotify)
-- `systemd` (user instance) — the daemon runs as a user service
+- `bash`, `jq`, `curl`, `sqlite3`, `notify-send`, `systemd`
 
 Optional:
 
-- `paplay` or `aplay` — notification sounds
-- `chafa` — inline sprite previews in `list` / `items` (auto-uses kitty/sixel for pixel-perfect output where supported)
+- `paplay` or `aplay` - notification sounds.
+- `chafa` - inline sprite previews.
 
-## Quickstart
+Debian:
 
-Ensure `~/.local/bin` is on your `PATH`.
+```
+sudo apt install jq curl sqlite3 libnotify-bin systemd
+```
+
+## Install
 
 ```
 git clone https://github.com/pablos123/pokidle.git && cd pokidle && ./pokidle setup
 ```
+
+Ensure `~/.local/bin` is on your `PATH`.
 
 Install is symlink-based. **Keep the repo where it is**, moving or deleting it breaks the install.
 
