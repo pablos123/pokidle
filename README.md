@@ -16,8 +16,8 @@ Required:
 
 Optional:
 
-- `paplay` or `aplay` - notification sounds.
-- `chafa` - inline sprite previews.
+- `paplay` or `aplay` — notification sounds.
+- `chafa` — inline sprite previews.
 
 ## Install
 

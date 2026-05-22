@@ -118,6 +118,16 @@ _pokidle_next_tick_target() {
     printf '%d' "$(( next_hour + RANDOM % interval ))"
 }
 
+# True when a whole interval elapsed past a tick target. In normal operation the
+# loop wakes within seconds of a target; only downtime (suspend/resume, NTP step,
+# a stalled loop) lets wall-clock run a full cycle past it. Such ticks are
+# "missed" — reschedule them silently instead of firing every overdue kind at
+# once (which made all notifications appear simultaneously after a wake).
+_pokidle_tick_missed() {
+    local now="$1" target="$2" interval="$3"
+    (( now - target >= interval ))
+}
+
 _pokidle_should_rotate_biome() {
     local started_at="$1" now="$2"
     local hours="${POKIDLE_BIOME_HOURS:-3}"
@@ -215,7 +225,8 @@ pokidle_daemon() {
         fi
 
         if (( now >= next_pokemon )); then
-            if [[ "${POKIDLE_POKEMON_ENABLED:-1}" == "1" ]]; then
+            if [[ "${POKIDLE_POKEMON_ENABLED:-1}" == "1" ]] && \
+               ! _pokidle_tick_missed "$now" "$next_pokemon" "${POKIDLE_POKEMON_INTERVAL:-3600}"; then
                 pokidle_tick pokemon --no-dry-run || printf 'daemon: pokemon tick failed (continuing)\n' >&2
             fi
             next_pokemon="$(_pokidle_next_tick_target "$now" "${POKIDLE_POKEMON_INTERVAL:-3600}")"
@@ -223,7 +234,8 @@ pokidle_daemon() {
                 printf 'daemon: persist last_pokemon_tick_target failed (continuing)\n' >&2
         fi
         if (( now >= next_item )); then
-            if [[ "${POKIDLE_ITEM_ENABLED:-1}" == "1" ]]; then
+            if [[ "${POKIDLE_ITEM_ENABLED:-1}" == "1" ]] && \
+               ! _pokidle_tick_missed "$now" "$next_item" "${POKIDLE_ITEM_INTERVAL:-3600}"; then
                 pokidle_tick item --no-dry-run || printf 'daemon: item tick failed (continuing)\n' >&2
             fi
             next_item="$(_pokidle_next_tick_target "$now" "${POKIDLE_ITEM_INTERVAL:-3600}")"
@@ -231,7 +243,8 @@ pokidle_daemon() {
                 printf 'daemon: persist last_item_tick_target failed (continuing)\n' >&2
         fi
         if (( now >= next_level )); then
-            if [[ "${POKIDLE_LEVEL_ENABLED:-1}" == "1" ]]; then
+            if [[ "${POKIDLE_LEVEL_ENABLED:-1}" == "1" ]] && \
+               ! _pokidle_tick_missed "$now" "$next_level" "${POKIDLE_LEVEL_INTERVAL:-3600}"; then
                 pokidle_tick level --no-dry-run --json > /dev/null \
                     || printf 'daemon: level tick failed (continuing)\n' >&2
             fi
@@ -240,7 +253,8 @@ pokidle_daemon() {
                 printf 'daemon: persist last_level_tick_target failed (continuing)\n' >&2
         fi
         if (( now >= next_friendship )); then
-            if [[ "${POKIDLE_FRIENDSHIP_ENABLED:-1}" == "1" ]]; then
+            if [[ "${POKIDLE_FRIENDSHIP_ENABLED:-1}" == "1" ]] && \
+               ! _pokidle_tick_missed "$now" "$next_friendship" "${POKIDLE_FRIENDSHIP_INTERVAL:-1800}"; then
                 pokidle_tick friendship --no-dry-run --json > /dev/null \
                     || printf 'daemon: friendship tick failed (continuing)\n' >&2
             fi
@@ -249,7 +263,8 @@ pokidle_daemon() {
                 printf 'daemon: persist last_friendship_tick_target failed (continuing)\n' >&2
         fi
         if (( now >= next_evolve )); then
-            if [[ "${POKIDLE_EVOLVE_ENABLED:-1}" == "1" ]]; then
+            if [[ "${POKIDLE_EVOLVE_ENABLED:-1}" == "1" ]] && \
+               ! _pokidle_tick_missed "$now" "$next_evolve" "${POKIDLE_EVOLVE_INTERVAL:-10800}"; then
                 pokidle_tick evolve --no-dry-run --json > /dev/null \
                     || printf 'daemon: evolve tick failed (continuing)\n' >&2
             fi
@@ -258,7 +273,8 @@ pokidle_daemon() {
                 printf 'daemon: persist last_evolve_tick_target failed (continuing)\n' >&2
         fi
         if (( now >= next_legendary )); then
-            if [[ "${POKIDLE_LEGENDARY_ENABLED:-1}" == "1" ]]; then
+            if [[ "${POKIDLE_LEGENDARY_ENABLED:-1}" == "1" ]] && \
+               ! _pokidle_tick_missed "$now" "$next_legendary" "${POKIDLE_LEGENDARY_INTERVAL:-86400}"; then
                 pokidle_tick legendary --no-dry-run --json > /dev/null \
                     || printf 'daemon: legendary tick failed (continuing)\n' >&2
             fi

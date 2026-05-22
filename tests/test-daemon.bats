@@ -33,6 +33,33 @@ source_pokidle_lib() {
     [ "$next" -lt "$((next_hour + 3600))" ]
 }
 
+@test "_pokidle_tick_missed: on-time wake is not missed (fires)" {
+    source_pokidle_lib
+    # Loop wakes right at target: now - target is tiny.
+    run _pokidle_tick_missed 1700003600 1700003600 3600
+    [ "$status" -ne 0 ]
+}
+
+@test "_pokidle_tick_missed: small lateness (tick duration) is not missed" {
+    source_pokidle_lib
+    # 30s late (e.g. previous tick's network time): still a real fire.
+    run _pokidle_tick_missed 1700003630 1700003600 3600
+    [ "$status" -ne 0 ]
+}
+
+@test "_pokidle_tick_missed: a full interval elapsed past target is missed (skip)" {
+    source_pokidle_lib
+    run _pokidle_tick_missed $((1700003600 + 3600)) 1700003600 3600
+    [ "$status" -eq 0 ]
+}
+
+@test "_pokidle_tick_missed: multi-hour downtime is missed (skip)" {
+    source_pokidle_lib
+    # Laptop suspended overnight: wall-clock jumped 5h past target.
+    run _pokidle_tick_missed $((1700003600 + 5 * 3600)) 1700003600 3600
+    [ "$status" -eq 0 ]
+}
+
 @test "_pokidle_should_rotate_biome: 3h elapsed yes" {
     POKIDLE_BIOME_HOURS=3
     source_pokidle_lib
