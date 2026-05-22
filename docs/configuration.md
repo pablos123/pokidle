@@ -75,7 +75,7 @@ Per-tick evolution chance is tier-derived. Each eligible catch with a viable evo
 | `POKIDLE_EVOLVE_CHANCE_COMMON` | `25` | Common (capture_rate ≥ 150; also the fallback for unknown tiers) |
 | `POKIDLE_EVOLVE_CHANCE_UNCOMMON` | `15` | Uncommon (capture_rate ≥ 75) |
 | `POKIDLE_EVOLVE_CHANCE_RARE` | `8` | Rare (capture_rate ≥ 25) |
-| `POKIDLE_EVOLVE_CHANCE_VERY_RARE` | `3` | Very_rare (capture_rate < 25) |
+| `POKIDLE_EVOLVE_CHANCE_VERY_RARE` | `3` | Very rare (capture_rate < 25) |
 
 Item-based evolutions require a matching item in `item_drops`, which is consumed on use. Enable/disable the whole tick with `POKIDLE_EVOLVE_ENABLED`.
 
@@ -136,7 +136,7 @@ The species is chosen at random among legendaries whose types intersect the acti
 
 ### Sound file paths
 
-For an enabled kind, the clip resolves to `$POKIDLE_SOUND_<KIND>` if set, else `$POKIDLE_SOUND_DIR/<kind>.ogg`. A missing file is a silent skip. Playback uses `paplay` (PulseAudio) if available, else `aplay` (ALSA).
+A missing file is a silent skip. Playback uses `paplay` (PulseAudio) if available, else `aplay` (ALSA).
 
 | Variable | Default |
 |----------|---------|
