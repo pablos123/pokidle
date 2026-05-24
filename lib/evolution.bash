@@ -131,6 +131,38 @@ evolution_check_hard_filters() {
         esac
     fi
 
+    # Unmodeled / unsatisfiable requirements -> hard fail (conservative).
+    local fld val
+    # Object-or-scalar fields (PokeAPI gives {name,url} objects for these).
+    for fld in location trade_species party_species party_type; do
+        val="$(jq -r --arg f "$fld" '.[$f].name // .[$f] // empty' <<< "$evo")"
+        [[ -n "$val" && "$val" != "null" ]] && return 1
+    done
+    # Numeric scalar requirements.
+    for fld in min_affection min_beauty min_damage_taken; do
+        val="$(jq -r --arg f "$fld" '.[$f] // empty' <<< "$evo")"
+        [[ -n "$val" && "$val" != "null" ]] && return 1
+    done
+    # Boolean requirements.
+    for fld in turn_upside_down needs_overworld_rain; do
+        val="$(jq -r --arg f "$fld" '.[$f] // false' <<< "$evo")"
+        [[ "$val" == "true" ]] && return 1
+    done
+
+    # Trigger gate. level-up / use-item are modeled. trade is allowed only
+    # when an item/held_item is consumed as a proxy for the trade. Any other
+    # trigger (shed, spin, tower-*, three-critical-hits, take-damage,
+    # style-move, recoil-damage, …) is unmodeled -> reject. Empty trigger
+    # (synthetic test evos) is allowed.
+    local trig has_item
+    trig="$(jq -r '.trigger.name // empty' <<< "$evo")"
+    has_item="$(jq -r '.item.name // .held_item.name // empty' <<< "$evo")"
+    case "$trig" in
+        ""|level-up|use-item) : ;;
+        trade) [[ -n "$has_item" && "$has_item" != "null" ]] || return 1 ;;
+        *) return 1 ;;
+    esac
+
     return 0
 }
 
@@ -157,7 +189,7 @@ evolution_path_item_name() {
 # Count item_drops rows for a given item name. Wraps a sqlite query.
 _evolution_count_item_drops() {
     local item="$1"
-    db_query "SELECT COUNT(*) FROM item_drops WHERE item='${item//\'/\'\'}';"
+    db_query "SELECT COUNT(*) FROM item_drops WHERE item='${item//\'/\'\'}' AND consumed_at IS NULL;"
 }
 
 # evolution_enumerate_viable_paths <encounter_json> <next_stages_json>
@@ -221,7 +253,7 @@ evolution_apply() {
 
     if [[ "$kind" == "item" ]]; then
         item="$(jq -r '.item' <<< "$path")"
-        db_delete_one_item_drop "$item" > /dev/null
+        db_consume_one_item_drop "$item" > /dev/null
     fi
 
     # Re-fetch the encounter row to compose stat inputs.

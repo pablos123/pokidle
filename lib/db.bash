@@ -14,6 +14,13 @@ _db_assert_int() {
     }
 }
 
+# True (exit 0) if <table> has a column named <column>.
+_db_column_exists() {
+    local table="$1" col="$2"
+    sqlite3 "$POKIDLE_DB_PATH" "PRAGMA table_info($table);" \
+        | cut -d'|' -f2 | grep -Fqx "$col"
+}
+
 db_init() {
     local schema="${POKIDLE_REPO_ROOT}/schema.sql"
     if [[ ! -f "$schema" ]]; then
@@ -22,6 +29,10 @@ db_init() {
     fi
     mkdir -p -- "$(dirname -- "$POKIDLE_DB_PATH")"
     sqlite3 "$POKIDLE_DB_PATH" < "$schema"
+    # Additive migrations: schema.sql uses CREATE TABLE IF NOT EXISTS, which
+    # never adds columns to a pre-existing table. Add new columns here.
+    _db_column_exists item_drops consumed_at \
+        || db_exec "ALTER TABLE item_drops ADD COLUMN consumed_at INTEGER;"
 }
 
 db_exec() {
@@ -99,8 +110,11 @@ JQ
 # List encounters as JSON. Supports filters parsed from argv:
 #   --shiny --since YYYY-MM-DD --until YYYY-MM-DD --biome <id>
 #   --species <name> --nature <name> --min-iv-total N --limit N
+#   --newest-first
+# Always selects the newest N rows (--limit). By default they are emitted
+# oldest-first (newest at the bottom); --newest-first emits newest-first.
 db_list_encounters() {
-    local where=() limit=50 ts
+    local where=() limit=50 ts newest_first=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --shiny)         where+=("e.shiny=1"); shift ;;
@@ -115,6 +129,7 @@ db_list_encounters() {
                              where+=("(e.iv_hp+e.iv_atk+e.iv_def+e.iv_spa+e.iv_spd+e.iv_spe) >= $2"); shift 2 ;;
             --limit)         _db_assert_int "$2" --limit || return $?
                              limit="$2"; shift 2 ;;
+            --newest-first)  newest_first=1; shift ;;
             *)               printf 'db_list_encounters: unknown flag: %s\n' "$1" >&2; return 2 ;;
         esac
     done
@@ -124,7 +139,11 @@ db_list_encounters() {
         printf -v joined '%s AND ' "${where[@]}"
         sql+=" WHERE ${joined% AND }"
     fi
-    sql+=" ORDER BY e.encountered_at DESC LIMIT $limit;"
+    sql+=" ORDER BY e.encountered_at DESC LIMIT $limit"
+    if (( ! newest_first )); then
+        sql="SELECT * FROM ($sql) ORDER BY encountered_at ASC"
+    fi
+    sql+=";"
     db_query_json "$sql"
 }
 
@@ -139,7 +158,7 @@ db_insert_item_drop() {
 }
 
 db_list_item_drops() {
-    local where=() limit=50 ts
+    local where=() limit=50 ts newest_first=0 include_consumed=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --since)  ts="$(date -d "$2" +%s)" || return 2
@@ -150,16 +169,23 @@ db_list_item_drops() {
             --item)   where+=("d.item LIKE '%${2//\'/\'\'}%'"); shift 2 ;;
             --limit)  _db_assert_int "$2" --limit || return $?
                       limit="$2"; shift 2 ;;
+            --newest-first) newest_first=1; shift ;;
+            --include-consumed) include_consumed=1; shift ;;
             *)        printf 'db_list_item_drops: unknown flag: %s\n' "$1" >&2; return 2 ;;
         esac
     done
+    (( include_consumed )) || where+=("d.consumed_at IS NULL")
     local sql="SELECT d.*, s.biome_id FROM item_drops d JOIN biome_sessions s ON s.id=d.session_id"
     if (( ${#where[@]} )); then
         local joined
         printf -v joined '%s AND ' "${where[@]}"
         sql+=" WHERE ${joined% AND }"
     fi
-    sql+=" ORDER BY d.encountered_at DESC LIMIT $limit;"
+    sql+=" ORDER BY d.encountered_at DESC LIMIT $limit"
+    if (( ! newest_first )); then
+        sql="SELECT * FROM ($sql) ORDER BY encountered_at ASC"
+    fi
+    sql+=";"
     db_query_json "$sql"
 }
 
@@ -222,19 +248,22 @@ db_update_encounter_evolved() {
         WHERE id=$id;"
 }
 
-# Delete the oldest item_drops row whose item equals <name>. Prints count
-# of deleted rows (0 or 1).
-db_delete_one_item_drop() {
+# Soft-delete the oldest available (unconsumed) item_drops row whose item
+# equals <name>: set consumed_at=<now> (default: current epoch). The row is
+# preserved for history. Prints count consumed (0 or 1).
+db_consume_one_item_drop() {
     local item="$1"
+    local now="${2:-$(date +%s)}"
+    _db_assert_int "$now" now || return $?
     local id
     id="$(db_query "SELECT id FROM item_drops
-                    WHERE item='${item//\'/\'\'}'
-                    ORDER BY id ASC LIMIT 1;")"
+                    WHERE item='${item//\'/\'\'}' AND consumed_at IS NULL
+                    ORDER BY encountered_at ASC, id ASC LIMIT 1;")"
     if [[ -z "$id" ]]; then
         printf '0'
         return 0
     fi
-    db_exec "DELETE FROM item_drops WHERE id=$id;"
+    db_exec "UPDATE item_drops SET consumed_at=$now WHERE id=$id;"
     printf '1'
 }
 

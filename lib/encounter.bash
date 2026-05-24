@@ -13,21 +13,21 @@ ENCOUNTER_TIER_ROLL_WEIGHT=(60 25 12 3)
 # Held items by PokeAPI type. Each type maps to a space-separated string of item names.
 declare -gA ENCOUNTER_HELD_ITEMS_BY_TYPE=(
     [normal]="silk-scarf chilan-berry"
-    [fire]="charcoal flame-plate heat-rock occa-berry"
-    [water]="mystic-water sea-incense wave-incense splash-plate wacan-berry"
-    [electric]="magnet zap-plate cell-battery wacan-berry"
+    [fire]="charcoal flame-plate heat-rock occa-berry magmarizer"
+    [water]="mystic-water sea-incense wave-incense splash-plate wacan-berry kings-rock prism-scale"
+    [electric]="magnet zap-plate cell-battery wacan-berry up-grade dubious-disc electirizer"
     [grass]="miracle-seed meadow-plate rose-incense rindo-berry"
     [ice]="never-melt-ice icicle-plate icy-rock yache-berry"
     [fighting]="black-belt fist-plate muscle-band chople-berry"
     [poison]="poison-barb toxic-plate black-sludge kebia-berry"
-    [ground]="soft-sand earth-plate shuca-berry"
+    [ground]="soft-sand earth-plate shuca-berry razor-fang protector"
     [flying]="sharp-beak sky-plate pretty-feather coba-berry"
     [psychic]="twisted-spoon mind-plate odd-incense payapa-berry"
     [bug]="silver-powder insect-plate shed-shell tanga-berry"
     [rock]="hard-stone stone-plate rock-incense charti-berry"
     [ghost]="spell-tag spooky-plate reaper-cloth kasib-berry"
     [dragon]="dragon-fang draco-plate dragon-scale haban-berry"
-    [dark]="black-glasses dread-plate scope-lens colbur-berry"
+    [dark]="black-glasses dread-plate scope-lens colbur-berry razor-claw"
     [steel]="metal-coat iron-plate metal-powder"
     [fairy]="pixie-plate roseli-berry"
 )
@@ -37,6 +37,31 @@ declare -ga ENCOUNTER_HELD_ITEMS_GENERIC=(
     "leftovers" "shell-bell" "lucky-egg" "amulet-coin"
     "smoke-ball" "soothe-bell" "exp-share" "everstone"
 )
+
+# Evolution-trigger items, consumed on use. Tagged "evolution": they drop and
+# are consumed like held items, but are never offered as Showdown held items.
+declare -gA ENCOUNTER_EVOLUTION_ITEMS_BY_TYPE=(
+    [fire]="fire-stone"
+    [water]="water-stone"
+    [electric]="thunder-stone"
+    [grass]="leaf-stone sun-stone"
+    [ice]="ice-stone"
+    [fairy]="moon-stone shiny-stone"
+    [ghost]="dusk-stone"
+    [psychic]="dawn-stone"
+    [normal]="oval-stone"
+)
+
+# True (exit 0) if <name> is an evolution-category item.
+encounter_item_is_evolution() {
+    local name="$1" t it
+    for t in "${!ENCOUNTER_EVOLUTION_ITEMS_BY_TYPE[@]}"; do
+        for it in ${ENCOUNTER_EVOLUTION_ITEMS_BY_TYPE[$t]}; do
+            [[ "$it" == "$name" ]] && return 0
+        done
+    done
+    return 1
+}
 
 # capture_rate: PokeAPI value 0..255. Higher = easier to catch = more common.
 # Thresholds: 150/75/25 bucket into common/uncommon/rare/very_rare.
@@ -621,34 +646,41 @@ encounter_roll_friendship() {
     printf '%s' "$val"
 }
 
-# encounter_roll_item <biome_id>
-# Emits {"item": "<name>", "sprite_url": "<url|empty>"}.
-encounter_roll_item() {
+# _encounter_item_pool <biome_id>
+# Prints candidate item names (one per line) for a biome's drop pool:
+# held + evolution items for the biome's types, plus generic held items.
+_encounter_item_pool() {
     local biome_id="$1"
     if ! command -v biome_types_for > /dev/null; then
         # shellcheck disable=SC1091
         source "${POKIDLE_REPO_ROOT}/lib/biome.bash"
     fi
-    local types_list pool=() seen=""
+    local types_list seen="" t item
     types_list="$(biome_types_for "$biome_id")" || return 1
-    local t item
     while IFS= read -r t; do
         [[ -z "$t" ]] && continue
-        for item in ${ENCOUNTER_HELD_ITEMS_BY_TYPE[$t]:-}; do
+        for item in ${ENCOUNTER_HELD_ITEMS_BY_TYPE[$t]:-} ${ENCOUNTER_EVOLUTION_ITEMS_BY_TYPE[$t]:-}; do
             [[ "$seen" == *"|$item|"* ]] && continue
-            pool+=("$item")
+            printf '%s\n' "$item"
             seen+="|$item|"
         done
     done <<< "$types_list"
     for item in "${ENCOUNTER_HELD_ITEMS_GENERIC[@]}"; do
         [[ "$seen" == *"|$item|"* ]] && continue
-        pool+=("$item")
+        printf '%s\n' "$item"
         seen+="|$item|"
     done
+}
+
+# encounter_roll_item <biome_id>
+# Emits {"item": "<name>", "sprite_url": "<url|empty>"}.
+encounter_roll_item() {
+    local biome_id="$1"
+    local pool=()
+    mapfile -t pool < <(_encounter_item_pool "$biome_id")
     local n="${#pool[@]}"
     (( n > 0 )) || { printf 'encounter_roll_item: empty pool for biome %s\n' "$biome_id" >&2; return 1; }
-    local idx=$((RANDOM % n))
-    local name="${pool[$idx]}"
+    local name="${pool[$((RANDOM % n))]}"
     local item_json sprite
     item_json="$(pokeapi_get "item/$name")" || return 1
     sprite="$(jq -r '.sprites.default // ""' <<< "$item_json")"

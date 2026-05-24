@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS item_drops (
     session_id      INTEGER NOT NULL REFERENCES biome_sessions(id),
     encountered_at  INTEGER NOT NULL,
     item            TEXT NOT NULL,
-    sprite_path     TEXT
+    sprite_path     TEXT,
+    consumed_at     INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_item_session ON item_drops(session_id);
 CREATE INDEX IF NOT EXISTS idx_item_time    ON item_drops(encountered_at);

@@ -326,3 +326,45 @@ _seed_pokeapi_cache() {
     n="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM encounters;")"
     [ "$n" = "0" ]
 }
+
+@test "list --export omits evolution-stone drops as held items" {
+    _seed_schema
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('glacier', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, held_berry, friendship,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe,
+            ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe,
+            moves_json, sprite_path)
+        VALUES (1, 1700000100, 'sneasel', 215, 40, 'hardy', 'inner-focus', 0, 'male', 0, NULL, 70,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 120,100,100,80,80,110, '[\"ice-punch\"]', NULL);
+        INSERT INTO item_drops(session_id, encountered_at, item) VALUES
+            (1, 1700000100, 'ice-stone');"
+    # Explicit window covers the seeded epoch so the encounter + drop are
+    # in-scope. ice-stone is the ONLY drop, so without the evolution-item
+    # filter it would be the sole held-item candidate and get assigned.
+    run "$REPO_ROOT/pokidle" encounters --export --since @1700000000 --until @1700000200
+    [ "$status" -eq 0 ]
+    # Non-vacuous: the team actually exported the species.
+    grep -qi "sneasel" <<< "$output"
+    # The evolution stone must not appear as a held item.
+    ! grep -qi "ice-stone" <<< "$output"
+}
+
+@test "items hides consumed by default, --all shows them marked (used)" {
+    _seed_schema
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('glacier', 1700000000);
+        INSERT INTO item_drops(session_id, encountered_at, item, consumed_at) VALUES
+            (1, 1700000100, 'leftovers', NULL),
+            (1, 1700000200, 'ice-stone', 1700000300);"
+    run "$REPO_ROOT/pokidle" items --since @1700000000 --until @1700000300
+    [ "$status" -eq 0 ]
+    grep -qi "leftovers" <<< "$output"
+    ! grep -qi "ice-stone" <<< "$output"
+    run "$REPO_ROOT/pokidle" items --all --since @1700000000 --until @1700000300
+    [ "$status" -eq 0 ]
+    grep -qi "ice-stone" <<< "$output"
+    grep -qi "(used)" <<< "$output"
+}

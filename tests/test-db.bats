@@ -388,7 +388,7 @@ teardown() {
     [ "$row" = "vaporeon,134,new.png,60,30,30,50,50,30" ]
 }
 
-@test "db_delete_one_item_drop deletes oldest matching row only" {
+@test "db_consume_one_item_drop marks oldest available, keeps the row" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
@@ -400,25 +400,49 @@ teardown() {
             (1, 100, 'water-stone'),
             (1, 200, 'water-stone'),
             (1, 300, 'fire-stone');"
-    run db_delete_one_item_drop water-stone
+    run db_consume_one_item_drop water-stone 999
     [ "$status" -eq 0 ]
     [ "$output" = "1" ]
-    local n_water n_fire
-    n_water="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops WHERE item='water-stone';")"
-    n_fire="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops WHERE item='fire-stone';")"
-    [ "$n_water" = "1" ]
-    [ "$n_fire" = "1" ]
+    local total; total="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops;")"
+    [ "$total" = "3" ]
+    local c100; c100="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT consumed_at FROM item_drops WHERE encountered_at=100;")"
+    [ "$c100" = "999" ]
+    local c200; c200="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT IFNULL(consumed_at,'') FROM item_drops WHERE encountered_at=200;")"
+    [ "$c200" = "" ]
 }
 
-@test "db_delete_one_item_drop returns 0 when no match" {
+@test "db_consume_one_item_drop returns 0 when no available match" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
     load_lib db
     db_init
-    run db_delete_one_item_drop never-stone
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);
+        INSERT INTO item_drops(session_id, encountered_at, item, consumed_at) VALUES
+            (1, 100, 'water-stone', 555);"
+    run db_consume_one_item_drop water-stone 999
     [ "$status" -eq 0 ]
     [ "$output" = "0" ]
+}
+
+@test "db_list_item_drops hides consumed by default, --include-consumed shows" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    load_lib db
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);
+        INSERT INTO item_drops(session_id, encountered_at, item, consumed_at) VALUES
+            (1, 100, 'water-stone', NULL),
+            (1, 200, 'fire-stone', 555);"
+    run db_list_item_drops
+    [ "$status" -eq 0 ]
+    [ "$(jq 'length' <<< "$output")" = "1" ]
+    [ "$(jq -r '.[0].item' <<< "$output")" = "water-stone" ]
+    run db_list_item_drops --include-consumed
+    [ "$(jq 'length' <<< "$output")" = "2" ]
 }
 
 @test "db_list_current_week_encounters Sunday edge case: today's row included" {
@@ -444,5 +468,24 @@ teardown() {
     [ "$status" -eq 0 ]
     [ "$(jq 'length' <<< "$output")" = "1" ]
     [ "$(jq -r '.[0].species' <<< "$output")" = "pidgey" ]
+}
+
+@test "db_init adds consumed_at column to a pre-existing item_drops" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    load_lib db
+    # Simulate an old DB whose item_drops predates consumed_at.
+    sqlite3 "$POKIDLE_DB_PATH" "CREATE TABLE item_drops(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER, encountered_at INTEGER, item TEXT, sprite_path TEXT);"
+    db_init
+    run _db_column_exists item_drops consumed_at
+    [ "$status" -eq 0 ]
+    # Idempotent: a second init is a no-op and does not error.
+    run db_init
+    [ "$status" -eq 0 ]
+    run _db_column_exists item_drops consumed_at
+    [ "$status" -eq 0 ]
 }
 

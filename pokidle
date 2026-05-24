@@ -66,6 +66,7 @@ Commands:
                             --nature NAME     Exact nature match
                             --min-iv-total N  Min summed IVs
                             --limit N         Cap rows (default 50)
+                            --newest-first    Newest at top (default: bottom)
                             --json            Emit raw JSON
                             --export          Random Showdown team: up to 6
                                               distinct species from the current
@@ -79,6 +80,8 @@ Commands:
                             --biome ID        Filter by biome
                             --item NAME       Substring match on item
                             --limit N         Cap rows (default 50)
+                            --all             Include used (consumed) drops
+                            --newest-first    Newest at top (default: bottom)
                             --json            Emit raw JSON
   stats                   Aggregates: totals, shinies, by biome, top species
   current                 Show current biome + counts
@@ -809,8 +812,12 @@ _pokidle_export_team() {
     local item_args=(--limit 1000)
     [[ -n "$since_ts" ]] && item_args+=(--since "@$since_ts")
     [[ -n "$until_ts" ]] && item_args+=(--until "@$until_ts")
-    local items=()
-    mapfile -t items < <(db_list_item_drops "${item_args[@]}" | jq -r '[.[].item] | unique | .[]')
+    local items=() _cand_items=() it
+    mapfile -t _cand_items < <(db_list_item_drops "${item_args[@]}" | jq -r '[.[].item] | unique | .[]')
+    for it in "${_cand_items[@]}"; do
+        encounter_item_is_evolution "$it" && continue
+        items+=("$it")
+    done
     _pokidle_shuffle items
 
     local used="|" sep=""
@@ -920,6 +927,7 @@ pokidle_items() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --json) json_mode=1; shift ;;
+            --all)  args+=(--include-consumed); shift ;;
             *)      args+=("$1"); shift ;;
         esac
     done
@@ -939,7 +947,10 @@ pokidle_items() {
         sprite="$(jq -r '.sprite_path // ""' <<< "$d")"
         [[ -n "$sprite" && -f "$sprite" ]] || sprite="$(_pokidle_item_sprite "$item")"
         _pokidle_render_sprite "$sprite"
-        printf '%s   %s   %s\n' "$(date -d "@$ts" '+%F %H:%M')" "$biome" "$item"
+        local consumed_at marker=""
+        consumed_at="$(jq -r '.consumed_at // ""' <<< "$d")"
+        [[ -n "$consumed_at" && "$consumed_at" != "null" ]] && marker="   (used)"
+        printf '%s   %s   %s%s\n' "$(date -d "@$ts" '+%F %H:%M')" "$biome" "$item" "$marker"
     done < <(jq -c '.[]' <<< "$rows")
 }
 

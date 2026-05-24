@@ -304,3 +304,29 @@ EOF
     sch="$(jq -r '.schema' "$POKIDLE_CACHE_DIR/pools/fakebiome.json")"
     [ "$sch" = "3" ]
 }
+
+@test "encounter_item_is_evolution: stones true, held items false" {
+    run encounter_item_is_evolution ice-stone
+    [ "$status" -eq 0 ]
+    run encounter_item_is_evolution sun-stone
+    [ "$status" -eq 0 ]
+    run encounter_item_is_evolution leftovers
+    [ "$status" -ne 0 ]
+    run encounter_item_is_evolution kings-rock
+    [ "$status" -ne 0 ]
+}
+
+@test "_encounter_item_pool: ice biome includes ice-stone, excludes fire-stone" {
+    run _encounter_item_pool glacier   # types: ice, fairy
+    [ "$status" -eq 0 ]
+    grep -qx ice-stone <<< "$output"
+    grep -qx moon-stone <<< "$output"
+    ! grep -qx fire-stone <<< "$output"
+}
+
+@test "_encounter_item_pool: fire biome includes fire-stone, excludes ice-stone" {
+    run _encounter_item_pool volcano   # types: fire, dragon
+    [ "$status" -eq 0 ]
+    grep -qx fire-stone <<< "$output"
+    ! grep -qx ice-stone <<< "$output"
+}

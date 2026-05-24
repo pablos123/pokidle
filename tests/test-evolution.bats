@@ -295,9 +295,11 @@ EOF
 
     local path='{"species":"vaporeon","kind":"item","item":"water-stone","evo":{}}'
     evolution_apply 1 "$path"
-    local n
-    n="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops WHERE item='water-stone';")"
-    [ "$n" = "1" ]
+    local total consumed
+    total="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops WHERE item='water-stone';")"
+    consumed="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops WHERE item='water-stone' AND consumed_at IS NOT NULL;")"
+    [ "$total" = "2" ]
+    [ "$consumed" = "1" ]
 }
 
 @test "evolution_enumerate_viable_paths: branching evos with multiple stones in DB" {
@@ -353,4 +355,74 @@ EOF
     [ "$status" -eq 0 ]
     [ "$(jq 'length' <<< "$output")" = "1" ]
     [ "$(jq -r '.[0].species' <<< "$output")" = "flareon" ]
+}
+
+@test "evolution_check_hard_filters: location requirement -> fail" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"location":{"name":"mount-lanakila"}}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -ne 0 ]
+}
+
+@test "evolution_check_hard_filters: trade_species requirement -> fail" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"trade_species":{"name":"karrablast"}}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -ne 0 ]
+}
+
+@test "evolution_check_hard_filters: min_affection requirement -> fail" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"min_affection":2}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -ne 0 ]
+}
+
+@test "evolution_check_hard_filters: turn_upside_down requirement -> fail" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"turn_upside_down":true}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -ne 0 ]
+}
+
+@test "evolution_check_hard_filters: no unmodeled fields -> still pass" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"min_level":30,"turn_upside_down":false,"needs_overworld_rain":false}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -eq 0 ]
+}
+
+@test "evolution_check_hard_filters: trade trigger without item -> fail" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"trigger":{"name":"trade"}}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -ne 0 ]
+}
+
+@test "evolution_check_hard_filters: trade trigger with held_item -> pass" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"trigger":{"name":"trade"},"held_item":{"name":"metal-coat"}}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -eq 0 ]
+}
+
+@test "evolution_check_hard_filters: shed trigger -> fail" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"trigger":{"name":"shed"}}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -ne 0 ]
+}
+
+@test "evolution_check_hard_filters: use-item trigger -> pass" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"trigger":{"name":"use-item"},"item":{"name":"ice-stone"}}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -eq 0 ]
+}
+
+@test "evolution_check_hard_filters: no trigger field -> pass" {
+    local enc='{"gender":"M","level":40,"friendship":70,"stats":[20,30,30,20,20,20],"moves":[]}'
+    local evo='{"min_level":30}'
+    run evolution_check_hard_filters "$enc" "$evo"
+    [ "$status" -eq 0 ]
 }
