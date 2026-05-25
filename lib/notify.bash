@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
 # notify-send + sound playback.
 
-# _titlecase <word>
-# Print word with its first letter capitalized.
-function _titlecase {
-    local word="$1"
-    printf '%s' "${word^}"
-}
-
-# _titlecase_words <text>
-# Print text with hyphens turned to spaces and each word capitalized.
-function _titlecase_words {
-    local text="${1//-/ }"
-    local -a words
-    read -ra words <<<"${text}"
-    local out=""
-    local word
-    for word in "${words[@]}"; do
-        out+="${word^} "
-    done
-    printf '%s' "${out% }"
-}
-
 # _biome_icon_path <id>
 # Print the biome icon path if the file exists; print nothing otherwise.
 function _biome_icon_path {
@@ -101,11 +80,11 @@ function notify_pokemon {
     moves="$(jq -r '.moves | map("• \(.)") | join("\n")' <<<"${enc}")"
 
     local sp_title
-    sp_title="$(_titlecase_words "${species}")"
+    sp_title="$(titlecase_words "${species}")"
     local nat_title
-    nat_title="$(_titlecase "${nature}")"
+    nat_title="$(titlecase "${nature}")"
     local abil_title
-    abil_title="$(_titlecase_words "${ability}")"
+    abil_title="$(titlecase_words "${ability}")"
 
     local prefix=""
     local urgency="normal"
@@ -205,7 +184,7 @@ function notify_item {
         icon="$(_notify_icon_path item)"
     fi
     local name_t
-    name_t="$(_titlecase_words "${name}")"
+    name_t="$(titlecase_words "${name}")"
     local title="Found ${name_t}"
     local body=""
     _emit "${title}" "${body}" "low" "${icon}"
@@ -227,9 +206,9 @@ function notify_evolution {
     fi
 
     local from_t
-    from_t="$(_titlecase_words "${from}")"
+    from_t="$(titlecase_words "${from}")"
     local to_t
-    to_t="$(_titlecase_words "${to}")"
+    to_t="$(titlecase_words "${to}")"
     local title="${from_t} evolved into ${to_t}!"
     local body=""
 
@@ -257,7 +236,7 @@ function notify_level {
     local from="$2"
     local to="$3"
     local sp_title
-    sp_title="$(_titlecase_words "${species}")"
+    sp_title="$(titlecase_words "${species}")"
     local title="${sp_title} leveled ${from} → ${to}"
     local body=""
     _emit "${title}" "${body}" "low" "$(_notify_icon_path level-up)"
@@ -271,7 +250,7 @@ function notify_friendship {
     local from="$2"
     local to="$3"
     local sp_title
-    sp_title="$(_titlecase_words "${species}")"
+    sp_title="$(titlecase_words "${species}")"
     local title="${sp_title} friendship ${from} → ${to}"
     local body=""
     _emit "${title}" "${body}" "low" "$(_notify_icon_path friendship)"

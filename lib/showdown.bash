@@ -1,20 +1,6 @@
 #!/usr/bin/env bash
 # Pokémon Showdown set text formatter.
 
-# _sd_titlecase_words <text>
-# Print text with hyphens turned to spaces and each word title-cased.
-function _sd_titlecase_words {
-    local text="${1//-/ }"
-    local -a words
-    read -ra words <<<"${text}"
-    local out=""
-    local word
-    for word in "${words[@]}"; do
-        out+="${word^} "
-    done
-    printf '%s' "${out% }"
-}
-
 # _sd_stat_label <index>
 # Print the Showdown stat label (HP/Atk/Def/SpA/SpD/Spe) for index 0..5.
 function _sd_stat_label {
@@ -49,19 +35,19 @@ function showdown_format {
     item="$(jq -r '.held_item // ""' <<<"${enc}")"
 
     local sp_t
-    sp_t="$(_sd_titlecase_words "${species}")"
+    sp_t="$(titlecase_words "${species}")"
     local ab_t
-    ab_t="$(_sd_titlecase_words "${ability}")"
+    ab_t="$(titlecase_words "${ability}")"
     local nat_t
-    nat_t="$(_sd_titlecase_words "${nature}")"
+    nat_t="$(titlecase_words "${nature}")"
 
     # held_item is a full item slug (e.g. leftovers, choice-band, occa-berry)
     # rendered as-is; held_berry is a bare berry name needing the "Berry" word.
     if [[ -n "${item}" && "${item}" != "null" ]]; then
-        printf '%s @ %s\n' "${sp_t}" "$(_sd_titlecase_words "${item}")"
+        printf '%s @ %s\n' "${sp_t}" "$(titlecase_words "${item}")"
     elif [[ -n "${held}" && "${held}" != "null" ]]; then
         local berry_t
-        berry_t="$(_sd_titlecase_words "${held}")"
+        berry_t="$(titlecase_words "${held}")"
         printf '%s @ %s Berry\n' "${sp_t}" "${berry_t}"
     else
         printf '%s\n' "${sp_t}"
@@ -102,6 +88,6 @@ function showdown_format {
         if [[ -z "${mv}" ]]; then
             continue
         fi
-        printf -- '- %s\n' "$(_sd_titlecase_words "${mv}")"
+        printf -- '- %s\n' "$(titlecase_words "${mv}")"
     done < <(jq -r '.moves[]' <<<"${enc}")
 }

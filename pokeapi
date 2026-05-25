@@ -3,20 +3,12 @@
 
 set -Eeuo pipefail
 
-# Resolve through symlinks so invoking via e.g. ~/.local/bin/pokeapi still
-# finds lib/ next to the real script.
-_pokeapi_src="${BASH_SOURCE[0]}"
-while [[ -L "${_pokeapi_src}" ]]; do
-    _pokeapi_link="$(readlink -- "${_pokeapi_src}")"
-    if [[ "${_pokeapi_link}" == /* ]]; then
-        _pokeapi_src="${_pokeapi_link}"
-    else
-        _pokeapi_src="$(dirname -- "${_pokeapi_src}")/${_pokeapi_link}"
-    fi
-done
-LIB_DIR="$(cd -- "$(dirname -- "${_pokeapi_src}")" && pwd)/lib"
+# readlink -f resolves the symlink chain so invoking via e.g. ~/.local/bin/pokeapi
+# still finds lib/ next to the real script.
+LIB_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)/lib"
 declare -r LIB_DIR
-unset _pokeapi_src _pokeapi_link
+# shellcheck source=lib/helpers.bash
+source "${LIB_DIR}/helpers.bash"
 # shellcheck source=lib/cache.bash
 source "${LIB_DIR}/cache.bash"
 # shellcheck source=lib/http.bash

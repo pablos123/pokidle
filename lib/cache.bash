@@ -6,8 +6,8 @@
 # cache_path <endpoint>
 # Print the JSON cache file path for an endpoint.
 function cache_path {
-    local endpoint="${1#/}"
-    endpoint="${endpoint%/}"
+    local endpoint
+    endpoint="$(strip_slashes "$1")"
     printf '%s/%s.json' "${POKEAPI_CACHE_DIR}" "${endpoint}"
 }
 
@@ -34,19 +34,14 @@ function cache_put {
     local endpoint="$1"
     local path
     path="$(cache_path "${endpoint}")"
-    local dir="${path%/*}"
-    mkdir -p -- "${dir}"
-    local tmp
-    tmp="$(mktemp -- "${dir}/.tmp.XXXXXX")"
-    cat >"${tmp}"
-    mv -- "${tmp}" "${path}"
+    atomic_write "${path}"
 }
 
 # cache_blob_path <key> [ext=bin]
 # Print the blob cache path for key with the given extension.
 function cache_blob_path {
-    local key="${1#/}"
-    key="${key%/}"
+    local key
+    key="$(strip_slashes "$1")"
     local ext="${2:-bin}"
     printf '%s/%s.%s' "${POKEAPI_CACHE_DIR}" "${key}" "${ext}"
 }

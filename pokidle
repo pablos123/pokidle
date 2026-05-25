@@ -3,19 +3,9 @@
 
 set -Eeuo pipefail
 
-# Resolve through symlinks so invoking via e.g. ~/.local/bin/pokidle still
-# finds lib/ next to the real script.
-_pokidle_src="${BASH_SOURCE[0]}"
-while [[ -L "${_pokidle_src}" ]]; do
-    _pokidle_link="$(readlink -- "${_pokidle_src}")"
-    if [[ "${_pokidle_link}" == /* ]]; then
-        _pokidle_src="${_pokidle_link}"
-    else
-        _pokidle_src="$(dirname -- "${_pokidle_src}")/${_pokidle_link}"
-    fi
-done
-POKIDLE_REPO_ROOT="$(cd -- "$(dirname -- "${_pokidle_src}")" && pwd)"
-unset _pokidle_src _pokidle_link
+# readlink -f resolves the symlink chain so invoking via e.g. ~/.local/bin/pokidle
+# still finds lib/ next to the real script.
+POKIDLE_REPO_ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd)"
 export POKIDLE_REPO_ROOT
 
 : "${POKIDLE_CONFIG_DIR:=${XDG_CONFIG_HOME:-${HOME}/.config}/pokidle}"
@@ -25,6 +15,8 @@ export POKIDLE_REPO_ROOT
 : "${POKEAPI_RATE_LIMIT_SLEEP:=0.5}"
 export POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR POKIDLE_DATA_DIR POKIDLE_DB_PATH POKEAPI_RATE_LIMIT_SLEEP
 
+# shellcheck source=lib/helpers.bash
+source "${POKIDLE_REPO_ROOT}/lib/helpers.bash"
 # shellcheck source=lib/cache.bash
 source "${POKIDLE_REPO_ROOT}/lib/cache.bash"
 # shellcheck source=lib/http.bash

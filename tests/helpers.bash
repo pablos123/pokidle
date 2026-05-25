@@ -17,6 +17,9 @@ make_tmp_db() {
 
 load_lib() {
     local name="$1"
+    # helpers.bash is the shared base every lib may call into; always present.
+    # shellcheck disable=SC1090
+    source "${LIB_DIR}/helpers.bash"
     # shellcheck disable=SC1090
     source "${LIB_DIR}/${name}.bash"
 }
