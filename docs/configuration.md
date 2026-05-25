@@ -94,7 +94,7 @@ The species is chosen at random among legendaries whose types intersect the acti
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `POKIDLE_IMG_WIDTH` | `16` | Sprite width (terminal cells) for previews in `encounters` / `items`. Requires `chafa`. |
-| `POKIDLE_SEPARATOR` | `-` | Character repeated to draw the row separator between `encounters` entries. |
+| `POKIDLE_SEPARATOR` | `-` | Character repeated to draw the row separator between `encounters` and `items` entries. |
 
 ## Notifications and sound
 

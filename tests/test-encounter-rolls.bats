@@ -286,7 +286,7 @@ EOF
     done
 }
 
-@test "encounter_roll_item: forest biome rolls a typed or generic held item" {
+@test "encounter_roll_item: forest biome rolls a grass/bug held or evolution item" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_REPO_ROOT
     load_lib biome
@@ -299,12 +299,9 @@ EOF
     out="$(encounter_roll_item forest)"
     item="$(jq -r '.item' <<< "$out")"
     case "$item" in
-        miracle-seed|meadow-plate|rose-incense|rindo-berry|\
-        silver-powder|insect-plate|shed-shell|tanga-berry|\
-        poison-barb|toxic-plate|black-sludge|kebia-berry|\
-        pixie-plate|roseli-berry|\
-        leftovers|shell-bell|lucky-egg|amulet-coin|\
-        smoke-ball|soothe-bell|exp-share|everstone) : ;;
+        miracle-seed|meadow-plate|rose-incense|rindo-berry|leftovers|\
+        leaf-stone|sun-stone|\
+        silver-powder|insect-plate|shed-shell|tanga-berry) : ;;
         *) printf 'unexpected item for forest biome: %s\n' "$item" >&2; return 1 ;;
     esac
 }

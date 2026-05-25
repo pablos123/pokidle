@@ -12,30 +12,24 @@ ENCOUNTER_TIER_ROLL_WEIGHT=(60 25 12 3)
 
 # Held items by PokeAPI type. Each type maps to a space-separated string of item names.
 declare -gA ENCOUNTER_HELD_ITEMS_BY_TYPE=(
-    [normal]="silk-scarf chilan-berry"
-    [fire]="charcoal flame-plate heat-rock occa-berry magmarizer"
-    [water]="mystic-water sea-incense wave-incense splash-plate wacan-berry kings-rock prism-scale"
+    [normal]="silk-scarf chilan-berry lucky-egg"
+    [fire]="charcoal flame-plate heat-rock occa-berry magmarizer smoke-ball"
+    [water]="mystic-water sea-incense wave-incense splash-plate wacan-berry kings-rock prism-scale shell-bell"
     [electric]="magnet zap-plate cell-battery wacan-berry up-grade dubious-disc electirizer"
-    [grass]="miracle-seed meadow-plate rose-incense rindo-berry"
+    [grass]="miracle-seed meadow-plate rose-incense rindo-berry leftovers"
     [ice]="never-melt-ice icicle-plate icy-rock yache-berry"
     [fighting]="black-belt fist-plate muscle-band chople-berry"
     [poison]="poison-barb toxic-plate black-sludge kebia-berry"
     [ground]="soft-sand earth-plate shuca-berry razor-fang protector"
     [flying]="sharp-beak sky-plate pretty-feather coba-berry"
-    [psychic]="twisted-spoon mind-plate odd-incense payapa-berry"
+    [psychic]="twisted-spoon mind-plate odd-incense payapa-berry exp-share"
     [bug]="silver-powder insect-plate shed-shell tanga-berry"
-    [rock]="hard-stone stone-plate rock-incense charti-berry"
-    [ghost]="spell-tag spooky-plate reaper-cloth kasib-berry"
+    [rock]="hard-stone stone-plate rock-incense charti-berry everstone"
+    [ghost]="spell-tag spooky-plate reaper-cloth kasib-berry amulet-coin"
     [dragon]="dragon-fang draco-plate dragon-scale haban-berry"
     [dark]="black-glasses dread-plate scope-lens colbur-berry razor-claw"
     [steel]="metal-coat iron-plate metal-powder"
-    [fairy]="pixie-plate roseli-berry"
-)
-
-# Generic held items available for any biome type.
-declare -ga ENCOUNTER_HELD_ITEMS_GENERIC=(
-    "leftovers" "shell-bell" "lucky-egg" "amulet-coin"
-    "smoke-ball" "soothe-bell" "exp-share" "everstone"
+    [fairy]="pixie-plate roseli-berry soothe-bell"
 )
 
 # Evolution-trigger items, consumed on use. Tagged "evolution": they drop and
@@ -648,7 +642,7 @@ encounter_roll_friendship() {
 
 # _encounter_item_pool <biome_id>
 # Prints candidate item names (one per line) for a biome's drop pool:
-# held + evolution items for the biome's types, plus generic held items.
+# held + evolution items for the biome's types.
 _encounter_item_pool() {
     local biome_id="$1"
     if ! command -v biome_types_for > /dev/null; then
@@ -665,11 +659,6 @@ _encounter_item_pool() {
             seen+="|$item|"
         done
     done <<< "$types_list"
-    for item in "${ENCOUNTER_HELD_ITEMS_GENERIC[@]}"; do
-        [[ "$seen" == *"|$item|"* ]] && continue
-        printf '%s\n' "$item"
-        seen+="|$item|"
-    done
 }
 
 # encounter_roll_item <biome_id>

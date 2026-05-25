@@ -937,9 +937,16 @@ pokidle_items() {
         printf '%s\n' "$rows"
         return
     fi
-    local d
+    local sep_char="${POKIDLE_SEPARATOR:--}" sep_line
+    printf -v sep_line '%*s' 80 ''
+    sep_line="${sep_line// /$sep_char}"
+
+    local d first=1
     while IFS= read -r d; do
         [[ -z "$d" ]] && continue
+        if (( first )); then first=0; else
+            printf -- '%s\n' "$sep_line"
+        fi
         local ts biome item sprite
         ts="$(jq -r '.encountered_at' <<< "$d")"
         biome="$(jq -r '.biome_id' <<< "$d")"
@@ -950,7 +957,7 @@ pokidle_items() {
         local consumed_at marker=""
         consumed_at="$(jq -r '.consumed_at // ""' <<< "$d")"
         [[ -n "$consumed_at" && "$consumed_at" != "null" ]] && marker="   (used)"
-        printf '%s   %s   %s%s\n' "$(date -d "@$ts" '+%F %H:%M')" "$biome" "$item" "$marker"
+        printf '%s   %s   %s%s\n\n' "$(date -d "@$ts" '+%F %H:%M')" "$biome" "$item" "$marker"
     done < <(jq -c '.[]' <<< "$rows")
 }
 
