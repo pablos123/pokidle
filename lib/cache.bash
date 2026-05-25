@@ -3,41 +3,57 @@
 
 : "${POKEAPI_CACHE_DIR:=${XDG_CACHE_HOME:-${HOME}/.cache}/pokeapi}"
 
-function cache_path() {
+# cache_path <endpoint>
+# Print the JSON cache file path for an endpoint.
+function cache_path {
     local endpoint="${1#/}"
     endpoint="${endpoint%/}"
     printf '%s/%s.json' "${POKEAPI_CACHE_DIR}" "${endpoint}"
 }
 
-function cache_has() {
+# cache_has <endpoint>
+# True (exit 0) if endpoint is cached.
+function cache_has {
     [[ -f "$(cache_path "$1")" ]]
 }
 
-function cache_get() {
+# cache_get <endpoint>
+# Print the cached JSON for endpoint; return 1 if not cached.
+function cache_get {
     local path
     path="$(cache_path "$1")"
-    [[ -f "${path}" ]] || return 1
+    if [[ ! -f "${path}" ]]; then
+        return 1
+    fi
     cat -- "${path}"
 }
 
-function cache_put() {
-    local endpoint="$1" path tmp dir
+# cache_put <endpoint>
+# Store stdin as the cached JSON body for endpoint (atomic write).
+function cache_put {
+    local endpoint="$1"
+    local path
     path="$(cache_path "${endpoint}")"
-    dir="${path%/*}"
+    local dir="${path%/*}"
     mkdir -p -- "${dir}"
+    local tmp
     tmp="$(mktemp -- "${dir}/.tmp.XXXXXX")"
-    cat > "${tmp}"
+    cat >"${tmp}"
     mv -- "${tmp}" "${path}"
 }
 
-function cache_blob_path() {
+# cache_blob_path <key> [ext=bin]
+# Print the blob cache path for key with the given extension.
+function cache_blob_path {
     local key="${1#/}"
     key="${key%/}"
     local ext="${2:-bin}"
     printf '%s/%s.%s' "${POKEAPI_CACHE_DIR}" "${key}" "${ext}"
 }
 
-function cache_clear() {
+# cache_clear [endpoint]
+# Remove one endpoint's cache entry, or the entire cache dir if no arg.
+function cache_clear {
     if [[ -n "${1-}" ]]; then
         rm -f -- "$(cache_path "$1")"
     else

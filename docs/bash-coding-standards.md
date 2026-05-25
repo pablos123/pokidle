@@ -274,6 +274,62 @@ done
 
 ---
 
+## Function documentation
+
+Every function carries a brief comment immediately above it. This is the one place the "default to no comment" rule (see *Comments*) is deliberately reversed: a reader scanning a file should learn what each function does and what it expects without reading its body.
+
+The comment has two parts:
+
+1. **Signature line** — the function name followed by its positional parameters, each in angle brackets. Optional parameters use square brackets and show the default; a trailing variadic uses `...`:
+
+    ```bash
+    # encounter_compute_stat <stat-name> <base> <iv> <ev> <level> <nature_mod>
+    # pokemon_sprite_url <name> [variant=front_default]
+    # require_commands <command>...
+    ```
+
+2. **Description** — one or more lines stating what the function does, what it prints to stdout, and its exit-status contract when that carries meaning. Keep it terse; the signature already names the inputs, so describe behavior, not the obvious.
+
+    ```bash
+    # encounter_tier_for_capture_rate <capture_rate>
+    # capture_rate: PokeAPI value 0..255. Higher = easier to catch = more common.
+    # Thresholds 150/75/25 bucket into common/uncommon/rare/very_rare.
+    function encounter_tier_for_capture_rate {
+        ...
+    }
+    ```
+
+Conventions for the description:
+
+- **Predicates** (functions used in `if`) state the condition for success: `# True (exit 0) if <name> is an evolution-category item.`
+- **Printers** state what lands on stdout and its shape: `# Prints "hp atk def spa spd spe" final stats.`
+- A non-obvious failure mode (`return 1` on missing data) is worth a line; a function that only ever succeeds needs none.
+
+A no-argument function still gets a signature line — just the name — so the doc block is uniform and greppable:
+
+```bash
+# encounter_natures_list
+# Prints all nature names, one per line.
+function encounter_natures_list {
+    ...
+}
+```
+
+A run of trivial one-line wrappers that share an identical contract — resource fetchers that differ only by endpoint, say — may sit under a single group comment instead of repeating a near-identical line per function:
+
+```bash
+# Resource fetchers: each takes <name-or-id> and prints the raw endpoint JSON.
+function pokemon { pokeapi_get "pokemon/$1"; }
+function move    { pokeapi_get "move/$1"; }
+function ability { pokeapi_get "ability/$1"; }
+```
+
+This is the only exception to the per-function rule, and it applies only when the shared comment genuinely describes every member.
+
+The signature line is documentation, not enforced syntax: when a parameter is consumed by name inside the body (`local name="$1"`), the angle-bracket name should match that variable so the two read as one.
+
+---
+
 ## Exit and return
 
 Functions `return`. Only `main` and `die` ever call `exit`.
@@ -336,8 +392,10 @@ If the long form would push the line past 80 columns (4-space indent counted), u
 
 Every script must:
 
-- Pass `shfmt --diff` with no changes. Indentation is four spaces; `case` arms are indented under `case`.
+- Pass `shfmt --diff` with no changes. Indentation is four spaces; `case` arms are indented under `case` (`shfmt -i 4 -ci`).
 - Pass `shellcheck --enable=all` with zero warnings. `--enable=all` turns on optional checks that align with the rules in this document and catch genuine bugs the rules do not address.
+
+Quote associative-array keys that contain anything other than `[A-Za-z0-9_]` — notably hyphens: `["ho-oh"]=`, not `[ho-oh]=`. `shfmt` reads an unquoted subscript as an arithmetic expression and rewrites `[ho-oh]` to `[ho - oh]`, silently changing the key. Quoting the key blocks that rewrite and is the literal-string form bash already uses for associative subscripts.
 
 ### Project-level shellcheck disables
 

@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# pokeapi.bash — bash wrapper for https://pokeapi.co with filesystem caching.
+# pokeapi — bash wrapper for https://pokeapi.co with filesystem caching.
 
-set -euo pipefail
+set -Eeuo pipefail
 
 # Resolve through symlinks so invoking via e.g. ~/.local/bin/pokeapi still
 # finds lib/ next to the real script.
 _pokeapi_src="${BASH_SOURCE[0]}"
-while [[ -L "$_pokeapi_src" ]]; do
-    _pokeapi_link="$(readlink -- "$_pokeapi_src")"
-    [[ "$_pokeapi_link" == /* ]] && _pokeapi_src="$_pokeapi_link" \
-        || _pokeapi_src="$(dirname -- "$_pokeapi_src")/$_pokeapi_link"
+while [[ -L "${_pokeapi_src}" ]]; do
+    _pokeapi_link="$(readlink -- "${_pokeapi_src}")"
+    if [[ "${_pokeapi_link}" == /* ]]; then
+        _pokeapi_src="${_pokeapi_link}"
+    else
+        _pokeapi_src="$(dirname -- "${_pokeapi_src}")/${_pokeapi_link}"
+    fi
 done
-LIB_DIR="$(cd -- "$(dirname -- "$_pokeapi_src")" && pwd)/lib"
+LIB_DIR="$(cd -- "$(dirname -- "${_pokeapi_src}")" && pwd)/lib"
+declare -r LIB_DIR
 unset _pokeapi_src _pokeapi_link
 # shellcheck source=lib/cache.bash
 source "${LIB_DIR}/cache.bash"
@@ -20,12 +24,14 @@ source "${LIB_DIR}/http.bash"
 # shellcheck source=lib/api.bash
 source "${LIB_DIR}/api.bash"
 
-function usage() {
+# usage
+# Print the CLI help text.
+function usage {
     cat <<'EOF'
-pokeapi.bash — bash wrapper for https://pokeapi.co with filesystem caching.
+pokeapi — bash wrapper for https://pokeapi.co with filesystem caching.
 
 Usage:
-  pokeapi.bash <command> [args...]
+  pokeapi <command> [args...]
 
 Commands:
   get <endpoint>           Raw JSON for any endpoint (e.g. pokemon/metagross)
@@ -59,33 +65,42 @@ Environment:
 EOF
 }
 
-function main() {
+# main <command> [args...]
+# Dispatch a subcommand. Returns 2 on a missing or unknown command.
+function main {
     local cmd="${1-}"
-    [[ -n "${cmd}" ]] || { usage >&2; return 2; }
+    if [[ -z "${cmd}" ]]; then
+        usage >&2
+        return 2
+    fi
     shift
 
     case "${cmd}" in
-        get)            pokeapi_get "$@" ;;
-        pokemon)        pokemon "$@" ;;
-        move)           move "$@" ;;
-        ability)        ability "$@" ;;
-        type)           type_ "$@" ;;
-        species)        species "$@" ;;
-        item)           item "$@" ;;
-        nature)         nature "$@" ;;
-        natures)        natures "$@" ;;
-        stats)          pokemon_stats "$@" ;;
-        types)          pokemon_types "$@" ;;
-        moves)          pokemon_moves "$@" ;;
-        id)             pokemon_id "$@" ;;
-        name)           pokemon_name "$@" ;;
-        forms)          pokemon_forms "$@" ;;
-        sprite-url)     pokemon_sprite_url "$@" ;;
-        sprite)         pokemon_sprite "$@" ;;
-        cache-clear)    cache_clear "${1-}" ;;
-        cache-path)     cache_path "$@" ;;
-        help|-h|--help) usage ;;
-        *) printf 'unknown command: %s\n' "${cmd}" >&2; usage >&2; return 2 ;;
+        get) pokeapi_get "$@" ;;
+        pokemon) pokemon "$@" ;;
+        move) move "$@" ;;
+        ability) ability "$@" ;;
+        type) type_ "$@" ;;
+        species) species "$@" ;;
+        item) item "$@" ;;
+        nature) nature "$@" ;;
+        natures) natures "$@" ;;
+        stats) pokemon_stats "$@" ;;
+        types) pokemon_types "$@" ;;
+        moves) pokemon_moves "$@" ;;
+        id) pokemon_id "$@" ;;
+        name) pokemon_name "$@" ;;
+        forms) pokemon_forms "$@" ;;
+        sprite-url) pokemon_sprite_url "$@" ;;
+        sprite) pokemon_sprite "$@" ;;
+        cache-clear) cache_clear "${1-}" ;;
+        cache-path) cache_path "$@" ;;
+        help | -h | --help) usage ;;
+        *)
+            printf 'unknown command: %s\n' "${cmd}" >&2
+            usage >&2
+            return 2
+            ;;
     esac
 }
 

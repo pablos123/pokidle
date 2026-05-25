@@ -1,46 +1,66 @@
 #!/usr/bin/env bash
 # Public API: cache-aware fetchers and resource helpers.
 
-function pokeapi_get() {
+# pokeapi_get <endpoint>
+# Print endpoint JSON from cache, or fetch, cache, then print it. Returns 1
+# on fetch failure.
+function pokeapi_get {
     local endpoint="$1"
     if cache_has "${endpoint}"; then
         cache_get "${endpoint}"
         return 0
     fi
     local body
-    body="$(http_get "${endpoint}")" || return 1
+    if ! body="$(http_get "${endpoint}")"; then
+        return 1
+    fi
     printf '%s' "${body}" | cache_put "${endpoint}"
     cache_get "${endpoint}"
 }
 
-function pokemon()  { pokeapi_get "pokemon/$1"; }
-function move()     { pokeapi_get "move/$1"; }
-function ability()  { pokeapi_get "ability/$1"; }
-function type_()    { pokeapi_get "type/$1"; }
-function species()  { pokeapi_get "pokemon-species/$1"; }
-function item()     { pokeapi_get "item/$1"; }
-function nature()   { pokeapi_get "nature/$1"; }
+# Resource fetchers: each takes <name-or-id> and prints the raw endpoint JSON.
+function pokemon { pokeapi_get "pokemon/$1"; }
+function move { pokeapi_get "move/$1"; }
+function ability { pokeapi_get "ability/$1"; }
+function type_ { pokeapi_get "type/$1"; }
+function species { pokeapi_get "pokemon-species/$1"; }
+function item { pokeapi_get "item/$1"; }
+function nature { pokeapi_get "nature/$1"; }
 
-function natures() { pokeapi_get "nature?limit=100" | jq -r '.results[].name'; }
+# natures
+# Print all nature names, one per line.
+function natures { pokeapi_get "nature?limit=100" | jq -r '.results[].name'; }
 
-function pokemon_types() { pokemon "$1" | jq -r '.types[].type.name'; }
-function pokemon_stats() { pokemon "$1" | jq -r '.stats[] | "\(.stat.name): \(.base_stat)"'; }
-function pokemon_moves() { pokemon "$1" | jq -r '.moves[].move.name'; }
-function pokemon_id()    { pokemon "$1" | jq -r '.id'; }
-function pokemon_name()  { pokemon "$1" | jq -r '.name'; }
+# Field extractors: each takes <name-or-id> and prints the named field(s).
+function pokemon_types { pokemon "$1" | jq -r '.types[].type.name'; }
+function pokemon_stats { pokemon "$1" | jq -r '.stats[] | "\(.stat.name): \(.base_stat)"'; }
+function pokemon_moves { pokemon "$1" | jq -r '.moves[].move.name'; }
+function pokemon_id { pokemon "$1" | jq -r '.id'; }
+function pokemon_name { pokemon "$1" | jq -r '.name'; }
 
-function pokemon_forms() {
-    local key="$1" sp_json sp
+# pokemon_forms <name-or-id>
+# Print every variety (form) name in the species, one per line. Accepts either
+# a species key or a pokemon key; returns 1 if neither resolves.
+function pokemon_forms {
+    local key="$1"
+    local sp_json
     if sp_json="$(species "${key}" 2>/dev/null)"; then
         printf '%s' "${sp_json}" | jq -r '.varieties[].pokemon.name'
         return
     fi
-    sp="$(pokemon "${key}" | jq -r '.species.name')" || return 1
+    local sp
+    if ! sp="$(pokemon "${key}" | jq -r '.species.name')"; then
+        return 1
+    fi
     species "${sp}" | jq -r '.varieties[].pokemon.name'
 }
 
-function pokemon_sprite_url() {
-    local name="$1" variant="${2:-front_default}" url
+# pokemon_sprite_url <name> [variant=front_default]
+# Print the sprite URL for variant; return 1 if that variant has no sprite.
+function pokemon_sprite_url {
+    local name="$1"
+    local variant="${2:-front_default}"
+    local url
     url="$(pokemon "${name}" | jq -r --arg v "${variant}" '.sprites[$v] // empty')"
     if [[ -z "${url}" ]]; then
         printf 'pokemon_sprite_url: no sprite "%s" for %s\n' "${variant}" "${name}" >&2
@@ -49,20 +69,35 @@ function pokemon_sprite_url() {
     printf '%s' "${url}"
 }
 
-function pokemon_sprite() {
-    local name="$1" variant="${2:-front_default}" url ext path
-    url="$(pokemon_sprite_url "${name}" "${variant}")" || return 1
-    ext="${url##*.}"
-    [[ "${ext}" =~ ^[a-zA-Z0-9]{1,5}$ ]] || ext=png
+# pokemon_sprite <name> [variant=front_default]
+# Download the sprite (if not already cached) and print its local path.
+# Returns 1 if the sprite URL or download fails.
+function pokemon_sprite {
+    local name="$1"
+    local variant="${2:-front_default}"
+    local url
+    if ! url="$(pokemon_sprite_url "${name}" "${variant}")"; then
+        return 1
+    fi
+    local ext="${url##*.}"
+    if [[ ! "${ext}" =~ ^[a-zA-Z0-9]{1,5}$ ]]; then
+        ext=png
+    fi
+    local path
     path="$(cache_blob_path "sprites/${name}-${variant}" "${ext}")"
     if [[ ! -f "${path}" ]]; then
-        http_download_url "${url}" "${path}" || return 1
+        if ! http_download_url "${url}" "${path}"; then
+            return 1
+        fi
     fi
     printf '%s\n' "${path}"
 }
 
-function item_sprite_url() {
-    local name="$1" url
+# item_sprite_url <name>
+# Print the default sprite URL for an item; return 1 if it has none.
+function item_sprite_url {
+    local name="$1"
+    local url
     url="$(item "${name}" | jq -r '.sprites.default // empty')"
     if [[ -z "${url}" ]]; then
         printf 'item_sprite_url: no sprite for %s\n' "${name}" >&2
@@ -71,14 +106,25 @@ function item_sprite_url() {
     printf '%s' "${url}"
 }
 
-function item_sprite() {
-    local name="$1" url ext path
-    url="$(item_sprite_url "${name}")" || return 1
-    ext="${url##*.}"
-    [[ "${ext}" =~ ^[a-zA-Z0-9]{1,5}$ ]] || ext=png
+# item_sprite <name>
+# Download the item sprite (if not already cached) and print its local path.
+# Returns 1 if the sprite URL or download fails.
+function item_sprite {
+    local name="$1"
+    local url
+    if ! url="$(item_sprite_url "${name}")"; then
+        return 1
+    fi
+    local ext="${url##*.}"
+    if [[ ! "${ext}" =~ ^[a-zA-Z0-9]{1,5}$ ]]; then
+        ext=png
+    fi
+    local path
     path="$(cache_blob_path "sprites/items/${name}" "${ext}")"
     if [[ ! -f "${path}" ]]; then
-        http_download_url "${url}" "${path}" || return 1
+        if ! http_download_url "${url}" "${path}"; then
+            return 1
+        fi
     fi
     printf '%s\n' "${path}"
 }
