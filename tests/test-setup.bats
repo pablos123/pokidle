@@ -97,6 +97,30 @@ EOF
     [ ! -L "$XDG_DATA_HOME/pokidle/sounds" ]
 }
 
+@test "pokidle uninstall kills the orphan daemon when disable fails" {
+    "$REPO_ROOT/pokidle" setup
+    # Stand-in for a running daemon that systemd lost track of.
+    sleep 300 &
+    local fake_pid=$!
+    # systemctl stub: report the orphan as MainPID, fail on disable --now.
+    cat > "$BATS_TMPDIR/bin.$$/systemctl" <<EOF
+#!/bin/bash
+echo "stub-systemctl: \$*" >> "$HOME/systemctl.log"
+case "\$*" in
+    *"show"*"MainPID"*) echo "$fake_pid"; exit 0 ;;
+    *"disable --now"*) exit 1 ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$BATS_TMPDIR/bin.$$/systemctl"
+    run "$REPO_ROOT/pokidle" uninstall
+    [ "$status" -eq 0 ]
+    # No trace: the orphan must be dead.
+    run kill -0 "$fake_pid"
+    kill "$fake_pid" 2>/dev/null || true
+    [ "$status" -ne 0 ]
+}
+
 @test "pokidle setup --enable is accepted (back-compat) and enables the unit" {
     run "$REPO_ROOT/pokidle" setup --enable
     [ "$status" -eq 0 ]
