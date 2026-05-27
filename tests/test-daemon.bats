@@ -60,6 +60,33 @@ source_pokidle_lib() {
     [ "$status" -eq 0 ]
 }
 
+@test "_pokidle_sleep_chunk: gap longer than cap is capped" {
+    source_pokidle_lib
+    # next_event 1h out, default cap 60s -> sleep only 60.
+    run _pokidle_sleep_chunk 1700003600 1700000000
+    [ "$output" -eq 60 ]
+}
+
+@test "_pokidle_sleep_chunk: gap shorter than cap sleeps the gap" {
+    source_pokidle_lib
+    run _pokidle_sleep_chunk 1700000010 1700000000
+    [ "$output" -eq 10 ]
+}
+
+@test "_pokidle_sleep_chunk: non-positive gap floors at 1" {
+    source_pokidle_lib
+    run _pokidle_sleep_chunk 1700000000 1700000005
+    [ "$output" -eq 1 ]
+}
+
+@test "_pokidle_sleep_chunk: cap honors POKIDLE_SLEEP_CHUNK" {
+    POKIDLE_SLEEP_CHUNK=30 source_pokidle_lib
+    run env POKIDLE_SLEEP_CHUNK=30 bash -c '
+        POKIDLE_TEST_SOURCE_ONLY=1 source "'"$REPO_ROOT"'/pokidle"
+        _pokidle_sleep_chunk 1700003600 1700000000'
+    [ "$output" -eq 30 ]
+}
+
 @test "_pokidle_should_rotate_biome: 3h elapsed yes" {
     POKIDLE_BIOME_HOURS=3
     source_pokidle_lib

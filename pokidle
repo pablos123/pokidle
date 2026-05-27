@@ -135,6 +135,28 @@ function _pokidle_tick_missed {
     ((now - target >= interval))
 }
 
+# Wait in small chunks, not one long sleep. coreutils `sleep` counts monotonic
+# time, which freezes during suspend; a single `sleep $((next_event - now))`
+# therefore drifts arbitrarily far behind wall clock across a suspend (an hourly
+# tick can stay asleep for days). Capping each sleep means the loop re-reads
+# `date +%s` at least every chunk, so a post-resume wall-clock jump is noticed
+# within one chunk and the per-kind target checks handle it.
+# _pokidle_sleep_chunk <next_event> <now>
+# Print seconds to sleep: min(next_event - now, POKIDLE_SLEEP_CHUNK), floored at 1.
+function _pokidle_sleep_chunk {
+    local -i next_event="$1"
+    local -i now="$2"
+    local -i cap="${POKIDLE_SLEEP_CHUNK:-60}"
+    local -i gap=$((next_event - now))
+    if ((gap > cap)); then
+        gap=${cap}
+    fi
+    if ((gap < 1)); then
+        gap=1
+    fi
+    printf '%d' "${gap}"
+}
+
 # _pokidle_should_rotate_biome <started_at> <now>
 # True (exit 0) if the active biome session has outlived POKIDLE_BIOME_HOURS.
 function _pokidle_should_rotate_biome {
@@ -316,11 +338,7 @@ function pokidle_daemon {
         if ((biome_end < next_event)); then
             next_event=${biome_end}
         fi
-        local -i sleep_for=$((next_event - now))
-        if ((sleep_for < 1)); then
-            sleep_for=1
-        fi
-        sleep "${sleep_for}"
+        sleep "$(_pokidle_sleep_chunk "${next_event}" "${now}")"
     done
 }
 
