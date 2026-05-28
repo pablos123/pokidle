@@ -56,33 +56,50 @@ switch-biome clean setup uninstall status help"
             fi
             ;;
         encounters)
-            mapfile -t COMPREPLY < <(compgen -W "\
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
 --limit --newest-first --json" -- "${cur}")
+            fi
             ;;
         export)
-            mapfile -t COMPREPLY < <(compgen -W "\
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
 --limit --newest-first" -- "${cur}")
+            fi
             ;;
         items)
-            mapfile -t COMPREPLY < <(compgen -W "\
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "\
 --since --until --biome --item --limit --all --newest-first --json" -- "${cur}")
+            fi
+            ;;
+        current)
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "--items --encounters" -- "${cur}")
+            fi
             ;;
         clean)
-            mapfile -t COMPREPLY < <(compgen -W "pools db all --yes" -- "${cur}")
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "--yes" -- "${cur}")
+            else
+                mapfile -t COMPREPLY < <(compgen -W "pools db all" -- "${cur}")
+            fi
             ;;
         switch-biome | rebuild-pool)
-            local biomes
-            biomes="$(_pokidle_biome_ids)"
             if [[ "${cmd}" == rebuild-pool && "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "--yes" -- "${cur}")
             else
+                local biomes
+                biomes="$(_pokidle_biome_ids)"
                 mapfile -t COMPREPLY < <(compgen -W "${biomes}" -- "${cur}")
             fi
             ;;
         setup)
-            mapfile -t COMPREPLY < <(compgen -W "--no-enable" -- "${cur}")
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "--no-enable" -- "${cur}")
+            fi
             ;;
         *) ;;
     esac

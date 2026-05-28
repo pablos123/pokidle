@@ -298,10 +298,13 @@ EOF
     local out item
     out="$(encounter_roll_item forest)"
     item="$(jq -r '.item' <<< "$out")"
-    case "$item" in
-        miracle-seed|meadow-plate|rindo-berry|leftovers|\
-        leaf-stone|sun-stone|\
-        silver-powder|insect-plate|shed-shell|tanga-berry) : ;;
-        *) printf 'unexpected item for forest biome: %s\n' "$item" >&2; return 1 ;;
-    esac
+    # Roll must produce one of forest's bucketed items (held + evo).
+    local found=0 it
+    for it in ${ENCOUNTER_ITEMS_BY_BIOME[forest]} ${ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME[forest]:-}; do
+        if [[ "$item" == "$it" ]]; then found=1; break; fi
+    done
+    if ((!found)); then
+        printf 'unexpected item for forest biome: %s\n' "$item" >&2
+        return 1
+    fi
 }

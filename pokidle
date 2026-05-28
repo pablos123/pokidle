@@ -80,7 +80,11 @@ Commands:
                             --newest-first    Newest at top (default: bottom)
                             --json            Emit raw JSON
   stats                   Aggregates: totals, shinies, by biome, top species
-  current                 Show current biome + counts
+  current [--items|--encounters]
+                          Bare: active biome, time remaining, session +
+                          all-time counts.
+                          --items       Candidate item drops for the biome.
+                          --encounters  Candidate species, grouped by tier.
   rebuild-pool [biome] [--yes]
                           Force pool rebuild (one or all; type-derived).
                           --yes skips the all-mode confirm prompt.
@@ -1376,32 +1380,115 @@ function pokidle_stats {
         awk -F'\t' '{ printf "  %-12s %5d\n", $1, $2 }'
 }
 
-# pokidle_current
-# Show the active biome session, its elapsed/remaining time, and counts.
+# pokidle_current [--items|--encounters]
+# Bare: active biome, time remaining, this-session and all-time counts.
+# --items: candidate item drops for the active biome (one slug per line).
+# --encounters: candidate species grouped by tier; lines like "audino (L5-15)".
 function pokidle_current {
     db_init
+    local mode="summary"
+    while (($# > 0)); do
+        case "$1" in
+            --items)
+                if [[ "${mode}" != "summary" ]]; then
+                    printf 'current: --items and --encounters are mutually exclusive\n' >&2
+                    return 2
+                fi
+                mode="items"
+                shift
+                ;;
+            --encounters)
+                if [[ "${mode}" != "summary" ]]; then
+                    printf 'current: --items and --encounters are mutually exclusive\n' >&2
+                    return 2
+                fi
+                mode="encounters"
+                shift
+                ;;
+            *)
+                printf 'current: unknown flag %s\n' "$1" >&2
+                return 2
+                ;;
+        esac
+    done
+
     local row
     row="$(db_active_biome_session)"
     if [[ -z "${row}" ]]; then
         printf 'no active biome\n'
         return 0
     fi
-    local id
-    local biome
-    local started_at
+    local id biome started_at
     IFS=$'\t' read -r id biome started_at <<<"${row}"
+
+    case "${mode}" in
+        items)
+            _pokidle_current_items "${biome}"
+            ;;
+        encounters)
+            _pokidle_current_encounters "${biome}"
+            ;;
+        summary)
+            _pokidle_current_summary "${id}" "${biome}" "${started_at}"
+            ;;
+    esac
+}
+
+# _pokidle_current_summary <session_id> <biome> <started_at>
+function _pokidle_current_summary {
+    local id="$1" biome="$2" started_at="$3"
     local now
     now="$(date +%s)"
     local -i elapsed=$((now - started_at))
     local -i remaining=$((${POKIDLE_BIOME_HOURS:-3} * 3600 - elapsed))
-    local enc_count
+    local -i poss_enc=0 poss_item
+    local pool
+    if pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
+        poss_enc="$(jq '[.tiers[] | length] | add // 0' <<<"${pool}")"
+    fi
+    poss_item="$(_encounter_item_pool "${biome}" | wc -l)"
+    local enc_count item_count
     enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=${id};")"
-    local item_count
     item_count="$(db_query "SELECT COUNT(*) FROM item_drops WHERE session_id=${id};")"
     printf 'Active biome: %s  (session #%s)\n' "${biome}" "${id}"
+    printf 'Possible encounters: %s   Possible items: %s\n' "${poss_enc}" "${poss_item}"
     printf 'Started: %s\n' "$(date -d "@${started_at}")"
     printf 'Time remaining: %ds\n' "${remaining}"
     printf 'Encounters: %s   Items: %s\n' "${enc_count}" "${item_count}"
+}
+
+# _pokidle_current_items <biome>
+# Print the item drop pool for biome, alphabetical, one slug per line.
+function _pokidle_current_items {
+    local biome="$1"
+    _encounter_item_pool "${biome}" | LC_ALL=C sort -u
+}
+
+# _pokidle_current_encounters <biome>
+# Print the encounter pool for biome, grouped by tier (common, uncommon, rare,
+# very_rare). Empty tiers are skipped. Species sorted within each tier.
+function _pokidle_current_encounters {
+    local biome="$1"
+    local pool
+    if ! pool="$(encounter_pool_load "${biome}")"; then
+        return 1
+    fi
+    local -i first=1
+    local tier
+    for tier in common uncommon rare very_rare; do
+        local rows
+        rows="$(jq -r --arg t "${tier}" \
+            '.tiers[$t] // [] | sort_by(.species) | .[] | "  \(.species) (L\(.min)-\(.max))"' \
+            <<<"${pool}")"
+        if [[ -z "${rows}" ]]; then
+            continue
+        fi
+        if ((!first)); then
+            printf '\n'
+        fi
+        printf '%s:\n%s\n' "${tier}" "${rows}"
+        first=0
+    done
 }
 
 # pokidle_clean <pools|db|all> [--yes]

@@ -70,9 +70,8 @@ fi
 #   2. Each biome has id, label, types[≥1].
 #   3. No duplicate ids.
 #   4. Every BIOME_PRIMARY_TYPES entry is covered by ≥1 biome's types.
-#      This subsumes coverage of ENCOUNTER_HELD_ITEMS_BY_TYPE keys (same
-#      18 type names) and is a necessary condition for full berry
-#      coverage (every berry's natural_gift_type is one of these 18).
+#      Necessary condition for full berry coverage (every berry's
+#      natural_gift_type is one of these 18).
 function biome_validate {
     local cfg
     if ! cfg="$(biome_load)"; then

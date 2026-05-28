@@ -81,6 +81,49 @@ _complete() {
     [[ "$output" == *--biome* ]]
 }
 
+@test "pokidle: encounters bare arg returns no flag suggestions" {
+    run _complete _pokidle pokidle encounters ''
+    [[ "$output" != *--* ]]
+}
+
+@test "pokidle: export bare arg returns no flag suggestions" {
+    run _complete _pokidle pokidle export ''
+    [[ "$output" != *--* ]]
+}
+
+@test "pokidle: items bare arg returns no flag suggestions" {
+    run _complete _pokidle pokidle items ''
+    [[ "$output" != *--* ]]
+}
+
+@test "pokidle: clean bare arg returns targets but not --yes" {
+    run _complete _pokidle pokidle clean ''
+    [[ "$output" == *pools* ]]
+    [[ "$output" != *--yes* ]]
+}
+
+@test "pokidle: clean dash completes --yes" {
+    run _complete _pokidle pokidle clean --
+    [[ "$output" == *--yes* ]]
+}
+
+@test "pokidle: current dash completes --items and --encounters" {
+    run _complete _pokidle pokidle current --
+    [[ "$output" == *--items* ]]
+    [[ "$output" == *--encounters* ]]
+}
+
+@test "pokidle: current --i filters to --items" {
+    run _complete _pokidle pokidle current --i
+    [[ "$output" == *--items* ]]
+    [[ "$output" != *--encounters* ]]
+}
+
+@test "pokidle: current bare arg returns no flag suggestions" {
+    run _complete _pokidle pokidle current ''
+    [[ "$output" != *--* ]]
+}
+
 @test "pokeapi: bare arg lists subcommands" {
     run _complete _pokeapi pokeapi ''
     [[ "$output" == *pokemon* ]]

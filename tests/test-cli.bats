@@ -144,6 +144,99 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     [[ "$output" == *"no active biome"* ]]
 }
 
+@test "pokidle current bare shows possible counts on the second line + this-session counts" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" pidgey "$now"
+    _ins_enc "$sid" zubat "$now"
+    _ins_item "$sid" leftovers "$now"
+    # Provide a pool file so "Possible encounters" is non-zero.
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
+{"biome":"cave","built_at":"2026-05-28T00:00:00Z","schema":3,
+ "tiers":{"common":[{"species":"zubat","min":5,"max":10}],
+          "uncommon":[{"species":"machop","min":8,"max":15}],
+          "rare":[],"very_rare":[]},
+ "berries":[]}
+EOF
+    run "$REPO_ROOT/pokidle" current
+    [ "$status" -eq 0 ]
+    # Cave bucket: rock-incense bright-powder covert-cloak houndoominite = 4 items.
+    # Pool: 1 common + 1 uncommon = 2 species.
+    [[ "$output" == *"Possible encounters: 2   Possible items: 4"* ]]
+    [[ "$output" == *"Encounters: 2   Items: 1"* ]]
+    # Possible-line is line 2.
+    line2="$(printf '%s\n' "$output" | sed -n '2p')"
+    [[ "$line2" == "Possible encounters: 2   Possible items: 4" ]]
+}
+
+@test "pokidle current --items lists biome item drop pool alphabetically" {
+    _seed_schema
+    _mk_session glacier > /dev/null
+    run "$REPO_ROOT/pokidle" current --items
+    [ "$status" -eq 0 ]
+    # glacier bucket: showdown items + ice-stone (evo).
+    [[ "$output" == *"ice-stone"* ]]
+    [[ "$output" == *"never-melt-ice"* ]]
+    [[ "$output" == *"yache-berry"* ]]
+    [[ "$output" == *"glalitite"* ]]
+    # Items now live in exactly one biome — must not bleed across.
+    [[ "$output" != *"charcoal"* ]]             # volcano
+    [[ "$output" != *"moon-stone"* ]]           # cathedral
+    [[ "$output" != *"pixie-plate"* ]]          # cathedral
+    # Alphabetical sort: aspear-berry precedes never-melt-ice.
+    local a n
+    a="$(printf '%s\n' "$output" | grep -n '^aspear-berry$'    | cut -d: -f1)"
+    n="$(printf '%s\n' "$output" | grep -n '^never-melt-ice$'  | cut -d: -f1)"
+    [ -n "$a" ] && [ -n "$n" ] && [ "$a" -lt "$n" ]
+}
+
+@test "pokidle current --encounters lists pool grouped by tier" {
+    _seed_schema
+    _mk_session cave > /dev/null
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
+{
+  "biome": "cave",
+  "built_at": "2026-05-28T00:00:00Z",
+  "schema": 3,
+  "tiers": {
+    "common":    [{"species":"zubat","min":5,"max":10},{"species":"geodude","min":5,"max":12}],
+    "uncommon":  [{"species":"machop","min":8,"max":15}],
+    "rare":      [],
+    "very_rare": [{"species":"mewtwo","min":50,"max":60}]
+  },
+  "berries": []
+}
+EOF
+    run "$REPO_ROOT/pokidle" current --encounters
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"common:"* ]]
+    [[ "$output" == *"uncommon:"* ]]
+    [[ "$output" == *"very_rare:"* ]]
+    ! grep -qx 'rare:' <<< "$output"               # empty tier is skipped
+    [[ "$output" == *"geodude (L5-12)"* ]]
+    [[ "$output" == *"mewtwo (L50-60)"* ]]
+    # Alphabetical within tier: geodude before zubat.
+    local g z
+    g="$(printf '%s\n' "$output" | grep -n 'geodude' | head -1 | cut -d: -f1)"
+    z="$(printf '%s\n' "$output" | grep -n 'zubat'   | head -1 | cut -d: -f1)"
+    [ "$g" -lt "$z" ]
+}
+
+@test "pokidle current --items and --encounters are mutually exclusive" {
+    run "$REPO_ROOT/pokidle" current --items --encounters
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"mutually exclusive"* ]]
+}
+
+@test "pokidle current rejects unknown flag" {
+    run "$REPO_ROOT/pokidle" current --bogus
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"unknown flag"* ]]
+}
+
 @test "pokidle clean pools --yes purges pools dir" {
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     touch "$POKIDLE_CACHE_DIR/pools/cave.json"

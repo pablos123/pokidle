@@ -336,17 +336,87 @@ EOF
     [ "$status" -ne 0 ]
 }
 
-@test "_encounter_item_pool: ice biome includes ice-stone, excludes fire-stone" {
-    run _encounter_item_pool glacier   # types: ice, fairy
+@test "encounter_item_is_showdown_legal: National Dex AG additions are legal" {
+    # Mega Stones, Z-crystals, Memories, Drives, incenses, Pokémon-specific
+    # signature items — all legal in National Dex AG.
+    run encounter_item_is_showdown_legal charizardite-x
     [ "$status" -eq 0 ]
-    grep -qx ice-stone <<< "$output"
-    grep -qx moon-stone <<< "$output"
-    ! grep -qx fire-stone <<< "$output"
+    run encounter_item_is_showdown_legal mewtwonite-y
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal firium-z
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal pikanium-z
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal fire-memory
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal burn-drive
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal sea-incense
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal berry-juice
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal light-ball
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal thick-club
+    [ "$status" -eq 0 ]
 }
 
-@test "_encounter_item_pool: fire biome includes fire-stone, excludes ice-stone" {
-    run _encounter_item_pool volcano   # types: fire, dragon
+@test "encounter_item_is_showdown_legal: useless EV-reducer berries excluded" {
+    # Showdown groups these under "Useless items" (grepa + kelpsy live in the
+    # main "Items" group and stay legal).
+    run encounter_item_is_showdown_legal hondew-berry
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal pomeg-berry
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal qualot-berry
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal tamato-berry
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal grepa-berry
     [ "$status" -eq 0 ]
-    grep -qx fire-stone <<< "$output"
-    ! grep -qx ice-stone <<< "$output"
+    run encounter_item_is_showdown_legal kelpsy-berry
+    [ "$status" -eq 0 ]
+}
+
+@test "_encounter_item_pool: glacier pool includes its showdown and evo items" {
+    run _encounter_item_pool glacier
+    [ "$status" -eq 0 ]
+    # glacier's bucket: ice-resist berry + ice held items + ice-stone evo
+    grep -qx ice-stone        <<< "$output"
+    grep -qx never-melt-ice   <<< "$output"
+    grep -qx yache-berry      <<< "$output"
+    # Items now live in exactly one biome, so cross-biome items must be absent.
+    ! grep -qx fire-stone     <<< "$output"
+    ! grep -qx moon-stone     <<< "$output"  # moon-stone moved to cathedral
+}
+
+@test "_encounter_item_pool: volcano pool includes its showdown and evo items" {
+    run _encounter_item_pool volcano
+    [ "$status" -eq 0 ]
+    grep -qx fire-stone       <<< "$output"
+    grep -qx charcoal         <<< "$output"
+    grep -qx occa-berry       <<< "$output"
+    grep -qx charizardite-x   <<< "$output"
+    ! grep -qx ice-stone      <<< "$output"
+    ! grep -qx mystic-water   <<< "$output"  # ocean's slot
+}
+
+@test "_encounter_item_pool: every showdown item drops in exactly one biome" {
+    # Coverage guarantee for the biome-keyed pool: every Showdown-legal item
+    # appears in the union of all biome buckets, no duplicates, no items
+    # outside ENCOUNTER_SHOWDOWN_ITEMS sneak into a bucket.
+    declare -A assigned=()
+    local b it dup_count=0 rogue_count=0
+    for b in "${!ENCOUNTER_ITEMS_BY_BIOME[@]}"; do
+        for it in ${ENCOUNTER_ITEMS_BY_BIOME[$b]}; do
+            if [[ -n "${assigned[$it]:-}" ]]; then dup_count=$((dup_count+1)); fi
+            assigned[$it]=$b
+            if [[ -z "${ENCOUNTER_SHOWDOWN_ITEMS[$it]:-}" ]]; then
+                rogue_count=$((rogue_count+1))
+            fi
+        done
+    done
+    [ "$dup_count"   -eq 0 ]
+    [ "$rogue_count" -eq 0 ]
+    [ "${#assigned[@]}" -eq "${#ENCOUNTER_SHOWDOWN_ITEMS[@]}" ]
 }
