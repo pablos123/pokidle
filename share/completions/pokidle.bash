@@ -33,7 +33,7 @@ _pokidle() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     cmd="${COMP_WORDS[1]:-}"
 
-    local commands="daemon tick encounters items stats current rebuild-pool \
+    local commands="daemon tick encounters export items stats current rebuild-pool \
 switch-biome clean setup uninstall status help"
 
     # First positional arg: the subcommand.
@@ -54,7 +54,12 @@ switch-biome clean setup uninstall status help"
         encounters)
             mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
---limit --newest-first --json --export" -- "${cur}")
+--limit --newest-first --json" -- "${cur}")
+            ;;
+        export)
+            mapfile -t COMPREPLY < <(compgen -W "\
+--shiny --since --until --biome --species --nature --min-iv-total \
+--limit --newest-first" -- "${cur}")
             ;;
         items)
             mapfile -t COMPREPLY < <(compgen -W "\
