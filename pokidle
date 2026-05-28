@@ -1174,8 +1174,8 @@ function pokidle_export {
         berry="$(jq -r '.held_berry // ""' <<<"${enc}")"
         if [[ -n "${berry}" && "${berry}" != "null" ]]; then
             local berry_item="${berry}-berry"
-            if [[ "${used}" != *"|${berry_item}|"* ]] \
-                && encounter_item_is_showdown_legal "${berry_item}"; then
+            if [[ "${used}" != *"|${berry_item}|"* ]] &&
+                encounter_item_is_showdown_legal "${berry_item}"; then
                 cands+=("${berry_item}")
             fi
         fi

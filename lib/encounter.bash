@@ -71,55 +71,55 @@ fi
 if [[ -z "${ENCOUNTER_SHOWDOWN_ITEMS[*]:-}" ]]; then
     declare -grA ENCOUNTER_SHOWDOWN_ITEMS=(
         # Stat/choice/utility items
-        [air-balloon]=1 [assault-vest]=1 [choice-band]=1 [choice-scarf]=1
-        [choice-specs]=1 [expert-belt]=1 [focus-sash]=1 [heavy-duty-boots]=1
-        [leftovers]=1 [life-orb]=1 [loaded-dice]=1 [mental-herb]=1
-        [power-herb]=1 [rocky-helmet]=1 [ability-shield]=1 [absorb-bulb]=1
-        [adrenaline-orb]=1 [black-belt]=1 [black-glasses]=1 [black-sludge]=1
-        [blunder-policy]=1 [booster-energy]=1 [bright-powder]=1 [cell-battery]=1
-        [charcoal]=1 [clear-amulet]=1 [covert-cloak]=1 [damp-rock]=1
-        [draco-plate]=1 [dragon-fang]=1 [dread-plate]=1 [earth-plate]=1
-        [eject-button]=1 [eject-pack]=1 [electric-seed]=1 [fairy-feather]=1
-        [fist-plate]=1 [flame-orb]=1 [flame-plate]=1 [grassy-seed]=1
-        [grip-claw]=1 [hard-stone]=1 [heat-rock]=1 [icicle-plate]=1
-        [icy-rock]=1 [insect-plate]=1 [iron-plate]=1 [kings-rock]=1
-        [lagging-tail]=1 [light-clay]=1 [luminous-moss]=1 [magnet]=1
-        [meadow-plate]=1 [metal-coat]=1 [metronome]=1 [mind-plate]=1
-        [miracle-seed]=1 [mirror-herb]=1 [misty-seed]=1 [muscle-band]=1
-        [mystic-water]=1 [never-melt-ice]=1 [normal-gem]=1 [pixie-plate]=1
-        [poison-barb]=1 [pretty-feather]=1 [protective-pads]=1 [psychic-seed]=1
-        [punching-glove]=1 [quick-claw]=1 [razor-claw]=1 [razor-fang]=1
-        [red-card]=1 [room-service]=1 [safety-goggles]=1 [scope-lens]=1
-        [sharp-beak]=1 [shed-shell]=1 [shell-bell]=1 [silk-scarf]=1
-        [silver-powder]=1 [sky-plate]=1 [smooth-rock]=1 [snowball]=1
-        [soft-sand]=1 [spell-tag]=1 [splash-plate]=1 [spooky-plate]=1
-        [sticky-barb]=1 [stone-plate]=1 [terrain-extender]=1 [throat-spray]=1
-        [toxic-orb]=1 [toxic-plate]=1 [twisted-spoon]=1 [utility-umbrella]=1
-        [weakness-policy]=1 [white-herb]=1 [wide-lens]=1 [wise-glasses]=1
-        [zap-plate]=1 [zoom-lens]=1 [big-root]=1 [binding-band]=1
-        [destiny-knot]=1 [float-stone]=1 [focus-band]=1 [iron-ball]=1
-        [power-anklet]=1 [power-band]=1 [power-belt]=1 [power-bracer]=1
-        [power-lens]=1 [power-weight]=1 [ring-target]=1
+        [air - balloon]=1 [assault - vest]=1 [choice - band]=1 [choice - scarf]=1
+        [choice - specs]=1 [expert - belt]=1 [focus - sash]=1 [heavy - duty - boots]=1
+        [leftovers]=1 [life - orb]=1 [loaded - dice]=1 [mental - herb]=1
+        [power - herb]=1 [rocky - helmet]=1 [ability - shield]=1 [absorb - bulb]=1
+        [adrenaline - orb]=1 [black - belt]=1 [black - glasses]=1 [black - sludge]=1
+        [blunder - policy]=1 [booster - energy]=1 [bright - powder]=1 [cell - battery]=1
+        [charcoal]=1 [clear - amulet]=1 [covert - cloak]=1 [damp - rock]=1
+        [draco - plate]=1 [dragon - fang]=1 [dread - plate]=1 [earth - plate]=1
+        [eject - button]=1 [eject - pack]=1 [electric - seed]=1 [fairy - feather]=1
+        [fist - plate]=1 [flame - orb]=1 [flame - plate]=1 [grassy - seed]=1
+        [grip - claw]=1 [hard - stone]=1 [heat - rock]=1 [icicle - plate]=1
+        [icy - rock]=1 [insect - plate]=1 [iron - plate]=1 [kings - rock]=1
+        [lagging - tail]=1 [light - clay]=1 [luminous - moss]=1 [magnet]=1
+        [meadow - plate]=1 [metal - coat]=1 [metronome]=1 [mind - plate]=1
+        [miracle - seed]=1 [mirror - herb]=1 [misty - seed]=1 [muscle - band]=1
+        [mystic - water]=1 [never - melt - ice]=1 [normal - gem]=1 [pixie - plate]=1
+        [poison - barb]=1 [pretty - feather]=1 [protective - pads]=1 [psychic - seed]=1
+        [punching - glove]=1 [quick - claw]=1 [razor - claw]=1 [razor - fang]=1
+        [red - card]=1 [room - service]=1 [safety - goggles]=1 [scope - lens]=1
+        [sharp - beak]=1 [shed - shell]=1 [shell - bell]=1 [silk - scarf]=1
+        [silver - powder]=1 [sky - plate]=1 [smooth - rock]=1 [snowball]=1
+        [soft - sand]=1 [spell - tag]=1 [splash - plate]=1 [spooky - plate]=1
+        [sticky - barb]=1 [stone - plate]=1 [terrain - extender]=1 [throat - spray]=1
+        [toxic - orb]=1 [toxic - plate]=1 [twisted - spoon]=1 [utility - umbrella]=1
+        [weakness - policy]=1 [white - herb]=1 [wide - lens]=1 [wise - glasses]=1
+        [zap - plate]=1 [zoom - lens]=1 [big - root]=1 [binding - band]=1
+        [destiny - knot]=1 [float - stone]=1 [focus - band]=1 [iron - ball]=1
+        [power - anklet]=1 [power - band]=1 [power - belt]=1 [power - bracer]=1
+        [power - lens]=1 [power - weight]=1 [ring - target]=1
         # Pokémon-specific items
-        [adamant-crystal]=1 [adamant-orb]=1 [cornerstone-mask]=1
-        [griseous-core]=1 [griseous-orb]=1 [hearthflame-mask]=1 [light-ball]=1
-        [lustrous-globe]=1 [lustrous-orb]=1 [rusted-shield]=1 [rusted-sword]=1
-        [soul-dew]=1 [wellspring-mask]=1
+        [adamant - crystal]=1 [adamant - orb]=1 [cornerstone - mask]=1
+        [griseous - core]=1 [griseous - orb]=1 [hearthflame - mask]=1 [light - ball]=1
+        [lustrous - globe]=1 [lustrous - orb]=1 [rusted - shield]=1 [rusted - sword]=1
+        [soul - dew]=1 [wellspring - mask]=1
         # Berries
-        [aguav-berry]=1 [apicot-berry]=1 [aspear-berry]=1 [babiri-berry]=1
-        [charti-berry]=1 [cheri-berry]=1 [chesto-berry]=1 [chilan-berry]=1
-        [chople-berry]=1 [coba-berry]=1 [colbur-berry]=1 [custap-berry]=1
-        [enigma-berry]=1 [figy-berry]=1 [ganlon-berry]=1 [grepa-berry]=1
-        [haban-berry]=1 [hondew-berry]=1 [iapapa-berry]=1 [jaboca-berry]=1
-        [kasib-berry]=1 [kebia-berry]=1 [kee-berry]=1 [kelpsy-berry]=1
-        [lansat-berry]=1 [leppa-berry]=1 [liechi-berry]=1 [lum-berry]=1
-        [mago-berry]=1 [maranga-berry]=1 [micle-berry]=1 [occa-berry]=1
-        [oran-berry]=1 [passho-berry]=1 [payapa-berry]=1 [pecha-berry]=1
-        [persim-berry]=1 [petaya-berry]=1 [pomeg-berry]=1 [qualot-berry]=1
-        [rawst-berry]=1 [rindo-berry]=1 [roseli-berry]=1 [rowap-berry]=1
-        [salac-berry]=1 [shuca-berry]=1 [sitrus-berry]=1 [starf-berry]=1
-        [tamato-berry]=1 [tanga-berry]=1 [wacan-berry]=1 [wiki-berry]=1
-        [yache-berry]=1
+        [aguav - berry]=1 [apicot - berry]=1 [aspear - berry]=1 [babiri - berry]=1
+        [charti - berry]=1 [cheri - berry]=1 [chesto - berry]=1 [chilan - berry]=1
+        [chople - berry]=1 [coba - berry]=1 [colbur - berry]=1 [custap - berry]=1
+        [enigma - berry]=1 [figy - berry]=1 [ganlon - berry]=1 [grepa - berry]=1
+        [haban - berry]=1 [hondew - berry]=1 [iapapa - berry]=1 [jaboca - berry]=1
+        [kasib - berry]=1 [kebia - berry]=1 [kee - berry]=1 [kelpsy - berry]=1
+        [lansat - berry]=1 [leppa - berry]=1 [liechi - berry]=1 [lum - berry]=1
+        [mago - berry]=1 [maranga - berry]=1 [micle - berry]=1 [occa - berry]=1
+        [oran - berry]=1 [passho - berry]=1 [payapa - berry]=1 [pecha - berry]=1
+        [persim - berry]=1 [petaya - berry]=1 [pomeg - berry]=1 [qualot - berry]=1
+        [rawst - berry]=1 [rindo - berry]=1 [roseli - berry]=1 [rowap - berry]=1
+        [salac - berry]=1 [shuca - berry]=1 [sitrus - berry]=1 [starf - berry]=1
+        [tamato - berry]=1 [tanga - berry]=1 [wacan - berry]=1 [wiki - berry]=1
+        [yache - berry]=1
     )
 fi
 

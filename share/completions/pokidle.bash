@@ -1,5 +1,8 @@
 # bash completion for the pokidle and pokeapi CLIs.
 #
+# Sourced into an interactive shell, so no `set -Eeuo pipefail` (it would leak
+# into the user's session).
+#
 # Install (per user): source this file from ~/.bashrc, e.g.
 #   source /path/to/pokidle/share/completions/pokidle.bash
 # System-wide: symlink into your bash-completion completions dir.
@@ -8,13 +11,15 @@
 # Print every biome id, one per line. Resolves biomes.json the same way the
 # pokidle CLI does: POKIDLE_CONFIG_DIR, then XDG config, then the repo config
 # next to this completion file. Silent (and empty) if none is found.
-_pokidle_biome_ids() {
+function _pokidle_biome_ids {
     local f
     for f in \
         "${POKIDLE_CONFIG_DIR:-}/biomes.json" \
         "${XDG_CONFIG_HOME:-${HOME}/.config}/pokidle/biomes.json" \
-        "$(dirname -- "${BASH_SOURCE[0]}")/../../config/biomes.json"; do
-        [[ -n "${f}" && -f "${f}" ]] || continue
+        "${BASH_SOURCE[0]%/*}/../../config/biomes.json"; do
+        if [[ -z "${f}" || ! -f "${f}" ]]; then
+            continue
+        fi
         if command -v jq >/dev/null 2>&1; then
             jq -r '.biomes[].id' "${f}"
         else
@@ -28,10 +33,9 @@ _pokidle_biome_ids() {
 
 # _pokidle
 # Programmable completion for the pokidle CLI.
-_pokidle() {
-    local cur cmd
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    cmd="${COMP_WORDS[1]:-}"
+function _pokidle {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local cmd="${COMP_WORDS[1]:-}"
 
     local commands="daemon tick encounters export items stats current rebuild-pool \
 switch-biome clean setup uninstall status help"
@@ -80,15 +84,15 @@ switch-biome clean setup uninstall status help"
         setup)
             mapfile -t COMPREPLY < <(compgen -W "--no-enable" -- "${cur}")
             ;;
+        *) ;;
     esac
     return 0
 }
 
 # _pokeapi
 # Programmable completion for the pokeapi CLI.
-_pokeapi() {
-    local cur
-    cur="${COMP_WORDS[COMP_CWORD]}"
+function _pokeapi {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
 
     local commands="get pokemon move ability type species item nature \
 natures stats types moves id name forms sprite-url sprite cache-path \
