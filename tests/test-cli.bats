@@ -51,7 +51,7 @@ _ins_item() { # $1 sid  $2 item  $3 ts
          VALUES ($1, $3, '$2', NULL);"
 }
 
-@test "list --export caps team at 6 distinct species" {
+@test "export caps team at 6 distinct species" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
     local now; now="$(date +%s)"
@@ -59,26 +59,26 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     for sp in bulbasaur charmander squirtle pidgey rattata ekans sandshrew nidoran; do
         _ins_enc "$sid" "$sp" "$now"
     done
-    run "$REPO_ROOT/pokidle" encounters --export
+    run "$REPO_ROOT/pokidle" export
     [ "$status" -eq 0 ]
     local n; n="$(grep -c 'Nature' <<< "$output")"
     [ "$n" -eq 6 ]
 }
 
-@test "list --export yields distinct species" {
+@test "export yields distinct species" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
     local now; now="$(date +%s)"
     local i
     for i in 1 2 3 4 5; do _ins_enc "$sid" pidgey "$now"; done
     _ins_enc "$sid" zubat "$now"
-    run "$REPO_ROOT/pokidle" encounters --export
+    run "$REPO_ROOT/pokidle" export
     [ "$status" -eq 0 ]
     local n; n="$(grep -c 'Nature' <<< "$output")"
     [ "$n" -eq 2 ]
 }
 
-@test "list --export assigns distinct window items" {
+@test "export assigns distinct window items" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
     local now; now="$(date +%s)"
@@ -86,26 +86,26 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     _ins_enc "$sid" gengar "$now"
     _ins_item "$sid" leftovers "$now"
     _ins_item "$sid" choice-band "$now"
-    run "$REPO_ROOT/pokidle" encounters --export
+    run "$REPO_ROOT/pokidle" export
     [ "$status" -eq 0 ]
     [[ "$output" == *"@ Leftovers"* ]]
     [[ "$output" == *"@ Choice Band"* ]]
 }
 
-@test "list --export leaves bare set when items run out" {
+@test "export leaves bare set when items run out" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
     local now; now="$(date +%s)"
     _ins_enc "$sid" snorlax "$now"
     _ins_enc "$sid" gengar "$now"
     _ins_item "$sid" leftovers "$now"
-    run "$REPO_ROOT/pokidle" encounters --export
+    run "$REPO_ROOT/pokidle" export
     [ "$status" -eq 0 ]
     local n; n="$(grep -c '@ ' <<< "$output")"
     [ "$n" -eq 1 ]
 }
 
-@test "list --export honors --since/--until window" {
+@test "export honors --since/--until window" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
     local now old; now="$(date +%s)"; old=$((now - 60*86400))
@@ -114,19 +114,19 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     local s u
     s="$(date -d "@$((old - 86400))" +%F)"
     u="$(date -d "@$((old + 86400))" +%F)"
-    run "$REPO_ROOT/pokidle" encounters --export --since "$s" --until "$u"
+    run "$REPO_ROOT/pokidle" export --since "$s" --until "$u"
     [ "$status" -eq 0 ]
     [[ "$output" == *"Gengar"* ]]
     [[ "$output" != *"Snorlax"* ]]
 }
 
-@test "list --export honors --shiny filter" {
+@test "export honors --shiny filter" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
     local now; now="$(date +%s)"
     _ins_enc "$sid" gengar "$now" 1
     _ins_enc "$sid" pidgey "$now" 0
-    run "$REPO_ROOT/pokidle" encounters --export --shiny
+    run "$REPO_ROOT/pokidle" export --shiny
     [ "$status" -eq 0 ]
     [[ "$output" == *"Gengar"* ]]
     [[ "$output" != *"Pidgey"* ]]
@@ -253,7 +253,7 @@ _seed_pokeapi_cache() {
     [[ "$output" == *"zubat"* ]]
 }
 
-@test "pokidle encounters --export emits showdown set text" {
+@test "pokidle export emits showdown set text" {
     sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
     local sid
     sid="$(sqlite3 "$POKIDLE_DB_PATH" \
@@ -272,7 +272,7 @@ _seed_pokeapi_cache() {
             142,198,95,129,95,152,
             '[\"leaf-blade\",\"dragon-claw\",\"earthquake\",\"x-scissor\"]', NULL);"
 
-    run "$REPO_ROOT/pokidle" encounters --export
+    run "$REPO_ROOT/pokidle" export
     [ "$status" -eq 0 ]
     [[ "$output" == *"Sceptile @ Sitrus Berry"* ]]
     [[ "$output" == *"Adamant Nature"* ]]
@@ -327,7 +327,7 @@ _seed_pokeapi_cache() {
     [ "$n" = "0" ]
 }
 
-@test "list --export omits evolution-stone drops as held items" {
+@test "export omits evolution-stone drops as held items" {
     _seed_schema
     sqlite3 "$POKIDLE_DB_PATH" "
         INSERT INTO biome_sessions(biome_id, started_at) VALUES ('glacier', 1700000000);
@@ -342,14 +342,36 @@ _seed_pokeapi_cache() {
         INSERT INTO item_drops(session_id, encountered_at, item) VALUES
             (1, 1700000100, 'ice-stone');"
     # Explicit window covers the seeded epoch so the encounter + drop are
-    # in-scope. ice-stone is the ONLY drop, so without the evolution-item
-    # filter it would be the sole held-item candidate and get assigned.
-    run "$REPO_ROOT/pokidle" encounters --export --since @1700000000 --until @1700000200
+    # in-scope. ice-stone is the ONLY drop, so without the Showdown-legal gate
+    # it would be the sole held-item candidate and get assigned.
+    run "$REPO_ROOT/pokidle" export --since @1700000000 --until @1700000200
     [ "$status" -eq 0 ]
     # Non-vacuous: the team actually exported the species.
     grep -qi "sneasel" <<< "$output"
     # The evolution stone must not appear as a held item.
     ! grep -qi "ice-stone" <<< "$output"
+}
+
+@test "export omits Showdown-illegal junk drops as held items" {
+    _seed_schema
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('glacier', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, held_berry, friendship,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe,
+            ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe,
+            moves_json, sprite_path)
+        VALUES (1, 1700000100, 'sneasel', 215, 40, 'hardy', 'inner-focus', 0, 'male', 0, NULL, 70,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 120,100,100,80,80,110, '[\"ice-punch\"]', NULL);
+        INSERT INTO item_drops(session_id, encountered_at, item) VALUES
+            (1, 1700000100, 'exp-share');"
+    # exp-share is a legacy/junk drop Showdown rejects. It is the ONLY drop, so
+    # the only way it stays out of the team is the Showdown-legal gate.
+    run "$REPO_ROOT/pokidle" export --since @1700000000 --until @1700000200
+    [ "$status" -eq 0 ]
+    grep -qi "sneasel" <<< "$output"
+    ! grep -qi "exp" <<< "$output"
 }
 
 @test "items hides consumed by default, --all shows them marked (used)" {

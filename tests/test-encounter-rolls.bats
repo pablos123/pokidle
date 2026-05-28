@@ -299,7 +299,7 @@ EOF
     out="$(encounter_roll_item forest)"
     item="$(jq -r '.item' <<< "$out")"
     case "$item" in
-        miracle-seed|meadow-plate|rose-incense|rindo-berry|leftovers|\
+        miracle-seed|meadow-plate|rindo-berry|leftovers|\
         leaf-stone|sun-stone|\
         silver-powder|insect-plate|shed-shell|tanga-berry) : ;;
         *) printf 'unexpected item for forest biome: %s\n' "$item" >&2; return 1 ;;

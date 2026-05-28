@@ -17,41 +17,109 @@ fi
 
 # Held items by PokeAPI type. Each type maps to a space-separated string of item names.
 if [[ -z "${ENCOUNTER_HELD_ITEMS_BY_TYPE[*]:-}" ]]; then
+    # Every item here is a valid Pokémon Showdown held item, so any team the
+    # export command builds is legal. Trade-evolution items (magmarizer,
+    # up-grade, …) and bag junk (exp-share, incenses, …) are deliberately absent:
+    # the former live in ENCOUNTER_EVOLUTION_ITEMS_BY_TYPE, the latter nowhere.
     declare -grA ENCOUNTER_HELD_ITEMS_BY_TYPE=(
-        [normal]="silk-scarf chilan-berry lucky-egg"
-        [fire]="charcoal flame-plate heat-rock occa-berry magmarizer smoke-ball"
-        [water]="mystic-water sea-incense wave-incense splash-plate wacan-berry kings-rock prism-scale shell-bell"
-        [electric]="magnet zap-plate cell-battery wacan-berry up-grade dubious-disc electirizer"
-        [grass]="miracle-seed meadow-plate rose-incense rindo-berry leftovers"
+        [normal]="silk-scarf chilan-berry"
+        [fire]="charcoal flame-plate heat-rock occa-berry"
+        [water]="mystic-water splash-plate wacan-berry kings-rock shell-bell"
+        [electric]="magnet zap-plate cell-battery wacan-berry"
+        [grass]="miracle-seed meadow-plate rindo-berry leftovers"
         [ice]="never-melt-ice icicle-plate icy-rock yache-berry"
         [fighting]="black-belt fist-plate muscle-band chople-berry"
         [poison]="poison-barb toxic-plate black-sludge kebia-berry"
-        [ground]="soft-sand earth-plate shuca-berry razor-fang protector"
-        [flying]="sharp-beak sky-plate pretty-feather coba-berry"
-        [psychic]="twisted-spoon mind-plate odd-incense payapa-berry exp-share"
+        [ground]="soft-sand earth-plate shuca-berry razor-fang"
+        [flying]="sharp-beak sky-plate coba-berry"
+        [psychic]="twisted-spoon mind-plate payapa-berry"
         [bug]="silver-powder insect-plate shed-shell tanga-berry"
-        [rock]="hard-stone stone-plate rock-incense charti-berry everstone"
-        [ghost]="spell-tag spooky-plate reaper-cloth kasib-berry amulet-coin"
-        [dragon]="dragon-fang draco-plate dragon-scale haban-berry"
+        [rock]="hard-stone stone-plate charti-berry"
+        [ghost]="spell-tag spooky-plate kasib-berry"
+        [dragon]="dragon-fang draco-plate haban-berry"
         [dark]="black-glasses dread-plate scope-lens colbur-berry razor-claw"
-        [steel]="metal-coat iron-plate metal-powder"
-        [fairy]="pixie-plate roseli-berry soothe-bell"
+        [steel]="metal-coat iron-plate"
+        [fairy]="pixie-plate roseli-berry"
     )
 fi
 
 # Evolution-trigger items, consumed on use. Tagged "evolution": they drop and
 # are consumed like held items, but are never offered as Showdown held items.
 if [[ -z "${ENCOUNTER_EVOLUTION_ITEMS_BY_TYPE[*]:-}" ]]; then
+    # Keyed by the evolving species' type so the item drops where that species
+    # appears. Trade-evo items (magmarizer/up-grade/…) sit here too: they drop
+    # and are consumed to trigger trade evolutions, but are never exported.
     declare -grA ENCOUNTER_EVOLUTION_ITEMS_BY_TYPE=(
-        [fire]="fire-stone"
-        [water]="water-stone"
-        [electric]="thunder-stone"
+        [fire]="fire-stone magmarizer"
+        [water]="water-stone dragon-scale prism-scale"
+        [electric]="thunder-stone electirizer"
         [grass]="leaf-stone sun-stone"
         [ice]="ice-stone"
         [fairy]="moon-stone shiny-stone"
-        [ghost]="dusk-stone"
+        [ghost]="dusk-stone reaper-cloth"
         [psychic]="dawn-stone"
-        [normal]="oval-stone"
+        [normal]="oval-stone up-grade dubious-disc"
+        [ground]="protector"
+    )
+fi
+
+# Every held item / berry Pokémon Showdown accepts on a set, as a slug->1 set
+# for O(1) membership. Sourced from Showdown's own item dex; the export command
+# gates each candidate on it (see encounter_item_is_showdown_legal). Excludes
+# Showdown's "Useless items" group: Poké Balls, evolution stones, sweets,
+# bottle caps, trade-evo items. Update when Showdown's legal item list changes.
+if [[ -z "${ENCOUNTER_SHOWDOWN_ITEMS[*]:-}" ]]; then
+    declare -grA ENCOUNTER_SHOWDOWN_ITEMS=(
+        # Stat/choice/utility items
+        [air-balloon]=1 [assault-vest]=1 [choice-band]=1 [choice-scarf]=1
+        [choice-specs]=1 [expert-belt]=1 [focus-sash]=1 [heavy-duty-boots]=1
+        [leftovers]=1 [life-orb]=1 [loaded-dice]=1 [mental-herb]=1
+        [power-herb]=1 [rocky-helmet]=1 [ability-shield]=1 [absorb-bulb]=1
+        [adrenaline-orb]=1 [black-belt]=1 [black-glasses]=1 [black-sludge]=1
+        [blunder-policy]=1 [booster-energy]=1 [bright-powder]=1 [cell-battery]=1
+        [charcoal]=1 [clear-amulet]=1 [covert-cloak]=1 [damp-rock]=1
+        [draco-plate]=1 [dragon-fang]=1 [dread-plate]=1 [earth-plate]=1
+        [eject-button]=1 [eject-pack]=1 [electric-seed]=1 [fairy-feather]=1
+        [fist-plate]=1 [flame-orb]=1 [flame-plate]=1 [grassy-seed]=1
+        [grip-claw]=1 [hard-stone]=1 [heat-rock]=1 [icicle-plate]=1
+        [icy-rock]=1 [insect-plate]=1 [iron-plate]=1 [kings-rock]=1
+        [lagging-tail]=1 [light-clay]=1 [luminous-moss]=1 [magnet]=1
+        [meadow-plate]=1 [metal-coat]=1 [metronome]=1 [mind-plate]=1
+        [miracle-seed]=1 [mirror-herb]=1 [misty-seed]=1 [muscle-band]=1
+        [mystic-water]=1 [never-melt-ice]=1 [normal-gem]=1 [pixie-plate]=1
+        [poison-barb]=1 [pretty-feather]=1 [protective-pads]=1 [psychic-seed]=1
+        [punching-glove]=1 [quick-claw]=1 [razor-claw]=1 [razor-fang]=1
+        [red-card]=1 [room-service]=1 [safety-goggles]=1 [scope-lens]=1
+        [sharp-beak]=1 [shed-shell]=1 [shell-bell]=1 [silk-scarf]=1
+        [silver-powder]=1 [sky-plate]=1 [smooth-rock]=1 [snowball]=1
+        [soft-sand]=1 [spell-tag]=1 [splash-plate]=1 [spooky-plate]=1
+        [sticky-barb]=1 [stone-plate]=1 [terrain-extender]=1 [throat-spray]=1
+        [toxic-orb]=1 [toxic-plate]=1 [twisted-spoon]=1 [utility-umbrella]=1
+        [weakness-policy]=1 [white-herb]=1 [wide-lens]=1 [wise-glasses]=1
+        [zap-plate]=1 [zoom-lens]=1 [big-root]=1 [binding-band]=1
+        [destiny-knot]=1 [float-stone]=1 [focus-band]=1 [iron-ball]=1
+        [power-anklet]=1 [power-band]=1 [power-belt]=1 [power-bracer]=1
+        [power-lens]=1 [power-weight]=1 [ring-target]=1
+        # Pokémon-specific items
+        [adamant-crystal]=1 [adamant-orb]=1 [cornerstone-mask]=1
+        [griseous-core]=1 [griseous-orb]=1 [hearthflame-mask]=1 [light-ball]=1
+        [lustrous-globe]=1 [lustrous-orb]=1 [rusted-shield]=1 [rusted-sword]=1
+        [soul-dew]=1 [wellspring-mask]=1
+        # Berries
+        [aguav-berry]=1 [apicot-berry]=1 [aspear-berry]=1 [babiri-berry]=1
+        [charti-berry]=1 [cheri-berry]=1 [chesto-berry]=1 [chilan-berry]=1
+        [chople-berry]=1 [coba-berry]=1 [colbur-berry]=1 [custap-berry]=1
+        [enigma-berry]=1 [figy-berry]=1 [ganlon-berry]=1 [grepa-berry]=1
+        [haban-berry]=1 [hondew-berry]=1 [iapapa-berry]=1 [jaboca-berry]=1
+        [kasib-berry]=1 [kebia-berry]=1 [kee-berry]=1 [kelpsy-berry]=1
+        [lansat-berry]=1 [leppa-berry]=1 [liechi-berry]=1 [lum-berry]=1
+        [mago-berry]=1 [maranga-berry]=1 [micle-berry]=1 [occa-berry]=1
+        [oran-berry]=1 [passho-berry]=1 [payapa-berry]=1 [pecha-berry]=1
+        [persim-berry]=1 [petaya-berry]=1 [pomeg-berry]=1 [qualot-berry]=1
+        [rawst-berry]=1 [rindo-berry]=1 [roseli-berry]=1 [rowap-berry]=1
+        [salac-berry]=1 [shuca-berry]=1 [sitrus-berry]=1 [starf-berry]=1
+        [tamato-berry]=1 [tanga-berry]=1 [wacan-berry]=1 [wiki-berry]=1
+        [yache-berry]=1
     )
 fi
 
@@ -80,6 +148,17 @@ function encounter_item_is_evolution {
         done
     done
     return 1
+}
+
+# encounter_item_is_showdown_legal <name>
+# True (exit 0) if <name> is a held item/berry that Pokémon Showdown accepts on
+# a set. The export command gates every candidate on this so a team is always
+# importable, regardless of what historical drops are stored. The set is the
+# union of every holdable item and battle berry in Showdown's item dex (the
+# "Useless items" group — Poké Balls, evolution stones, sweets, bottle caps,
+# trade-evo items — is intentionally excluded).
+function encounter_item_is_showdown_legal {
+    [[ -n "${ENCOUNTER_SHOWDOWN_ITEMS[$1]:-}" ]]
 }
 
 # encounter_tier_for_capture_rate <capture_rate>

@@ -65,12 +65,11 @@ Commands:
                             --limit N         Cap rows (default 50)
                             --newest-first    Newest at top (default: bottom)
                             --json            Emit raw JSON
-                            --export          Random Showdown team: up to 6
-                                              distinct species from the current
-                                              week (override window with
-                                              --since/--until), each given a
-                                              distinct held item from item drops
-                                              in the same window
+  export [filters]        Random Pokémon Showdown team: up to 6 distinct
+                          species from the current week (override window with
+                          --since/--until), each given a distinct, Showdown-
+                          legal held item from item drops in the same window.
+                          Accepts the same filters as encounters.
   items [filters]         Pretty list of item drops
                             --since DATE      Drops at/after DATE
                             --until DATE      Drops at/before DATE
@@ -1068,15 +1067,17 @@ function _pokidle_shuffle {
     done
 }
 
-# _pokidle_export_team [filters...]
-# Build a random Showdown export team from stored encounters.
+# pokidle_export [filters...]
+# Print a random Pokémon Showdown team built from stored encounters.
 # Picks up to 6 distinct species within a window (default: current ISO week,
 # overridable via --since/--until), one random encounter per species. Held
 # items are drawn from item_drops in the same window — distinct across the
-# team — with each mon's own berry as one additional candidate. Other list
+# team — with each mon's own berry as one additional candidate. Only items
+# Showdown accepts are assigned, so every team imports cleanly. Other list
 # filters (--shiny/--species/--biome/--nature/--min-iv-total) constrain the
 # encounter pool.
-function _pokidle_export_team {
+function pokidle_export {
+    db_init
     local -a filters=()
     local since_ts=""
     local until_ts=""
@@ -1140,7 +1141,10 @@ function _pokidle_export_team {
     local -a items=()
     local it
     for it in "${cand_items[@]}"; do
-        if encounter_item_is_evolution "${it}"; then
+        # Positive gate: only items Showdown accepts on a set survive, so the
+        # team is always importable even when the window holds legacy junk drops
+        # (items since removed from the pool) or trade-evo items.
+        if ! encounter_item_is_showdown_legal "${it}"; then
             continue
         fi
         items+=("${it}")
@@ -1170,7 +1174,8 @@ function _pokidle_export_team {
         berry="$(jq -r '.held_berry // ""' <<<"${enc}")"
         if [[ -n "${berry}" && "${berry}" != "null" ]]; then
             local berry_item="${berry}-berry"
-            if [[ "${used}" != *"|${berry_item}|"* ]]; then
+            if [[ "${used}" != *"|${berry_item}|"* ]] \
+                && encounter_item_is_showdown_legal "${berry_item}"; then
                 cands+=("${berry_item}")
             fi
         fi
@@ -1195,19 +1200,14 @@ function _pokidle_export_team {
 }
 
 # pokidle_list [filters...]
-# Pretty-print pokemon encounters (or raw JSON with --json, or a Showdown team
-# with --export). Remaining args are db_list_encounters filters.
+# Pretty-print pokemon encounters (or raw JSON with --json). Remaining args are
+# db_list_encounters filters.
 function pokidle_list {
     db_init
-    local -i export_mode=0
     local -i json_mode=0
     local -a args=()
     while (($# > 0)); do
         case "$1" in
-            --export)
-                export_mode=1
-                shift
-                ;;
             --json)
                 json_mode=1
                 shift
@@ -1218,11 +1218,6 @@ function pokidle_list {
                 ;;
         esac
     done
-
-    if ((export_mode)); then
-        _pokidle_export_team "${args[@]}"
-        return
-    fi
 
     local rows
     rows="$(db_list_encounters "${args[@]}")"
@@ -1776,6 +1771,7 @@ if [[ "${POKIDLE_TEST_SKIP_DISPATCH:-0}" == "0" ]]; then
         daemon) pokidle_daemon "$@" ;;
         tick) pokidle_tick "$@" ;;
         encounters) pokidle_list "$@" ;;
+        export) pokidle_export "$@" ;;
         items) pokidle_items "$@" ;;
         stats) pokidle_stats "$@" ;;
         current) pokidle_current "$@" ;;

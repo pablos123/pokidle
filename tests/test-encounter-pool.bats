@@ -316,6 +316,26 @@ EOF
     [ "$status" -ne 0 ]
 }
 
+@test "encounter_item_is_showdown_legal: held items/berries true, junk/evo false" {
+    run encounter_item_is_showdown_legal leftovers
+    [ "$status" -eq 0 ]
+    run encounter_item_is_showdown_legal occa-berry
+    [ "$status" -eq 0 ]
+    # Junk the export must never assign.
+    run encounter_item_is_showdown_legal exp-share
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal soothe-bell
+    [ "$status" -ne 0 ]
+    # Evolution + trade-evo items are excluded.
+    run encounter_item_is_showdown_legal ice-stone
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal magmarizer
+    [ "$status" -ne 0 ]
+    # Non-battle berry is excluded.
+    run encounter_item_is_showdown_legal razz-berry
+    [ "$status" -ne 0 ]
+}
+
 @test "_encounter_item_pool: ice biome includes ice-stone, excludes fire-stone" {
     run _encounter_item_pool glacier   # types: ice, fairy
     [ "$status" -eq 0 ]
