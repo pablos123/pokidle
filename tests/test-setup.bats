@@ -87,6 +87,25 @@ EOF
     grep -q '"old":1' "$cached"
 }
 
+@test "pokidle setup installs bash completion symlinks (no root)" {
+    run "$REPO_ROOT/pokidle" setup
+    [ "$status" -eq 0 ]
+    local compdir="$XDG_DATA_HOME/bash-completion/completions"
+    [ -L "$compdir/pokidle" ]
+    [ -L "$compdir/pokeapi" ]
+    [ "$(readlink "$compdir/pokidle")" = "$REPO_ROOT/share/completions/pokidle.bash" ]
+}
+
+@test "pokidle uninstall removes the bash completion symlinks" {
+    "$REPO_ROOT/pokidle" setup
+    local compdir="$XDG_DATA_HOME/bash-completion/completions"
+    [ -L "$compdir/pokidle" ]
+    run "$REPO_ROOT/pokidle" uninstall
+    [ "$status" -eq 0 ]
+    [ ! -L "$compdir/pokidle" ]
+    [ ! -L "$compdir/pokeapi" ]
+}
+
 @test "pokidle uninstall removes the asset symlinks" {
     "$REPO_ROOT/pokidle" setup
     [ -L "$XDG_DATA_HOME/pokidle/biomes" ]

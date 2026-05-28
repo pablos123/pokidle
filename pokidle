@@ -1688,6 +1688,22 @@ function pokidle_setup {
         *) printf 'warning: %s is not in PATH — add it to your shell rc\n' "${bindir}" >&2 ;;
     esac
 
+    # 3b. Bash completion. The bash-completion package lazy-loads a file named
+    #     after the command from the per-user dir below (no root needed). One
+    #     completion file registers both CLIs, so symlink it under each name.
+    local comp_src="${POKIDLE_REPO_ROOT}/share/completions/pokidle.bash"
+    local comp_dir="${XDG_DATA_HOME:-${HOME}/.local/share}/bash-completion/completions"
+    if [[ -f "${comp_src}" ]]; then
+        mkdir -p -- "${comp_dir}"
+        local comp_name
+        for comp_name in pokidle pokeapi; do
+            if ((force)) || [[ ! -e "${comp_dir}/${comp_name}" ]]; then
+                ln -sf -- "${comp_src}" "${comp_dir}/${comp_name}"
+                printf 'symlinked %s -> %s\n' "${comp_dir}/${comp_name}" "${comp_src}"
+            fi
+        done
+    fi
+
     # 4. Systemd unit
     local sd_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
     mkdir -p -- "${sd_dir}"
@@ -1730,6 +1746,13 @@ function pokidle_uninstall {
     rm -f -- "${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user/pokidle.service"
     rm -f -- "${HOME}/.local/bin/pokidle"
     rm -f -- "${HOME}/.local/bin/pokeapi"
+    local comp_dir="${XDG_DATA_HOME:-${HOME}/.local/share}/bash-completion/completions"
+    local comp_name
+    for comp_name in pokidle pokeapi; do
+        if [[ -L "${comp_dir}/${comp_name}" ]]; then
+            rm -f -- "${comp_dir}/${comp_name}"
+        fi
+    done
     local asset
     for asset in biomes notify sounds; do
         local dst="${POKIDLE_DATA_DIR}/${asset}"
