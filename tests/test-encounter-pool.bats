@@ -150,6 +150,25 @@ setup() {
     [ "$(entry_of sceptile   | jq -r '.max')" = "46" ]
 }
 
+@test "build_pool: berry-list fetch failure fails the build (no silent berryless pool)" {
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib biome
+    load_lib encounter
+    stub_pokeapi
+    # Wrap the fixture stub so only the berry index fetch fails, mimicking a
+    # transient network error. build_pool must surface that, not ship a pool
+    # with zero berries.
+    eval "$(declare -f pokeapi_get | sed '1s/^pokeapi_get/_fixture_pokeapi_get/')"
+    pokeapi_get() {
+        if [[ "$1" == "berry?limit=100" ]]; then return 1; fi
+        _fixture_pokeapi_get "$@"
+    }
+    run encounter_build_pool forest
+    [ "$status" -ne 0 ]
+}
+
 @test "encounter_pool_save writes schema:3 and tiers wrapper" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR

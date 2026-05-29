@@ -767,7 +767,10 @@ function encounter_build_pool {
     # 4. Derive berries by natural_gift_type intersection with biome.types.
     local berries_json='[]'
     local berry_list
-    berry_list="$(pokeapi_get "berry?limit=100" | jq -r '.results[].name')"
+    if ! berry_list="$(pokeapi_get "berry?limit=100")"; then
+        return 1
+    fi
+    berry_list="$(jq -r '.results[].name' <<<"${berry_list}")"
     local types_array
     types_array="$(biome_types_for "${biome_id}" | jq -R . | jq -s -c .)"
     local berry
