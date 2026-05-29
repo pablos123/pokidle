@@ -419,6 +419,28 @@ _seed_pokeapi_cache() {
     [ "$n" = "0" ]
 }
 
+@test "pokidle tick pokemon (non-json): stdout includes ability and moves like the notification" {
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
+
+    local pool='{"biome":"cave","built_at":"2026-05-08T00:00:00Z","schema":3,"tiers":{"common":[{"species":"treecko","min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}'
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
+
+    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+
+    run "$REPO_ROOT/pokidle" tick pokemon --dry-run --no-notify
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"treecko"* ]]
+    [[ "$output" =~ (overgrow|unburden) ]]
+    [[ "$output" == *"moves:"* ]]
+    [[ "$output" == *"ivs:"* ]]
+    [[ "$output" == *"evs:"* ]]
+}
+
 @test "export omits evolution-stone drops as held items" {
     _seed_schema
     sqlite3 "$POKIDLE_DB_PATH" "

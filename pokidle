@@ -403,6 +403,28 @@ function _pokidle_shutdown {
     printf 'pokidle: shutting down (session #%s left open)\n' "${sid}" >&2
 }
 
+# _pokidle_print_encounter <lead> <enc_with_meta>
+# Print a multi-line encounter summary to stdout, mirroring the desktop
+# notification: shiny/legendary prefix, level, species, nature, ability, moves,
+# held berry, and biome. <lead> is the line prefix (e.g. "pokemon" or
+# "legendary").
+function _pokidle_print_encounter {
+    local lead="$1"
+    local enc="$2"
+    jq -r --arg lead "${lead}" '
+        (if (.shiny | tostring) == "1" and (.is_legendary // false) then "[SHINY LEGENDARY ✨⚡] "
+         elif (.is_legendary // false) then "[LEGENDARY ⚡] "
+         elif (.shiny | tostring) == "1" then "[SHINY ✨] "
+         else "" end) as $pfx
+        | "\($lead): \($pfx)lvl \(.level) \(.species) · \(.nature) · \(.ability)",
+          "  ivs: \((.ivs // []) | map(tostring) | join("/")) (hp/atk/def/spa/spd/spe)",
+          "  evs: \((.evs // []) | map(tostring) | join("/")) (hp/atk/def/spa/spd/spe)",
+          "  moves: \((.moves // []) | join(", "))",
+          (if (.held_berry // "") != "" then "  held: \(.held_berry)" else empty end),
+          "  biome: \(.biome_label)"
+    ' <<<"${enc}"
+}
+
 # pokidle_tick <kind> [flags]
 # Run a single roll. kind: pokemon | item (level/friendship/evolve/legendary
 # dispatch to their own functions). Flags: --dry-run (default) / --no-dry-run /
@@ -514,7 +536,7 @@ function pokidle_tick {
             if ((emit_json)); then
                 printf '%s\n' "${enc_with_meta}"
             else
-                jq -r '"pokemon: \(.species) lvl \(.level) \(.nature) [\(.biome_label)]"' <<<"${enc_with_meta}"
+                _pokidle_print_encounter pokemon "${enc_with_meta}"
             fi
             ;;
         item)
@@ -1003,7 +1025,7 @@ function pokidle_tick_legendary {
     if ((emit_json)); then
         printf '%s\n' "${enc_with_meta}"
     else
-        jq -r '"legendary: \(.species) lvl \(.level) [\(.biome_label)]"' <<<"${enc_with_meta}"
+        _pokidle_print_encounter legendary "${enc_with_meta}"
     fi
 }
 
