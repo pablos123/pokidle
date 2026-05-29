@@ -64,6 +64,7 @@ Commands:
                             --min-iv-total N  Min summed IVs
                             --limit N         Cap rows (default 50)
                             --newest-first    Newest at top (default: bottom)
+                            --no-images       Skip inline sprite previews
                             --json            Emit raw JSON
   export [filters]        Random Pokémon Showdown team: up to 6 distinct
                           species from the current week (override window with
@@ -78,6 +79,7 @@ Commands:
                             --limit N         Cap rows (default 50)
                             --all             Include used (consumed) drops
                             --newest-first    Newest at top (default: bottom)
+                            --no-images       Skip inline sprite previews
                             --json            Emit raw JSON
   stats                   Aggregates: totals, shinies, by biome, top species
   current [--items|--encounters]
@@ -1240,11 +1242,16 @@ function pokidle_export {
 function pokidle_list {
     db_init
     local -i json_mode=0
+    local -i no_images=0
     local -a args=()
     while (($# > 0)); do
         case "$1" in
             --json)
                 json_mode=1
+                shift
+                ;;
+            --no-images)
+                no_images=1
                 shift
                 ;;
             *)
@@ -1294,12 +1301,14 @@ function pokidle_list {
         biome="$(jq -r '.biome_id' <<<"${enc}")"
         local ts
         ts="$(jq -r '.encountered_at' <<<"${enc}")"
-        local sprite
-        sprite="$(jq -r '.sprite_path // ""' <<<"${enc}")"
-        if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
-            sprite="$(_pokidle_pokemon_sprite "${sp}" "${shiny}")"
+        if ((! no_images)); then
+            local sprite
+            sprite="$(jq -r '.sprite_path // ""' <<<"${enc}")"
+            if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
+                sprite="$(_pokidle_pokemon_sprite "${sp}" "${shiny}")"
+            fi
+            _pokidle_render_sprite "${sprite}"
         fi
-        _pokidle_render_sprite "${sprite}"
         local shiny_mark=""
         if [[ "${shiny}" == "1" ]]; then
             shiny_mark=" ✨"
@@ -1325,11 +1334,16 @@ function pokidle_list {
 function pokidle_items {
     db_init
     local -i json_mode=0
+    local -i no_images=0
     local -a args=()
     while (($# > 0)); do
         case "$1" in
             --json)
                 json_mode=1
+                shift
+                ;;
+            --no-images)
+                no_images=1
                 shift
                 ;;
             --all)
@@ -1370,12 +1384,14 @@ function pokidle_items {
         biome="$(jq -r '.biome_id' <<<"${d}")"
         local item
         item="$(jq -r '.item' <<<"${d}")"
-        local sprite
-        sprite="$(jq -r '.sprite_path // ""' <<<"${d}")"
-        if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
-            sprite="$(_pokidle_item_sprite "${item}")"
+        if ((! no_images)); then
+            local sprite
+            sprite="$(jq -r '.sprite_path // ""' <<<"${d}")"
+            if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
+                sprite="$(_pokidle_item_sprite "${item}")"
+            fi
+            _pokidle_render_sprite "${sprite}"
         fi
-        _pokidle_render_sprite "${sprite}"
         local consumed_at
         consumed_at="$(jq -r '.consumed_at // ""' <<<"${d}")"
         local marker=""

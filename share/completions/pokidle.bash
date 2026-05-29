@@ -52,7 +52,7 @@ switch-biome clean setup uninstall status help"
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
---limit --newest-first --json" -- "${cur}")
+--limit --newest-first --no-images --json" -- "${cur}")
             fi
             ;;
         export)
@@ -65,7 +65,7 @@ switch-biome clean setup uninstall status help"
         items)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
---since --until --biome --item --limit --all --newest-first --json" -- "${cur}")
+--since --until --biome --item --limit --all --newest-first --no-images --json" -- "${cur}")
             fi
             ;;
         current)
