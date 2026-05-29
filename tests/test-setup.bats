@@ -42,6 +42,18 @@ teardown() {
     grep -qF -- 'restart pokidle.service' "$HOME/systemctl.log"
 }
 
+@test "pokidle setup refreshes a stale unit file without --force" {
+    local unit="$XDG_CONFIG_HOME/systemd/user/pokidle.service"
+    mkdir -p "${unit%/*}"
+    # Simulate an old install whose ExecStart predates `daemon run`.
+    printf '[Service]\nExecStart=%%h/.local/bin/pokidle daemon\n' > "$unit"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    [ "$status" -eq 0 ]
+    # setup must overwrite the app-owned unit with the current repo copy.
+    diff "$unit" "$REPO_ROOT/systemd/pokidle.service"
+    grep -qF -- 'daemon run' "$unit"
+}
+
 @test "pokidle setup --no-enable installs without starting or restarting the unit" {
     run "$REPO_ROOT/pokidle" setup --no-enable
     [ "$status" -eq 0 ]
@@ -78,7 +90,7 @@ EOF
     [[ "$out" == *"schema=1"* ]]
 }
 
-@test "pokidle setup keeps existing cached pool (no --force)" {
+@test "pokidle setup keeps existing cached pool" {
     mkdir -p "$REPO_ROOT/share/pools" "$XDG_CACHE_HOME/pokidle/pools"
     local fixture="$REPO_ROOT/share/pools/_bats_keep.json"
     local cached="$XDG_CACHE_HOME/pokidle/pools/_bats_keep.json"
@@ -89,6 +101,22 @@ EOF
     rm -f "$fixture"
     [ "$status_ok" -eq 0 ]
     grep -q '"old":1' "$cached"
+}
+
+@test "pokidle setup rejects the removed --force flag" {
+    run "$REPO_ROOT/pokidle" setup --force
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"unknown flag"* ]]
+}
+
+@test "pokidle setup re-points a stale asset symlink" {
+    local link="$XDG_DATA_HOME/pokidle/biomes"
+    mkdir -p "${link%/*}"
+    # Valid but wrong target (e.g. repo was moved): must still be refreshed.
+    ln -sfn "$BATS_TMPDIR" "$link"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    [ "$status" -eq 0 ]
+    [ "$(readlink "$link")" = "$REPO_ROOT/share/biomes" ]
 }
 
 @test "pokidle setup installs bash completion symlinks (no root)" {

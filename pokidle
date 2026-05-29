@@ -1765,15 +1765,16 @@ function pokidle_switch_biome {
     printf 'switched to %s (session %s)\n' "${biome}" "${new_sid}"
 }
 
-# pokidle_setup [--no-enable] [--force]
+# pokidle_setup [--no-enable]
 # Install config, assets, shipped pools, bin symlinks, and the systemd user
-# unit, then enable+start it (--no-enable installs only; --force overwrites).
+# unit, then enable+start it (--no-enable installs only). App-owned artifacts
+# (unit + symlinks) are always refreshed; an existing pool cache is left intact
+# (use `rebuild-pool` to regenerate pools).
 # Setup installs *and* activates the service: pokidle is a daemon, so an
 # install that didn't start it would be useless. Pass --no-enable to only
 # install the unit (then start it yourself), or `uninstall` to reverse.
 function pokidle_setup {
     local -i enable=1
-    local -i force=0
     while (($# > 0)); do
         case "$1" in
             --enable)
@@ -1782,10 +1783,6 @@ function pokidle_setup {
                 ;; # back-compat no-op (default)
             --no-enable)
                 enable=0
-                shift
-                ;;
-            --force)
-                force=1
                 shift
                 ;;
             *)
@@ -1830,10 +1827,9 @@ function pokidle_setup {
         if [[ ! -d "${src}" ]]; then
             continue
         fi
-        if ((force)) || [[ ! -e "${dst}" ]]; then
-            ln -sfn -- "${src}" "${dst}"
-            printf 'symlinked %s -> %s\n' "${dst}" "${src}"
-        fi
+        # App-owned pointer: always refresh so a moved repo never leaves it stale.
+        ln -sfn -- "${src}" "${dst}"
+        printf 'symlinked %s -> %s\n' "${dst}" "${src}"
     done
 
     # 2c. Seed encounter pools from share/pools so first run skips the
@@ -1849,7 +1845,7 @@ function pokidle_setup {
         for ship_pool in "${ship_pools}"/*.json; do
             local name="${ship_pool##*/}"
             local dst="${cache_pools}/${name}"
-            if [[ -f "${dst}" ]] && ((!force)); then
+            if [[ -f "${dst}" ]]; then
                 skipped=$((skipped + 1))
                 continue
             fi
@@ -1866,21 +1862,17 @@ function pokidle_setup {
             printf 'seeded %d pool(s) into %s\n' "${seeded}" "${cache_pools}"
         fi
         if ((skipped > 0)); then
-            printf 'kept %d existing pool(s) (use --force to overwrite)\n' "${skipped}"
+            printf 'kept %d existing pool(s) (run rebuild-pool to regenerate)\n' "${skipped}"
         fi
     fi
 
     # 3. Symlink pokidle into ~/.local/bin
     local bindir="${HOME}/.local/bin"
     mkdir -p -- "${bindir}"
-    if ((force)) || [[ ! -e "${bindir}/pokidle" ]]; then
-        ln -sf -- "${POKIDLE_REPO_ROOT}/pokidle" "${bindir}/pokidle"
-        printf 'symlinked %s -> %s\n' "${bindir}/pokidle" "${POKIDLE_REPO_ROOT}/pokidle"
-    fi
-    if ((force)) || [[ ! -e "${bindir}/pokeapi" ]]; then
-        ln -sf -- "${POKIDLE_REPO_ROOT}/pokeapi" "${bindir}/pokeapi"
-        printf 'symlinked %s -> %s\n' "${bindir}/pokeapi" "${POKIDLE_REPO_ROOT}/pokeapi"
-    fi
+    ln -sf -- "${POKIDLE_REPO_ROOT}/pokidle" "${bindir}/pokidle"
+    printf 'symlinked %s -> %s\n' "${bindir}/pokidle" "${POKIDLE_REPO_ROOT}/pokidle"
+    ln -sf -- "${POKIDLE_REPO_ROOT}/pokeapi" "${bindir}/pokeapi"
+    printf 'symlinked %s -> %s\n' "${bindir}/pokeapi" "${POKIDLE_REPO_ROOT}/pokeapi"
     case ":${PATH}:" in
         *":${bindir}:"*) ;;
         *) printf 'warning: %s is not in PATH — add it to your shell rc\n' "${bindir}" >&2 ;;
@@ -1895,20 +1887,18 @@ function pokidle_setup {
         mkdir -p -- "${comp_dir}"
         local comp_name
         for comp_name in pokidle pokeapi; do
-            if ((force)) || [[ ! -e "${comp_dir}/${comp_name}" ]]; then
-                ln -sf -- "${comp_src}" "${comp_dir}/${comp_name}"
-                printf 'symlinked %s -> %s\n' "${comp_dir}/${comp_name}" "${comp_src}"
-            fi
+            ln -sf -- "${comp_src}" "${comp_dir}/${comp_name}"
+            printf 'symlinked %s -> %s\n' "${comp_dir}/${comp_name}" "${comp_src}"
         done
     fi
 
-    # 4. Systemd unit
+    # 4. Systemd unit. The unit is app-owned (generated from the repo copy), so
+    #    always refresh it — a stale ExecStart from an older install would crash
+    #    the service. daemon-reload below picks up the new content.
     local sd_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
     mkdir -p -- "${sd_dir}"
-    if ((force)) || [[ ! -f "${sd_dir}/pokidle.service" ]]; then
-        cp -- "${POKIDLE_REPO_ROOT}/systemd/pokidle.service" "${sd_dir}/pokidle.service"
-        printf 'wrote %s\n' "${sd_dir}/pokidle.service"
-    fi
+    cp -- "${POKIDLE_REPO_ROOT}/systemd/pokidle.service" "${sd_dir}/pokidle.service"
+    printf 'wrote %s\n' "${sd_dir}/pokidle.service"
 
     # 5. Reload systemd user units
     if ! systemctl --user daemon-reload; then
