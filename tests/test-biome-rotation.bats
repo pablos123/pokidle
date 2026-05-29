@@ -3,17 +3,14 @@
 load helpers
 
 setup() {
-    POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
-    mkdir -p "$POKIDLE_CONFIG_DIR"
-    cp "$REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
-    export POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR
+    export POKIDLE_CACHE_DIR
     load_lib biome
 }
 
 teardown() {
-    rm -rf "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR"
+    rm -rf "$POKIDLE_CACHE_DIR"
 }
 
 # Write a v2 pool file with N entries spread across common.
@@ -35,7 +32,7 @@ _write_pool() {
     done < <(biome_ids)
     run biome_pick_random
     [ "$status" -eq 0 ]
-    biome_get "$output" >/dev/null
+    biome_exists "$output"
 }
 
 @test "biome_pick_random_excluding never returns the excluded id" {
@@ -50,33 +47,20 @@ _write_pool() {
     done
 }
 
-@test "biome_pick_random_excluding fails if only biome remaining is excluded" {
-    # Patch config to have only 1 biome
-    jq '.biomes = [.biomes[0]] | .fallback_biome = .biomes[0].id' \
-        "$POKIDLE_CONFIG_DIR/biomes.json" > "$POKIDLE_CONFIG_DIR/tmp.json"
-    mv "$POKIDLE_CONFIG_DIR/tmp.json" "$POKIDLE_CONFIG_DIR/biomes.json"
-
-    run biome_pick_random_excluding "$(biome_ids)"
+@test "biome_pick_random_excluding fails if only eligible biome is the excluded one" {
+    # Only one biome has an eligible pool; excluding it leaves nothing.
+    _write_pool forest 50
+    run biome_pick_random_excluding forest
     [ "$status" -ne 0 ]
 }
 
 @test "biome_pick_random skips biomes with pool size <= 10" {
-    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
-    export POKIDLE_CACHE_DIR
-    # Patch config to two biomes; only the second has a populated pool.
-    jq '.biomes = [.biomes[0], .biomes[1]] | .fallback_biome = .biomes[0].id' \
-        "$POKIDLE_CONFIG_DIR/biomes.json" > "$POKIDLE_CONFIG_DIR/tmp.json"
-    mv "$POKIDLE_CONFIG_DIR/tmp.json" "$POKIDLE_CONFIG_DIR/biomes.json"
-    local big small
-    big="$(biome_ids | sed -n 1p)"
-    small="$(biome_ids | sed -n 2p)"
-    _write_pool "$big"   50
-    _write_pool "$small" 5
-
+    _write_pool forest 50
+    _write_pool cave   5
     local i out
     for i in {1..30}; do
         out="$(biome_pick_random)"
-        [ "$out" = "$big" ]
+        [ "$out" = forest ]
     done
 }
 

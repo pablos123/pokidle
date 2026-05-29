@@ -28,7 +28,7 @@ teardown() {
 @test "pokidle setup creates config + unit + symlink and enables the unit" {
     run "$REPO_ROOT/pokidle" setup
     [ "$status" -eq 0 ]
-    [ -f "$XDG_CONFIG_HOME/pokidle/biomes.json" ]
+    [ -d "$XDG_CONFIG_HOME/pokidle" ]
     [ -f "$XDG_CONFIG_HOME/systemd/user/pokidle.service" ]
     [ -L "$HOME/.local/bin/pokidle" ]
     [ -L "$XDG_DATA_HOME/pokidle/biomes" ]
@@ -159,21 +159,6 @@ EOF
     run "$REPO_ROOT/pokidle" setup
     [ "$status" -ne 0 ]
     [[ "$output" == *"enable failed"* ]]
-}
-
-@test "pokidle setup is idempotent (no overwrite without --force)" {
-    "$REPO_ROOT/pokidle" setup
-    echo '{"manual":"edit"}' > "$XDG_CONFIG_HOME/pokidle/biomes.json"
-    "$REPO_ROOT/pokidle" setup
-    run cat "$XDG_CONFIG_HOME/pokidle/biomes.json"
-    [ "$output" = '{"manual":"edit"}' ]
-}
-
-@test "pokidle setup --force overwrites config" {
-    "$REPO_ROOT/pokidle" setup
-    echo '{"manual":"edit"}' > "$XDG_CONFIG_HOME/pokidle/biomes.json"
-    "$REPO_ROOT/pokidle" setup --force
-    cmp -s "$REPO_ROOT/config/biomes.json" "$XDG_CONFIG_HOME/pokidle/biomes.json"
 }
 
 @test "pokidle status prints systemctl + last tick info" {

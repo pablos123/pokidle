@@ -8,27 +8,20 @@
 # System-wide: symlink into your bash-completion completions dir.
 
 # _pokidle_biome_ids
-# Print every biome id, one per line. Resolves biomes.json the same way the
-# pokidle CLI does: POKIDLE_CONFIG_DIR, then XDG config, then the repo config
-# next to this completion file. Silent (and empty) if none is found.
+# Print every biome id, one per line. Lazily sources lib/biome.bash (located
+# next to this completion file) on the first tab so the constants don't load
+# until the user actually completes a biome arg. Silent (and empty) if the
+# lib is missing.
 function _pokidle_biome_ids {
-    local f
-    for f in \
-        "${POKIDLE_CONFIG_DIR:-}/biomes.json" \
-        "${XDG_CONFIG_HOME:-${HOME}/.config}/pokidle/biomes.json" \
-        "${BASH_SOURCE[0]%/*}/../../config/biomes.json"; do
-        if [[ -z "${f}" || ! -f "${f}" ]]; then
-            continue
+    if ! command -v biome_ids >/dev/null 2>&1; then
+        local lib="${BASH_SOURCE[0]%/*}/../../lib/biome.bash"
+        if [[ ! -f "${lib}" ]]; then
+            return 0
         fi
-        if command -v jq >/dev/null 2>&1; then
-            jq -r '.biomes[].id' "${f}"
-        else
-            # Fallback: pull "id" values without jq.
-            grep -oE '"id"[[:space:]]*:[[:space:]]*"[^"]+"' "${f}" |
-                sed -E 's/.*"([^"]+)"$/\1/'
-        fi
-        return 0
-    done
+        # shellcheck disable=SC1090
+        source "${lib}"
+    fi
+    biome_ids
 }
 
 # _pokidle

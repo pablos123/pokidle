@@ -190,7 +190,6 @@ setup() {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/pcache.$$"
     POKIDLE_CONFIG_DIR="$BATS_TMPDIR/pcfg.$$"
     mkdir -p "$POKIDLE_CACHE_DIR/pools" "$POKIDLE_CONFIG_DIR"
-    cp "$REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
     export POKIDLE_DB_PATH POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKIDLE_CONFIG_DIR
 
     cat > "$POKIDLE_CACHE_DIR/pools/orchard.json" <<'EOF'

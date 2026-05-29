@@ -7,7 +7,6 @@ setup() {
     export POKIDLE_DB_PATH
     POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
     mkdir -p "$POKIDLE_CONFIG_DIR"
-    cp "$REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     mkdir -p "$POKIDLE_CACHE_DIR"
     POKIDLE_DATA_DIR="$BATS_TMPDIR/data.$$"

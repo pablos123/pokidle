@@ -9,7 +9,6 @@ setup() {
     POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
     POKIDLE_CONFIG_DIR="$BATS_TMPDIR/pcfg.$$"
     mkdir -p "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR" "$POKEAPI_CACHE_DIR"
-    cp "$REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
     export POKIDLE_DB_PATH POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKEAPI_CACHE_DIR POKIDLE_CONFIG_DIR
 
     # Pre-cache pokeapi responses for stats recompute (rattata).

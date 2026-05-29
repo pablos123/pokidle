@@ -270,7 +270,6 @@ EOF
 @test "encounter_roll_pokemon: full encounter has all required keys" {
     POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
     mkdir -p "$POKIDLE_CONFIG_DIR"
-    cp "$REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
     export POKIDLE_CONFIG_DIR
 
     local entry='{"species":"treecko","min":5,"max":7,"pct":100}'

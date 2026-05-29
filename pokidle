@@ -381,7 +381,7 @@ function _pokidle_announce_biome {
         return 0
     fi
     local label
-    label="$(biome_get "${biome}" | jq -r '.label')"
+    label="$(biome_label "${biome}")"
     local p
     p="$(encounter_pool_path "${biome}")"
     local pool_size
@@ -475,7 +475,7 @@ function pokidle_tick {
         IFS=$'\t' read -r sid biome _ <<<"${row}"
     fi
     local label
-    label="$(biome_get "${biome}" | jq -r '.label')"
+    label="$(biome_label "${biome}")"
 
     case "${kind}" in
         pokemon)
@@ -878,11 +878,11 @@ function pokidle_tick_evolve {
             local sprite_meta
             sprite_meta="$(sqlite3 "${POKIDLE_DB_PATH}" \
                 "SELECT sprite_path FROM encounters WHERE id=${enc_id};")"
-            local biome_label
-            biome_label="$(biome_get "${biome}" | jq -r '.label')"
+            local b_label
+            b_label="$(biome_label "${biome}")"
             local notify_obj
             notify_obj="$(jq -n --arg from "${species}" --arg to "${new_species}" \
-                --arg label "${biome_label}" --arg sp "${sprite_meta}" --arg bid "${biome}" \
+                --arg label "${b_label}" --arg sp "${sprite_meta}" --arg bid "${biome}" \
                 '{from:$from, to:$to, biome_label:$label, sprite_path:$sp, biome_id:$bid}')"
             notify_evolution "${notify_obj}"
         fi
@@ -980,7 +980,7 @@ function pokidle_tick_legendary {
     fi
 
     local label
-    label="$(biome_get "${biome}" | jq -r '.label')"
+    label="$(biome_label "${biome}")"
     local enc_with_meta
     enc_with_meta="$(jq -c \
         --arg label "${label}" --arg sp "${sprite_path}" --arg bid "${biome}" '
@@ -1418,7 +1418,9 @@ function pokidle_current {
         printf 'no active biome\n'
         return 0
     fi
-    local id biome started_at
+    local id
+    local biome
+    local started_at
     IFS=$'\t' read -r id biome started_at <<<"${row}"
 
     case "${mode}" in
@@ -1435,20 +1437,26 @@ function pokidle_current {
 }
 
 # _pokidle_current_summary <session_id> <biome> <started_at>
+# Print the active-biome summary: biome name, session id, pool/item-pool sizes,
+# start time, time remaining, and session encounter/item counts.
 function _pokidle_current_summary {
-    local id="$1" biome="$2" started_at="$3"
+    local id="$1"
+    local biome="$2"
+    local started_at="$3"
     local now
     now="$(date +%s)"
     local -i elapsed=$((now - started_at))
     local -i remaining=$((${POKIDLE_BIOME_HOURS:-3} * 3600 - elapsed))
-    local -i poss_enc=0 poss_item
+    local -i poss_enc=0
     local pool
     if pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
         poss_enc="$(jq '[.tiers[] | length] | add // 0' <<<"${pool}")"
     fi
+    local -i poss_item
     poss_item="$(_encounter_item_pool "${biome}" | wc -l)"
-    local enc_count item_count
+    local enc_count
     enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=${id};")"
+    local item_count
     item_count="$(db_query "SELECT COUNT(*) FROM item_drops WHERE session_id=${id};")"
     printf 'Active biome: %s  (session #%s)\n' "${biome}" "${id}"
     printf 'Possible encounters: %s   Possible items: %s\n' "${poss_enc}" "${poss_item}"
@@ -1633,7 +1641,7 @@ function pokidle_switch_biome {
         printf 'switch-biome: missing biome id\n' >&2
         return 2
     fi
-    if ! biome_get "${biome}" >/dev/null 2>&1; then
+    if ! biome_exists "${biome}"; then
         printf 'switch-biome: unknown biome %s\n' "${biome}" >&2
         return 2
     fi
@@ -1701,12 +1709,8 @@ function pokidle_setup {
         printf 'setup: optional dep missing: chafa (sprite preview in list/items will be skipped)\n'
     fi
 
-    # 1. Config dir + biomes.json
+    # 1. Config dir (biome catalog is hardcoded in lib/biome.bash — no file).
     mkdir -p -- "${POKIDLE_CONFIG_DIR}"
-    if ((force)) || [[ ! -f "${POKIDLE_CONFIG_DIR}/biomes.json" ]]; then
-        cp -- "${POKIDLE_REPO_ROOT}/config/biomes.json" "${POKIDLE_CONFIG_DIR}/biomes.json"
-        printf 'wrote %s\n' "${POKIDLE_CONFIG_DIR}/biomes.json"
-    fi
 
     # 2. Data + cache dirs
     mkdir -p -- "${POKIDLE_DATA_DIR}" "${POKIDLE_CACHE_DIR}"

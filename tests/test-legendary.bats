@@ -6,7 +6,6 @@ setup() {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
     mkdir -p "$POKIDLE_CONFIG_DIR"
-    cp "$REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
     export POKIDLE_REPO_ROOT POKIDLE_CONFIG_DIR
     load_lib legendary
 }

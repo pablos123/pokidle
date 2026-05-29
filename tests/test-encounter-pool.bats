@@ -78,18 +78,11 @@ setup() {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
-    POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
-    export POKIDLE_CONFIG_DIR
-    mkdir -p "$POKIDLE_CONFIG_DIR"
-    cat > "$POKIDLE_CONFIG_DIR/biomes.json" <<EOF
-{ "biomes": [
-    { "id": "testbiome", "label": "Test", "types": ["grass", "bug"] }
-] }
-EOF
     load_lib biome
     load_lib encounter
     stub_pokeapi
-    run encounter_build_pool testbiome
+    # forest is the grass+bug biome in the hardcoded catalog.
+    run encounter_build_pool forest
     [ "$status" -eq 0 ]
     local has_tiers
     has_tiers="$(jq 'has("tiers") and (.tiers | has("common") and has("uncommon") and has("rare") and has("very_rare"))' <<< "$output")"
@@ -110,18 +103,11 @@ EOF
 @test "build_pool: variety-suffixed names from /type collapse to bare species" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
-    POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
-    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKIDLE_CONFIG_DIR
-    mkdir -p "$POKIDLE_CONFIG_DIR"
-    cat > "$POKIDLE_CONFIG_DIR/biomes.json" <<EOF
-{ "biomes": [
-    { "id": "testbiome", "label": "Test", "types": ["grass", "bug"] }
-] }
-EOF
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
     load_lib biome
     load_lib encounter
     stub_pokeapi
-    run encounter_build_pool testbiome
+    run encounter_build_pool forest
     [ "$status" -eq 0 ]
     # /type/bug returns wormadam-{plant,sandy,trash}; all collapse to bare "wormadam".
     local has_bare has_variety
@@ -138,18 +124,11 @@ EOF
 @test "build_pool: min/max levels come from species' own evolution_details" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
-    POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
-    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKIDLE_CONFIG_DIR
-    mkdir -p "$POKIDLE_CONFIG_DIR"
-    cat > "$POKIDLE_CONFIG_DIR/biomes.json" <<EOF
-{ "biomes": [
-    { "id": "testbiome", "label": "Test", "types": ["grass", "bug"] }
-] }
-EOF
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
     load_lib biome
     load_lib encounter
     stub_pokeapi
-    run encounter_build_pool testbiome
+    run encounter_build_pool forest
     [ "$status" -eq 0 ]
 
     entry_of() {
@@ -270,18 +249,13 @@ EOF
 @test "build_pool: attaches berries derived from natural_gift_type" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
-    POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
-    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKIDLE_CONFIG_DIR
-    mkdir -p "$POKIDLE_CONFIG_DIR"
-    cat > "$POKIDLE_CONFIG_DIR/biomes.json" <<EOF
-{ "biomes": [
-    { "id": "watery", "label": "Watery", "types": ["water"] }
-] }
-EOF
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
     load_lib biome
     load_lib encounter
     stub_pokeapi
-    run encounter_build_pool watery
+    # tide-pool is water+bug; chesto (water natural_gift) qualifies, cheri
+    # (fire) does not.
+    run encounter_build_pool tide-pool
     [ "$status" -eq 0 ]
     local has_b
     has_b="$(jq 'has("berries") and (.berries | type == "array")' <<< "$output")"

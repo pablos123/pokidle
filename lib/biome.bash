@@ -1,61 +1,114 @@
 #!/usr/bin/env bash
-# Biome config loader, lookup, rotation.
+# Biome registry, lookup, rotation. The 36 biomes below are the fixed catalog —
+# there is no config file. To change the catalog, edit this file.
 
-# biome_config_path
-# Print the path to biomes.json (config dir preferred, repo root fallback).
-# Returns 1 if neither location has the file.
-function biome_config_path {
-    local path
-    if [[ -n "${POKIDLE_CONFIG_DIR:-}" && -f "${POKIDLE_CONFIG_DIR}/biomes.json" ]]; then
-        path="${POKIDLE_CONFIG_DIR}/biomes.json"
-    elif [[ -n "${POKIDLE_REPO_ROOT:-}" && -f "${POKIDLE_REPO_ROOT}/config/biomes.json" ]]; then
-        path="${POKIDLE_REPO_ROOT}/config/biomes.json"
-    else
-        printf 'biome_config_path: cannot find biomes.json\n' >&2
-        return 1
-    fi
-    printf '%s' "${path}"
-}
+# Ordered list of biome ids. Guarded so the readonly globals survive the
+# repeated re-sourcing the test harness does.
+if [[ -z "${BIOME_IDS[*]:-}" ]]; then
+    declare -gra BIOME_IDS=(
+        forest jungle meadow orchard
+        mountain cave crystal-cavern cliffside
+        desert badlands savanna
+        volcano forge wildfire
+        ocean reef marsh tide-pool
+        tundra glacier frozen-crypt
+        sky storm-coast
+        dragons-nest
+        power-plant cyber-lab live-wire
+        ruins mind-temple
+        graveyard haunted-manor
+        wasteland dojo
+        farm urban cathedral
+    )
+fi
 
-# biome_load
-# Print the raw biomes.json contents. Returns 1 if the file is not found.
-function biome_load {
-    local path
-    if ! path="$(biome_config_path)"; then
-        return 1
-    fi
-    cat "${path}"
-}
+# Display label per biome id.
+if [[ -z "${BIOME_LABELS[*]:-}" ]]; then
+    declare -grA BIOME_LABELS=(
+        [forest]="Forest"
+        [jungle]="Jungle"
+        [meadow]="Meadow"
+        [orchard]="Orchard"
+        [mountain]="Mountain"
+        [cave]="Cave"
+        ["crystal-cavern"]="Crystal Cavern"
+        [cliffside]="Cliffside"
+        [desert]="Desert"
+        [badlands]="Badlands"
+        [savanna]="Savanna"
+        [volcano]="Volcano"
+        [forge]="Forge"
+        [wildfire]="Wildfire"
+        [ocean]="Ocean"
+        [reef]="Reef"
+        [marsh]="Marsh"
+        ["tide-pool"]="Tide Pool"
+        [tundra]="Tundra"
+        [glacier]="Glacier"
+        ["frozen-crypt"]="Frozen Crypt"
+        [sky]="Sky"
+        ["storm-coast"]="Storm Coast"
+        ["dragons-nest"]="Dragon's Nest"
+        ["power-plant"]="Power Plant"
+        ["cyber-lab"]="Cyber Lab"
+        ["live-wire"]="Live Wire"
+        [ruins]="Ruins"
+        ["mind-temple"]="Mind Temple"
+        [graveyard]="Graveyard"
+        ["haunted-manor"]="Haunted Manor"
+        [wasteland]="Wasteland"
+        [dojo]="Dojo"
+        [farm]="Farm"
+        [urban]="Urban"
+        [cathedral]="Cathedral"
+    )
+fi
 
-# biome_get <id>
-# Print the JSON object for biome <id>; return 1 if no such biome.
-function biome_get {
-    local id="$1"
-    local out
-    out="$(biome_load | jq --arg id "${id}" '.biomes[] | select(.id==$id)')"
-    if [[ -z "${out}" ]]; then
-        printf 'biome_get: unknown biome %s\n' "${id}" >&2
-        return 1
-    fi
-    printf '%s' "${out}"
-}
-
-# biome_ids
-# Print every biome id, one per line.
-function biome_ids {
-    biome_load | jq -r '.biomes[].id'
-}
-
-# biome_types_for <id>
-# Print the types of biome <id>, one per line.
-function biome_types_for {
-    local id="$1"
-    biome_get "${id}" | jq -r '.types[]'
-}
+# Space-separated PokeAPI types per biome id. Used by the pool builder
+# (encounter_build_pool) and the berry-natural-gift-type intersection.
+if [[ -z "${BIOME_TYPES[*]:-}" ]]; then
+    declare -grA BIOME_TYPES=(
+        [forest]="grass bug"
+        [jungle]="grass poison"
+        [meadow]="grass fairy"
+        [orchard]="grass normal"
+        [mountain]="rock ground"
+        [cave]="rock dark"
+        ["crystal-cavern"]="rock steel"
+        [cliffside]="rock flying"
+        [desert]="ground fire"
+        [badlands]="ground dark"
+        [savanna]="ground normal"
+        [volcano]="fire dragon"
+        [forge]="fire steel"
+        [wildfire]="fire fighting"
+        [ocean]="water ice"
+        [reef]="water dragon"
+        [marsh]="water poison"
+        ["tide-pool"]="water bug"
+        [tundra]="ice flying"
+        [glacier]="ice fairy"
+        ["frozen-crypt"]="ice ghost"
+        [sky]="flying dragon"
+        ["storm-coast"]="flying electric"
+        ["dragons-nest"]="dragon psychic"
+        ["power-plant"]="electric steel"
+        ["cyber-lab"]="electric psychic"
+        ["live-wire"]="electric fairy"
+        [ruins]="psychic ghost"
+        ["mind-temple"]="psychic fighting"
+        [graveyard]="ghost dark"
+        ["haunted-manor"]="ghost poison"
+        [wasteland]="dark fighting"
+        [dojo]="fighting bug"
+        [farm]="normal bug"
+        [urban]="normal poison"
+        [cathedral]="steel fairy"
+    )
+fi
 
 # Hardcoded PokeAPI primary types. The validator asserts every entry here
-# appears in ≥1 biome's types[]. The guard keeps the readonly global safe to
-# re-source (the lib is sourced once per process normally, repeatedly in tests).
+# appears in ≥1 biome's types[].
 if [[ -z "${BIOME_PRIMARY_TYPES:-}" ]]; then
     declare -gra BIOME_PRIMARY_TYPES=(
         normal fighting flying poison ground rock bug ghost steel
@@ -63,54 +116,76 @@ if [[ -z "${BIOME_PRIMARY_TYPES:-}" ]]; then
     )
 fi
 
-# biome_validate
-# Validate the biome config; return 1 with a diagnostic on the first failure.
-# Rules:
-#   1. Top-level .biomes array present.
-#   2. Each biome has id, label, types[≥1].
-#   3. No duplicate ids.
-#   4. Every BIOME_PRIMARY_TYPES entry is covered by ≥1 biome's types.
-#      Necessary condition for full berry coverage (every berry's
-#      natural_gift_type is one of these 18).
-function biome_validate {
-    local cfg
-    if ! cfg="$(biome_load)"; then
+# biome_exists <id>
+# True (exit 0) if <id> is a known biome.
+function biome_exists {
+    local id="$1"
+    [[ -n "${BIOME_LABELS[${id}]:-}" ]]
+}
+
+# biome_label <id>
+# Print the display label for biome <id>; return 1 if unknown.
+function biome_label {
+    local id="$1"
+    local label="${BIOME_LABELS[${id}]:-}"
+    if [[ -z "${label}" ]]; then
+        printf 'biome_label: unknown biome %s\n' "${id}" >&2
         return 1
     fi
+    printf '%s' "${label}"
+}
 
-    if ! jq -e 'has("biomes")' <<<"${cfg}" >/dev/null; then
-        printf 'biome_validate: missing biomes array\n' >&2
+# biome_ids
+# Print every biome id, one per line, in catalog order.
+function biome_ids {
+    local id
+    for id in "${BIOME_IDS[@]}"; do
+        printf '%s\n' "${id}"
+    done
+}
+
+# biome_types_for <id>
+# Print the types of biome <id>, one per line. Return 1 if unknown.
+function biome_types_for {
+    local id="$1"
+    local raw="${BIOME_TYPES[${id}]:-}"
+    if [[ -z "${raw}" ]]; then
+        printf 'biome_types_for: unknown biome %s\n' "${id}" >&2
         return 1
     fi
-
-    local missing
-    missing="$(jq -r '[.biomes[] | select(
-        (has("id")|not) or (has("label")|not) or
-        (has("types")|not) or ((.types | type) != "array") or (.types | length == 0)
-    ) | (.id // "<no-id>")] | .[]' <<<"${cfg}")"
-    if [[ -n "${missing}" ]]; then
-        printf 'biome_validate: biomes missing keys or empty types: %s\n' "${missing}" >&2
-        return 1
-    fi
-
-    local dupes
-    dupes="$(jq -r '.biomes | group_by(.id) | map(select(length>1) | .[0].id) | .[]' <<<"${cfg}")"
-    if [[ -n "${dupes}" ]]; then
-        printf 'biome_validate: duplicate biome ids: %s\n' "${dupes}" >&2
-        return 1
-    fi
-
-    # Type coverage: every BIOME_PRIMARY_TYPES entry must appear in some biome.
-    local union
-    union="$(jq -r '[.biomes[].types[]] | unique | .[]' <<<"${cfg}")"
+    local -a types
+    read -ra types <<<"${raw}"
     local t
-    for t in "${BIOME_PRIMARY_TYPES[@]}"; do
-        if ! grep --fixed-strings --line-regexp --quiet -- "${t}" <<<"${union}"; then
-            printf 'biome_validate: type %s not covered by any biome\n' "${t}" >&2
+    for t in "${types[@]}"; do
+        printf '%s\n' "${t}"
+    done
+}
+
+# biome_validate
+# Assert every BIOME_PRIMARY_TYPES entry is covered by ≥1 biome's types. This
+# is a necessary condition for full berry coverage (every berry's
+# natural_gift_type is one of these 18). Return 1 with a diagnostic on the
+# first missing type. The id/label/types data is hardcoded above so structural
+# checks are not needed.
+function biome_validate {
+    local -A seen=()
+    local id
+    for id in "${BIOME_IDS[@]}"; do
+        local raw="${BIOME_TYPES[${id}]:-}"
+        local -a types
+        read -ra types <<<"${raw}"
+        local t
+        for t in "${types[@]}"; do
+            seen[${t}]=1
+        done
+    done
+    local primary
+    for primary in "${BIOME_PRIMARY_TYPES[@]}"; do
+        if [[ -z "${seen[${primary}]:-}" ]]; then
+            printf 'biome_validate: type %s not covered by any biome\n' "${primary}" >&2
             return 1
         fi
     done
-
     return 0
 }
 

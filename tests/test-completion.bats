@@ -5,7 +5,6 @@ load helpers
 setup() {
     POKIDLE_CONFIG_DIR="$BATS_TMPDIR/cfg.$$"
     mkdir -p "$POKIDLE_CONFIG_DIR"
-    cp "$REPO_ROOT/config/biomes.json" "$POKIDLE_CONFIG_DIR/biomes.json"
     export POKIDLE_CONFIG_DIR
     # shellcheck disable=SC1090
     source "$REPO_ROOT/share/completions/pokidle.bash"
