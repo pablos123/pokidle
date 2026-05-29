@@ -63,6 +63,11 @@ function notify_pokemon {
     local enc="$1"
     local species
     species="$(jq -r '.species' <<<"${enc}")"
+    # Defense in depth: never emit an empty-species encounter notification.
+    if [[ -z "${species}" || "${species}" == "null" ]]; then
+        printf 'notify_pokemon: empty species, skipping notification\n' >&2
+        return 1
+    fi
     local level
     level="$(jq -r '.level' <<<"${enc}")"
     local nature
@@ -178,6 +183,11 @@ function notify_item {
     local item_json="$1"
     local name
     name="$(jq -r '.item' <<<"${item_json}")"
+    # Defense in depth: never emit a "Found " notification for a missing item.
+    if [[ -z "${name}" || "${name}" == "null" ]]; then
+        printf 'notify_item: empty item name, skipping notification\n' >&2
+        return 1
+    fi
     local icon
     icon="$(jq -r '.sprite_path // ""' <<<"${item_json}")"
     if [[ -z "${icon}" || ! -f "${icon}" ]]; then

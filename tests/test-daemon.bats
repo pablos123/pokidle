@@ -113,6 +113,56 @@ source_pokidle_lib() {
     [ "$next" -lt "$((now + interval))" ]
 }
 
+@test "pokidle_tick item: a failed roll fails the tick, no empty drop/output (daemon if-! context)" {
+    source_pokidle_lib
+    # Open biome session so the tick resolves a biome.
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);"
+    # Simulate a PokeAPI fetch failure during the item lookup.
+    pokeapi_get() { return 1; }
+    export -f pokeapi_get
+    # The daemon invokes this under `if ! pokidle_tick item`, which suppresses
+    # set -e — a failed roll must return nonzero, not fall through to an empty
+    # drop and a bogus "Found " notification.
+    local out="$BATS_TMPDIR/item.$$"
+    if pokidle_tick item --no-dry-run --no-notify --json >"$out" 2>/dev/null; then
+        fired=1
+    else
+        fired=0
+    fi
+    [ "$fired" = "0" ]      # tick reported failure
+    [ ! -s "$out" ]         # emitted no bogus item line
+    local n
+    n="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops;")"
+    [ "$n" = "0" ]          # wrote no empty-name row
+}
+
+@test "pokidle_tick pokemon: a failed roll fails the tick, no empty encounter/output (daemon if-! context)" {
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_CACHE_DIR
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    printf '%s' '{"biome":"cave","schema":3,"tiers":{"common":[{"species":"zubat","min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}' \
+        > "$POKIDLE_CACHE_DIR/pools/cave.json"
+    source_pokidle_lib
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);"
+    # Simulate a PokeAPI fetch failure during the pokemon lookup.
+    pokeapi_get() { return 1; }
+    export -f pokeapi_get
+    local out="$BATS_TMPDIR/pkmn.$$"
+    if pokidle_tick pokemon --no-dry-run --no-notify --json >"$out" 2>/dev/null; then
+        fired=1
+    else
+        fired=0
+    fi
+    rm -rf "$POKIDLE_CACHE_DIR"
+    [ "$fired" = "0" ]      # tick reported failure instead of falling through
+    [ ! -s "$out" ]         # emitted no bogus encounter line
+    local n
+    n="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM encounters;")"
+    [ "$n" = "0" ]
+}
+
 @test "daemon: persists last_legendary_tick_target on first start" {
     POKIDLE_TICK_FAST=1
     POKIDLE_NO_NOTIFY=1

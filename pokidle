@@ -49,7 +49,7 @@ Usage:
 
 Commands:
   daemon                  Run main loop (used by systemd unit)
-  tick <kind> [flags]      Run a single roll now (default: dry-run, no DB write)
+  tick <kind> [flags]     Run a single roll now (default: dry-run, no DB write)
                             kind: pokemon | item | level | friendship | evolve | legendary
                             --no-dry-run    Persist DB writes
                             --no-notify     Skip notify-send
@@ -508,9 +508,15 @@ function pokidle_tick {
             local pool
             pool="$(encounter_pool_load "${biome}")"
             local entry
-            entry="$(encounter_roll_pool_entry "${pool}")"
+            if ! entry="$(encounter_roll_pool_entry "${pool}")"; then
+                printf 'tick: pokemon roll failed for %s\n' "${biome}" >&2
+                return 1
+            fi
             local enc
-            enc="$(encounter_roll_pokemon "${entry}" "${biome}")"
+            if ! enc="$(encounter_roll_pokemon "${entry}" "${biome}")"; then
+                printf 'tick: pokemon roll failed for %s\n' "${biome}" >&2
+                return 1
+            fi
 
             local sprite_path
             sprite_path="$(_pokidle_pokemon_sprite \
@@ -541,7 +547,10 @@ function pokidle_tick {
             ;;
         item)
             local item_json
-            item_json="$(encounter_roll_item "${biome}")"
+            if ! item_json="$(encounter_roll_item "${biome}")"; then
+                printf 'tick: item roll failed for %s\n' "${biome}" >&2
+                return 1
+            fi
             local item_name
             item_name="$(jq -r '.item' <<<"${item_json}")"
             local sprite_path

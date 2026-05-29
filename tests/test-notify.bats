@@ -155,3 +155,15 @@ setup() {
     [[ "$out" == *"URGENCY: normal"* ]]
     [[ "$out" != *"LEGENDARY"* ]]
 }
+
+@test "notify_item: empty item name is rejected, no notification" {
+    run notify_item '{"item":"","sprite_path":""}'
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"Found"* ]]
+}
+
+@test "notify_pokemon: empty species is rejected, no notification" {
+    run notify_pokemon '{"species":"","level":5,"nature":"jolly","ability":"static","shiny":0,"held_berry":null,"moves":["tackle"],"biome_label":"Plain"}'
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"wild"* ]]
+}
