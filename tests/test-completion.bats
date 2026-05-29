@@ -35,11 +35,20 @@ _complete() {
 
 @test "pokidle: prefix filters subcommands" {
     run _complete _pokidle pokidle s
-    [[ "$output" == *status* ]]
     [[ "$output" == *stats* ]]
     [[ "$output" == *setup* ]]
     [[ "$output" == *switch-biome* ]]
     [[ "$output" != *daemon* ]]
+    [[ "$output" != *status* ]]   # status moved under `daemon`
+}
+
+@test "pokidle: daemon completes lifecycle verbs" {
+    run _complete _pokidle pokidle daemon ''
+    [[ "$output" == *run* ]]
+    [[ "$output" == *restart* ]]
+    [[ "$output" == *status* ]]
+    [[ "$output" == *logs* ]]
+    [[ "$output" == *enable* ]]
 }
 
 @test "pokidle: tick completes kinds" {

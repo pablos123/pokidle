@@ -5,7 +5,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/pokidle daemon
+ExecStart=%h/.local/bin/pokidle daemon run
 Restart=on-failure
 RestartSec=30
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin

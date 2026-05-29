@@ -31,7 +31,7 @@ function _pokidle {
     local cmd="${COMP_WORDS[1]:-}"
 
     local commands="daemon tick encounters export items stats current rebuild-pool \
-switch-biome clean setup uninstall status help"
+switch-biome clean setup uninstall help"
 
     # First positional arg: the subcommand.
     if ((COMP_CWORD == 1)); then
@@ -40,6 +40,12 @@ switch-biome clean setup uninstall status help"
     fi
 
     case "${cmd}" in
+        daemon)
+            if ((COMP_CWORD == 2)); then
+                mapfile -t COMPREPLY < <(compgen -W "\
+run start stop restart status logs enable disable" -- "${cur}")
+            fi
+            ;;
         tick)
             local kinds="pokemon item level friendship evolve legendary"
             if [[ "${cur}" == -* ]]; then

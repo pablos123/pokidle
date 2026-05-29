@@ -163,6 +163,23 @@ source_pokidle_lib() {
     [ "$n" = "0" ]
 }
 
+@test "pokidle_daemon run dispatches to the blocking loop (_pokidle_daemon_run)" {
+    source_pokidle_lib
+    # Replace the loop body with a sentinel so we test dispatch, not the loop.
+    _pokidle_daemon_run() { printf 'RAN_LOOP:%s' "$*"; }
+    run pokidle_daemon run --whatever
+    [ "$status" -eq 0 ]
+    [[ "$output" == "RAN_LOOP:--whatever" ]]
+}
+
+@test "pokidle_daemon with no verb exits 2 without entering the loop" {
+    source_pokidle_lib
+    _pokidle_daemon_run() { printf 'RAN_LOOP'; }
+    run pokidle_daemon
+    [ "$status" -eq 2 ]
+    [[ "$output" != *"RAN_LOOP"* ]]
+}
+
 @test "daemon: persists last_legendary_tick_target on first start" {
     POKIDLE_TICK_FAST=1
     POKIDLE_NO_NOTIFY=1
@@ -183,7 +200,7 @@ source_pokidle_lib() {
     ' > "$POKIDLE_CACHE_DIR/pools/$id.json"
     export POKIDLE_TICK_FAST POKIDLE_NO_NOTIFY POKIDLE_LEGENDARY_CHANCE \
            POKIDLE_LEGENDARY_INTERVAL POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR
-    timeout 5 "$REPO_ROOT/pokidle" daemon >/dev/null 2>&1 || true
+    timeout 5 "$REPO_ROOT/pokidle" daemon run >/dev/null 2>&1 || true
     rm -rf "$POKIDLE_CACHE_DIR"
     local val
     val="$(sqlite3 "$POKIDLE_DB_PATH" \

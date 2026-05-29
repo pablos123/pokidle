@@ -48,7 +48,15 @@ Usage:
   pokidle <command> [args...]
 
 Commands:
-  daemon                  Run main loop (used by systemd unit)
+  daemon <verb>           Daemon lifecycle:
+                            run       Main encounter loop (used by systemd unit)
+                            start     Start the systemd user service
+                            stop      Stop it
+                            restart   Restart it (reload current code)
+                            status    systemctl status + current biome + tick state
+                            logs [a]  journalctl --user -u pokidle (args passed through)
+                            enable    Start on login
+                            disable   Don't start on login
   tick <kind> [flags]     Run a single roll now (default: dry-run, no DB write)
                             kind: pokemon | item | level | friendship | evolve | legendary
                             --no-dry-run    Persist DB writes
@@ -98,7 +106,6 @@ Commands:
                           Prompts for confirmation unless --yes is given.
   setup [--no-enable]     Install + enable/start the systemd unit (--no-enable: install only)
   uninstall               Disable + remove unit (DB/cache untouched)
-  status                  systemctl status + last tick + current biome
   help, -h, --help        Show this help
 EOF
 }
@@ -175,7 +182,7 @@ function _pokidle_should_rotate_biome {
 # Run the main scheduling loop: hold a single-instance lock, open/rotate the
 # biome session, restore or schedule per-kind tick targets, then sleep until the
 # next due event and fire the matching tick. Used by the systemd unit.
-function pokidle_daemon {
+function _pokidle_daemon_run {
     # Single-instance guard: hold an exclusive lock for the daemon's lifetime.
     if command -v flock >/dev/null; then
         local lock_file="${POKIDLE_RUNTIME_DIR:-${POKIDLE_CACHE_DIR}}/pokidle.daemon.lock"
@@ -345,6 +352,59 @@ function pokidle_daemon {
         fi
         sleep "$(_pokidle_sleep_chunk "${next_event}" "${now}")"
     done
+}
+
+# _pokidle_require_systemctl
+# Ensure systemctl exists before a lifecycle verb shells out to it.
+function _pokidle_require_systemctl {
+    if ! command -v systemctl >/dev/null; then
+        printf 'daemon: systemctl not found (the daemon is a systemd user service)\n' >&2
+        return 1
+    fi
+}
+
+# pokidle_daemon <verb> [args...]
+# Verb dispatcher for the daemon lifecycle. `run` is the blocking encounter loop
+# (systemd ExecStart); the rest are thin systemctl/journalctl wrappers. An
+# explicit verb is required — bare `daemon` prints usage and exits 2.
+function pokidle_daemon {
+    local verb="${1-}"
+    if [[ -n "${verb}" ]]; then
+        shift
+    fi
+    case "${verb}" in
+        run)
+            _pokidle_daemon_run "$@"
+            ;;
+        start | stop | restart)
+            _pokidle_require_systemctl || return 1
+            systemctl --user "${verb}" pokidle.service
+            ;;
+        enable | disable)
+            _pokidle_require_systemctl || return 1
+            systemctl --user "${verb}" pokidle.service
+            ;;
+        status)
+            pokidle_status "$@"
+            ;;
+        logs)
+            if ! command -v journalctl >/dev/null; then
+                printf 'daemon: journalctl not found\n' >&2
+                return 1
+            fi
+            journalctl --user -u pokidle.service "$@"
+            ;;
+        '')
+            printf 'daemon: a verb is required\n' >&2
+            usage >&2
+            return 2
+            ;;
+        *)
+            printf 'daemon: unknown verb: %s\n' "${verb}" >&2
+            usage >&2
+            return 2
+            ;;
+    esac
 }
 
 # _pokidle_persist_target <state_key> <target>
@@ -1301,7 +1361,7 @@ function pokidle_list {
         biome="$(jq -r '.biome_id' <<<"${enc}")"
         local ts
         ts="$(jq -r '.encountered_at' <<<"${enc}")"
-        if ((! no_images)); then
+        if ((!no_images)); then
             local sprite
             sprite="$(jq -r '.sprite_path // ""' <<<"${enc}")"
             if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
@@ -1384,7 +1444,7 @@ function pokidle_items {
         biome="$(jq -r '.biome_id' <<<"${d}")"
         local item
         item="$(jq -r '.item' <<<"${d}")"
-        if ((! no_images)); then
+        if ((!no_images)); then
             local sprite
             sprite="$(jq -r '.sprite_path // ""' <<<"${d}")"
             if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
@@ -1862,6 +1922,13 @@ function pokidle_setup {
             printf 'enable failed — see journalctl --user -u pokidle\n' >&2
             return 1
         fi
+        # Reload a daemon that was already running on stale code: `enable --now`
+        # only starts a stopped unit, it does not restart a running one.
+        if systemctl --user restart pokidle.service; then
+            printf 'restarted pokidle.service (reloaded current code)\n'
+        else
+            printf 'warning: restart failed — see journalctl --user -u pokidle\n' >&2
+        fi
     else
         printf 'installed (not started). next: systemctl --user enable --now pokidle.service\n'
     fi
@@ -1941,7 +2008,6 @@ if [[ "${POKIDLE_TEST_SKIP_DISPATCH:-0}" == "0" ]]; then
         clean) pokidle_clean "$@" ;;
         setup) pokidle_setup "$@" ;;
         uninstall) pokidle_uninstall "$@" ;;
-        status) pokidle_status "$@" ;;
         help | -h | --help) usage ;;
         *)
             printf 'unknown command: %s\n' "${cmd}" >&2

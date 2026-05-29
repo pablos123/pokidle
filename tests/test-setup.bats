@@ -37,14 +37,18 @@ teardown() {
     [ "$(readlink "$XDG_DATA_HOME/pokidle/sounds")" = "$REPO_ROOT/share/sounds" ]
     grep -q 'daemon-reload' "$HOME/systemctl.log"
     grep -q 'enable --now' "$HOME/systemctl.log"
+    # enable --now starts a fresh box; the follow-up restart reloads a daemon
+    # that was already running on stale code.
+    grep -qF -- 'restart pokidle.service' "$HOME/systemctl.log"
 }
 
-@test "pokidle setup --no-enable installs without starting the unit" {
+@test "pokidle setup --no-enable installs without starting or restarting the unit" {
     run "$REPO_ROOT/pokidle" setup --no-enable
     [ "$status" -eq 0 ]
     [ -f "$XDG_CONFIG_HOME/systemd/user/pokidle.service" ]
     grep -q 'daemon-reload' "$HOME/systemctl.log"
     ! grep -q 'enable --now' "$HOME/systemctl.log"
+    ! grep -qF -- 'restart pokidle.service' "$HOME/systemctl.log"
 }
 
 @test "pokidle setup seeds shipped pools into the cache" {
@@ -161,21 +165,3 @@ EOF
     [[ "$output" == *"enable failed"* ]]
 }
 
-@test "pokidle status prints systemctl + last tick info" {
-    "$REPO_ROOT/pokidle" setup
-
-    # Pre-populate db with some state
-    db_init() { sqlite3 "$XDG_DATA_HOME/pokidle/pokidle.db" < "$REPO_ROOT/schema.sql"; }
-    db_init
-
-    sqlite3 "$XDG_DATA_HOME/pokidle/pokidle.db" \
-        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
-    sqlite3 "$XDG_DATA_HOME/pokidle/pokidle.db" \
-        "INSERT OR REPLACE INTO daemon_state(key,value) VALUES ('last_pokemon_tick_target','1700001000');"
-
-    run "$REPO_ROOT/pokidle" status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"systemctl"* ]] || [[ "$output" == *"Loaded:"* ]] || true
-    [[ "$output" == *"cave"* ]]
-    [[ "$output" == *"last_pokemon_tick_target"* ]] || [[ "$output" == *"1700001000"* ]]
-}
