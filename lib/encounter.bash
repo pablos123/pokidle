@@ -841,7 +841,9 @@ function encounter_pool_path {
 }
 
 # encounter_pool_save <biome> <body_json>
-# Write a versioned pool file (schema 4) for biome from the build_pool output.
+# Write a pool file for biome from the build_pool output. Pools are shipped
+# with the repo and regenerated wholesale (scripts/build-shipped-pools.sh), so
+# there is no on-disk version: the shipped pools always match the current code.
 function encounter_pool_save {
     local biome="$1"
     local body_json="$2"
@@ -853,7 +855,6 @@ function encounter_pool_save {
         --argjson p "${body_json}" '{
         biome: $b,
         built_at: $ts,
-        schema: 4,
         tiers: $p.tiers,
         berries: ($p.berries // [])
     }')"
@@ -920,12 +921,12 @@ function encounter_roll_pokemon {
     local hi
     hi="$(jq -r '.max' <<<"${entry}")"
 
-    # Pick the encountered form. Schema-4 pool entries carry varieties[]: the
-    # forms that reached this biome via its types (so a steel biome yields
-    # meowth-galar, never bare Normal meowth) — roll uniformly among those.
-    # Legacy entries without varieties[] fall back to a whole-species pick that
-    # rolls between every forme. /pokemon and ability/move fetches use the
-    # variety; the encounter's species field stays bare.
+    # Pick the encountered form. Pool entries carry varieties[]: the forms that
+    # reached this biome via its types (so a steel biome yields meowth-galar,
+    # never bare Normal meowth) — roll uniformly among those. An entry with no
+    # varieties[] falls back to a whole-species pick that rolls between every
+    # forme. /pokemon and ability/move fetches use the variety; the encounter's
+    # species field stays bare.
     local -a vlist=()
     mapfile -t vlist < <(jq -r '(.varieties // [])[]' <<<"${entry}")
     local variety

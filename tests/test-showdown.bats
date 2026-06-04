@@ -88,3 +88,40 @@ setup() {
     [[ "$output" != *"Shiny:"* ]]
     [[ "$output" == *"Zubat"* ]]
 }
+
+@test "showdown_species_name: regional form keeps its hyphen, titlecased per segment" {
+    [ "$(showdown_species_name meowth-galar)" = "Meowth-Galar" ]
+    [ "$(showdown_species_name raichu-alola)" = "Raichu-Alola" ]
+    [ "$(showdown_species_name wormadam-trash)" = "Wormadam-Trash" ]
+    [ "$(showdown_species_name lycanroc-midnight)" = "Lycanroc-Midnight" ]
+}
+
+@test "showdown_species_name: plain species are titlecased" {
+    [ "$(showdown_species_name snorlax)" = "Snorlax" ]
+    [ "$(showdown_species_name nidoran-f)" = "Nidoran-F" ]
+}
+
+@test "showdown_species_name: hyphenated base species render with hyphen" {
+    [ "$(showdown_species_name ho-oh)" = "Ho-Oh" ]
+    [ "$(showdown_species_name porygon-z)" = "Porygon-Z" ]
+}
+
+@test "showdown_species_name: irregular Showdown names mapped directly" {
+    [ "$(showdown_species_name mr-mime)" = "Mr. Mime" ]
+    [ "$(showdown_species_name mime-jr)" = "Mime Jr." ]
+    [ "$(showdown_species_name type-null)" = "Type: Null" ]
+    [ "$(showdown_species_name tapu-koko)" = "Tapu Koko" ]
+    [ "$(showdown_species_name jangmo-o)" = "Jangmo-o" ]
+}
+
+@test "showdown_format: renders the encountered form name" {
+    local enc='{
+        "species":"meowth-galar","level":12,"nature":"adamant","ability":"pickup",
+        "is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,
+        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["fake-out"]
+    }'
+    run showdown_format "$enc"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Meowth-Galar"* ]]
+    [[ "$output" != *"Meowth Galar"* ]]
+}

@@ -304,7 +304,7 @@ EOF
     [ "$(jq -r '.variety' <<< "$output")" = "treecko" ]
 }
 
-@test "encounter_roll_pokemon: legacy entry without varieties falls back to pick_variety" {
+@test "encounter_roll_pokemon: entry without varieties falls back to pick_variety" {
     encounter_pick_variety() { printf 'treecko'; }
     export -f encounter_pick_variety
     local entry='{"species":"treecko","min":5,"max":7}'

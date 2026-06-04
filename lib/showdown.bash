@@ -15,6 +15,40 @@ function _sd_stat_label {
     esac
 }
 
+# showdown_species_name <slug>
+# Map a PokeAPI species/variety slug to its Pokémon Showdown species name.
+# Default: titlecase each hyphen-separated segment and rejoin with hyphens, so
+# regional/forme suffixes survive intact (meowth-galar -> Meowth-Galar) — unlike
+# titlecase_words, which would flatten the hyphen to a space. A handful of
+# species carry irregular Showdown names (punctuation, spaces, a lowercase
+# tail) and are mapped directly.
+function showdown_species_name {
+    local slug="$1"
+    case "${slug}" in
+        mr-mime) printf 'Mr. Mime'; return ;;
+        mr-rime) printf 'Mr. Rime'; return ;;
+        mime-jr) printf 'Mime Jr.'; return ;;
+        type-null) printf 'Type: Null'; return ;;
+        farfetchd) printf "Farfetch'd"; return ;;
+        sirfetchd) printf "Sirfetch'd"; return ;;
+        tapu-koko) printf 'Tapu Koko'; return ;;
+        tapu-lele) printf 'Tapu Lele'; return ;;
+        tapu-bulu) printf 'Tapu Bulu'; return ;;
+        tapu-fini) printf 'Tapu Fini'; return ;;
+        jangmo-o) printf 'Jangmo-o'; return ;;
+        hakamo-o) printf 'Hakamo-o'; return ;;
+        kommo-o) printf 'Kommo-o'; return ;;
+    esac
+    local -a segs
+    IFS='-' read -ra segs <<<"${slug}"
+    local out="" sep="" s
+    for s in "${segs[@]}"; do
+        out+="${sep}${s^}"
+        sep="-"
+    done
+    printf '%s' "${out}"
+}
+
 # showdown_format <encounter_json>
 # Print a Pokémon Showdown set block for the encounter JSON.
 function showdown_format {
@@ -35,7 +69,7 @@ function showdown_format {
     item="$(jq -r '.held_item // ""' <<<"${enc}")"
 
     local sp_t
-    sp_t="$(titlecase_words "${species}")"
+    sp_t="$(showdown_species_name "${species}")"
     local ab_t
     ab_t="$(titlecase_words "${ability}")"
     local nat_t

@@ -157,6 +157,23 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     [[ "$output" == *"Lv.50 zubat"* ]]
 }
 
+@test "export renders the regional form as a Showdown species name" {
+    _seed_schema
+    local sid; sid="$(_mk_session crystal-cavern)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'meowth', 'meowth-galar', 10161, 12, 'adamant', 'pickup', 0, 'M', 0, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 50,50,50,50,50,50, '[\"fake-out\"]', NULL);"
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Meowth-Galar"* ]]
+    [[ "$output" != *"Meowth Galar"* ]]
+}
+
 @test "pokidle help exits 0" {
     run "$REPO_ROOT/pokidle" help
     [ "$status" -eq 0 ]
@@ -293,12 +310,12 @@ EOF
     [[ "$output" == *"geodude (L5-12)"* ]]
 }
 
-@test "pokidle current --encounters: legacy schema-3 pool still lists bare species" {
+@test "pokidle current --encounters: entry without varieties lists the bare species" {
     _seed_schema
     _mk_session cave > /dev/null
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
-{"biome":"cave","built_at":"2026-05-28T00:00:00Z","schema":3,
+{"biome":"cave","built_at":"2026-05-28T00:00:00Z",
  "tiers":{"common":[{"species":"zubat","min":5,"max":10}],
           "uncommon":[],"rare":[],"very_rare":[]},"berries":[]}
 EOF

@@ -1285,7 +1285,7 @@ function pokidle_export {
 
         local norm
         norm="$(jq -c --arg item "${chosen}" '{
-            species, level, nature, ability, is_hidden_ability, shiny,
+            species: (.variety // .species), level, nature, ability, is_hidden_ability, shiny,
             held_item: ($item | select(. != "") // null),
             ivs: [.iv_hp,.iv_atk,.iv_def,.iv_spa,.iv_spd,.iv_spe],
             evs: [.ev_hp,.ev_atk,.ev_def,.ev_spa,.ev_spd,.ev_spe],
@@ -1630,10 +1630,10 @@ function _pokidle_current_items {
 
 # _pokidle_current_encounters <biome>
 # Print the encounter pool for biome, grouped by tier (common, uncommon, rare,
-# very_rare). Empty tiers are skipped. Each entry's qualifying forms (schema-4
-# varieties[], e.g. meowth-galar in a steel biome) are listed by their form
-# name; legacy pools without varieties[] fall back to the bare species. Sorted
-# by displayed name within each tier.
+# very_rare). Empty tiers are skipped. Each entry's qualifying forms
+# (varieties[], e.g. meowth-galar in a steel biome) are listed by their form
+# name; an entry without varieties[] falls back to the bare species. Sorted by
+# displayed name within each tier.
 function _pokidle_current_encounters {
     local biome="$1"
     local pool
@@ -1900,12 +1900,6 @@ function pokidle_setup {
             local dst="${cache_pools}/${name}"
             if [[ -f "${dst}" ]]; then
                 skipped=$((skipped + 1))
-                continue
-            fi
-            local schema
-            schema="$(jq -r '.schema // 0' "${ship_pool}")"
-            if [[ "${schema}" != "3" ]]; then
-                printf 'setup: skipping %s (schema=%s, expected 3)\n' "${name}" "${schema}" >&2
                 continue
             fi
             cp -- "${ship_pool}" "${dst}"

@@ -188,27 +188,27 @@ setup() {
     [ "$status" -ne 0 ]
 }
 
-@test "encounter_pool_save writes schema:4 and tiers wrapper" {
+@test "encounter_pool_save writes the biome/tiers wrapper without a schema key" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     local pool='{"tiers":{"common":[{"species":"zubat","min":5,"max":8}],"uncommon":[],"rare":[],"very_rare":[]},"berries":[]}'
     encounter_pool_save cave "$pool"
     local saved
     saved="$(cat "$POKIDLE_CACHE_DIR/pools/cave.json")"
-    [ "$(jq -r '.schema' <<< "$saved")" = "4" ]
+    [ "$(jq 'has("schema")' <<< "$saved")" = "false" ]
     [ "$(jq -r '.biome' <<< "$saved")" = "cave" ]
     [ "$(jq -r '.tiers.common[0].species' <<< "$saved")" = "zubat" ]
     [ "$(jq '.tiers.uncommon | type' <<< "$saved")" = "\"array\"" ]
 }
 
-@test "encounter_pool_load returns full v4 file on read" {
+@test "encounter_pool_load returns the full file on read" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     local pool='{"tiers":{"common":[{"species":"zubat","min":5,"max":8}],"uncommon":[],"rare":[],"very_rare":[]},"berries":[]}'
     encounter_pool_save cave "$pool"
     run encounter_pool_load cave
     [ "$status" -eq 0 ]
-    [ "$(jq -r '.schema' <<< "$output")" = "4" ]
+    [ "$(jq -r '.biome' <<< "$output")" = "cave" ]
     [ "$(jq -r '.tiers.common[0].species' <<< "$output")" = "zubat" ]
 }
 
@@ -304,17 +304,6 @@ EOF
     local has_cheri
     has_cheri="$(jq -r '.berries | index("cheri") != null' <<< "$output")"
     [ "$has_cheri" = "false" ]
-}
-
-@test "pool save: schema version is 4" {
-    POKIDLE_REPO_ROOT="$REPO_ROOT"
-    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
-    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
-    load_lib encounter
-    encounter_pool_save fakebiome '{"tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[]}'
-    local sch
-    sch="$(jq -r '.schema' "$POKIDLE_CACHE_DIR/pools/fakebiome.json")"
-    [ "$sch" = "4" ]
 }
 
 @test "encounter_item_is_evolution: stones true, held items false" {
