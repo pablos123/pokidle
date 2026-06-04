@@ -10,14 +10,22 @@ The world has 36 type-themed biomes that rotate every few hours and decide which
 
 ## Dependencies
 
-Required:
+On Debian/Ubuntu, install the non-core tools pokidle needs:
 
-- `bash`, `jq`, `curl`, `sqlite3`, `notify-send`, `systemd`
+```
+sudo apt install jq curl sqlite3 libnotify-bin
+```
 
-Optional:
+Optional extras:
 
-- `paplay` or `aplay` — notification sounds.
+```
+sudo apt install chafa pulseaudio-utils
+```
+
 - `chafa` — inline sprite previews.
+- `pulseaudio-utils` (`paplay`) or `alsa-utils` (`aplay`) — notification sounds.
+
+`bash`, `awk`, and `systemd` ship with a standard Debian desktop, so they need no install. The daemon runs as a systemd **user** service.
 
 ## Install
 
@@ -30,6 +38,14 @@ Ensure `~/.local/bin` is on your `PATH`.
 Install is symlink-based. **Keep the repo where it is**, moving or deleting it breaks the install.
 
 To relocate: `uninstall`, move the clone, then `setup` again.
+
+## Update
+
+```
+git -C <repo> pull && pokidle setup
+```
+
+`setup` re-seeds any biome pool whose shipped copy is newer than your cached one, so encounter/form updates apply automatically — no manual `rebuild-pool`. A pool you rebuilt yourself stays newer than the shipped file and is kept. Your catches (the SQLite DB) are never touched.
 
 ## Usage
 
