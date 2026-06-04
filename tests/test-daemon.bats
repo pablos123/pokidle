@@ -103,6 +103,23 @@ source_pokidle_lib() {
     [ "$status" -ne 0 ]
 }
 
+@test "_pokidle_biome_time_left: live session prints positive seconds" {
+    POKIDLE_BIOME_HOURS=3
+    source_pokidle_lib
+    run _pokidle_biome_time_left 1700000000 $((1700000000 + 600))
+    [ "$status" -eq 0 ]
+    [ "$output" = "10200s" ]
+}
+
+@test "_pokidle_biome_time_left: overdue session (long shutdown) clamps, not negative" {
+    POKIDLE_BIOME_HOURS=3
+    source_pokidle_lib
+    # session left open across a ~15-day shutdown, before the daemon rotates it
+    run _pokidle_biome_time_left 1700000000 $((1700000000 + 15 * 86400))
+    [ "$status" -eq 0 ]
+    [ "$output" = "0s (rotation pending)" ]
+}
+
 @test "schedule_next_tick: POKIDLE_TICK_FAST=1 uses cadence in [now, now+interval)" {
     POKIDLE_TICK_FAST=1 source_pokidle_lib
     local now=1700000000

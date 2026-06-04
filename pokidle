@@ -1550,6 +1550,22 @@ function pokidle_current {
     esac
 }
 
+# _pokidle_biome_time_left <started_at> <now>
+# Print the active session's time-left until rotation as "<N>s", floored at zero.
+# A session that has outlived POKIDLE_BIOME_HOURS — e.g. left open across a long
+# shutdown, before the daemon rotates it on its next loop — would otherwise print
+# a negative figure, so report "0s (rotation pending)" instead.
+function _pokidle_biome_time_left {
+    local -i started_at="$1"
+    local -i now="$2"
+    local -i remaining=$((${POKIDLE_BIOME_HOURS:-3} * 3600 - (now - started_at)))
+    if ((remaining <= 0)); then
+        printf '0s (rotation pending)'
+        return
+    fi
+    printf '%ds' "${remaining}"
+}
+
 # _pokidle_current_summary <session_id> <biome> <started_at> [no_images]
 # Print the active-biome summary: biome name, session id, pool/item-pool sizes,
 # start time, time remaining, and session encounter/item counts. Unless
@@ -1561,8 +1577,6 @@ function _pokidle_current_summary {
     local -i no_images="${4:-0}"
     local now
     now="$(date +%s)"
-    local -i elapsed=$((now - started_at))
-    local -i remaining=$((${POKIDLE_BIOME_HOURS:-3} * 3600 - elapsed))
     local -i poss_enc=0
     local pool
     if pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
@@ -1582,7 +1596,7 @@ function _pokidle_current_summary {
     printf 'Active biome: %s  (session #%s)\n' "${biome}" "${id}"
     printf 'Possible encounters: %s   Possible items: %s\n' "${poss_enc}" "${poss_item}"
     printf 'Started: %s\n' "$(date -d "@${started_at}")"
-    printf 'Time remaining: %ds\n' "${remaining}"
+    printf 'Time remaining: %s\n' "$(_pokidle_biome_time_left "${started_at}" "${now}")"
     printf 'Encounters: %s   Items: %s\n' "${enc_count}" "${item_count}"
 }
 
