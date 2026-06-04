@@ -667,7 +667,10 @@ function encounter_walk_chain {
 # Pool = direct union of /type/<t> for each biome.types[]; legendaries/mythicals
 # dropped; each species tiered by its own capture_rate. min/max levels come from
 # the species' own evolution_details.min_level (root → 5-15; non-level evos like
-# stones → 5+15*stage_idx). Returns 1 on fetch failure.
+# stones → 5+15*stage_idx). Each entry also carries varieties[]: the specific
+# forms that reached the pool via the biome's types (e.g. meowth-galar in a
+# steel biome), so the roller encounters a type-coherent form. Returns 1 on
+# fetch failure.
 function encounter_build_pool {
     local biome_id="$1"
     if ! command -v biome_types_for >/dev/null; then
@@ -695,10 +698,13 @@ function encounter_build_pool {
     done <<<"${types_list}"
 
     # 1b. /type/<t> returns variety-suffixed names (e.g. wormadam-plant,
-    #     shaymin-land, deoxys-attack) for forme-bearing species. Collapse
-    #     each name to its bare pokemon-species name and dedup. Without this,
-    #     /pokemon-species/<variety> 404s and the species silently drops.
-    local species_union='[]'
+    #     shaymin-land, deoxys-attack) for forme-bearing species, alongside
+    #     bare names. Collapse each to its bare pokemon-species name (so the
+    #     /pokemon-species lookups below succeed), but remember which form(s)
+    #     reached the pool — that is the form actually present in this biome's
+    #     types (e.g. a steel biome holds meowth-galar, not bare meowth). The
+    #     bare name keys species-level data; the variety drives the encounter.
+    local species_to_varieties='{}'
     local raw_name
     while IFS= read -r raw_name; do
         if [[ -z "${raw_name}" ]]; then
@@ -711,8 +717,11 @@ function encounter_build_pool {
         if [[ -z "${bare}" ]]; then
             continue
         fi
-        species_union="$(jq -c --arg s "${bare}" '. + [$s] | unique' <<<"${species_union}")"
+        species_to_varieties="$(jq -c --arg s "${bare}" --arg v "${raw_name}" \
+            '.[$s] = ((.[$s] // []) + [$v] | unique)' <<<"${species_to_varieties}")"
     done < <(jq -r '.[]' <<<"${raw_names}")
+    local species_union
+    species_union="$(jq -c 'keys' <<<"${species_to_varieties}")"
 
     # 2. Per species: filter legendary/mythical, tier by own capture_rate,
     #    look up min/max via evolution chain (chain JSON cached by id).
@@ -777,8 +786,10 @@ function encounter_build_pool {
             fi
         fi
 
-        flat="$(jq -c --arg sp "${sp}" --argjson mn "${emin}" --argjson mx "${emax}" --arg tier "${tier}" \
-            '. + [{species:$sp, min:$mn, max:$mx, tier:$tier}]' <<<"${flat}")"
+        local varieties
+        varieties="$(jq -c --arg sp "${sp}" '.[$sp] // [$sp]' <<<"${species_to_varieties}")"
+        flat="$(jq -c --arg sp "${sp}" --argjson vs "${varieties}" --argjson mn "${emin}" --argjson mx "${emax}" --arg tier "${tier}" \
+            '. + [{species:$sp, varieties:$vs, min:$mn, max:$mx, tier:$tier}]' <<<"${flat}")"
     done < <(jq -r '.[]' <<<"${species_union}")
 
     # 3. Bucket into tier arrays.
@@ -786,7 +797,7 @@ function encounter_build_pool {
     tiered="$(jq -c --argjson tiers '["common","uncommon","rare","very_rare"]' '
         ($tiers | map({(.) : []}) | add) as $empty
         | reduce .[] as $e ($empty;
-            .[$e.tier] += [{species: $e.species, min: $e.min, max: $e.max}]
+            .[$e.tier] += [{species: $e.species, varieties: $e.varieties, min: $e.min, max: $e.max}]
           )
     ' <<<"${flat}")"
 
@@ -830,7 +841,7 @@ function encounter_pool_path {
 }
 
 # encounter_pool_save <biome> <body_json>
-# Write a versioned pool file (schema 3) for biome from the build_pool output.
+# Write a versioned pool file (schema 4) for biome from the build_pool output.
 function encounter_pool_save {
     local biome="$1"
     local body_json="$2"
@@ -842,7 +853,7 @@ function encounter_pool_save {
         --argjson p "${body_json}" '{
         biome: $b,
         built_at: $ts,
-        schema: 3,
+        schema: 4,
         tiers: $p.tiers,
         berries: ($p.berries // [])
     }')"
@@ -909,12 +920,20 @@ function encounter_roll_pokemon {
     local hi
     hi="$(jq -r '.max' <<<"${entry}")"
 
-    # Pick a random variety. For most species variety == bare species name;
-    # for forme-bearing ones (wormadam, lycanroc, oricorio, …) this rolls
-    # between the available formes. /pokemon and ability/move fetches use the
-    # variety. The encounter's species field stays bare.
+    # Pick the encountered form. Schema-4 pool entries carry varieties[]: the
+    # forms that reached this biome via its types (so a steel biome yields
+    # meowth-galar, never bare Normal meowth) — roll uniformly among those.
+    # Legacy entries without varieties[] fall back to a whole-species pick that
+    # rolls between every forme. /pokemon and ability/move fetches use the
+    # variety; the encounter's species field stays bare.
+    local -a vlist=()
+    mapfile -t vlist < <(jq -r '(.varieties // [])[]' <<<"${entry}")
     local variety
-    variety="$(encounter_pick_variety "${sp}")"
+    if ((${#vlist[@]} > 0)); then
+        variety="${vlist[$((RANDOM % ${#vlist[@]}))]}"
+    else
+        variety="$(encounter_pick_variety "${sp}")"
+    fi
     if [[ -z "${variety}" || "${variety}" == "null" ]]; then
         variety="${sp}"
     fi
@@ -1004,13 +1023,13 @@ function encounter_roll_pokemon {
     stats_json="$(_json_int_array "${stats}")"
 
     jq -n \
-        --arg sp "${sp}" --argjson dex "${dex_id}" --argjson lvl "${level}" \
+        --arg sp "${sp}" --arg variety "${variety}" --argjson dex "${dex_id}" --argjson lvl "${level}" \
         --arg nature "${nature}" --arg ability "${ability}" --argjson hidden "${is_hidden}" \
         --arg gender "${gender}" --argjson shiny "${shiny}" --argjson held "${berry_arg}" \
         --argjson friendship "${friendship}" \
         --argjson ivs "${ivs_json}" --argjson evs "${evs_json}" --argjson stats "${stats_json}" \
         --argjson moves "${moves_json}" --arg sprite "${final_sprite}" '{
-            species: $sp, dex_id: $dex, level: $lvl,
+            species: $sp, variety: $variety, dex_id: $dex, level: $lvl,
             nature: $nature, ability: $ability, is_hidden_ability: $hidden,
             gender: $gender, shiny: $shiny, held_berry: $held,
             friendship: $friendship,

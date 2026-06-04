@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS encounters (
     session_id      INTEGER NOT NULL REFERENCES biome_sessions(id),
     encountered_at  INTEGER NOT NULL,
     species         TEXT NOT NULL,
+    variety         TEXT,
     dex_id          INTEGER NOT NULL,
     level           INTEGER NOT NULL,
     nature          TEXT NOT NULL,

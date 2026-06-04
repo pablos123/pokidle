@@ -127,6 +127,50 @@ teardown() {
     [[ "$output" == *"leech-life"* ]]
 }
 
+@test "db_init adds the variety column to encounters" {
+    db_init
+    run sqlite3 "$POKIDLE_DB_PATH" "PRAGMA table_info(encounters);"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"variety"* ]]
+}
+
+@test "db_init adds variety to a pre-existing variety-less encounters table" {
+    # Simulate an old DB created before the variety column existed.
+    sqlite3 "$POKIDLE_DB_PATH" "CREATE TABLE encounters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER, encountered_at INTEGER,
+        species TEXT, dex_id INTEGER, level INTEGER, nature TEXT, ability TEXT,
+        is_hidden_ability INTEGER, gender TEXT, shiny INTEGER, held_berry TEXT,
+        friendship INTEGER, iv_hp INTEGER, iv_atk INTEGER, iv_def INTEGER, iv_spa INTEGER,
+        iv_spd INTEGER, iv_spe INTEGER, ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER,
+        ev_spa INTEGER, ev_spd INTEGER, ev_spe INTEGER, stat_hp INTEGER, stat_atk INTEGER,
+        stat_def INTEGER, stat_spa INTEGER, stat_spd INTEGER, stat_spe INTEGER,
+        moves_json TEXT, sprite_path TEXT);"
+    db_init
+    run sqlite3 "$POKIDLE_DB_PATH" "PRAGMA table_info(encounters);"
+    [[ "$output" == *"variety"* ]]
+}
+
+@test "db_insert_encounter persists the variety (regional form) field" {
+    db_init
+    local sid
+    sid="$(db_open_biome_session 'crystal-cavern' 1700000000)"
+    local enc='{"session_id":'"$sid"',"encountered_at":1700000123,"species":"meowth","variety":"meowth-galar","dex_id":10161,"level":7,"nature":"adamant","ability":"pickup","is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"friendship":70,"ivs":[10,20,30,15,5,25],"evs":[0,0,0,0,0,0],"stats":[22,18,15,12,15,30],"moves":["scratch"],"sprite_path":null}'
+    db_insert_encounter "$enc"
+    run sqlite3 "$POKIDLE_DB_PATH" "SELECT species, variety FROM encounters WHERE id=1;"
+    [ "$status" -eq 0 ]
+    [ "$output" = "meowth|meowth-galar" ]
+}
+
+@test "db_insert_encounter defaults variety to species when omitted" {
+    db_init
+    local sid
+    sid="$(db_open_biome_session 'cave' 1700000000)"
+    local enc='{"session_id":'"$sid"',"encountered_at":1700000123,"species":"zubat","dex_id":41,"level":7,"nature":"adamant","ability":"inner-focus","is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"friendship":70,"ivs":[10,20,30,15,5,25],"evs":[0,0,0,0,0,0],"stats":[22,18,15,12,15,30],"moves":["bite"],"sprite_path":null}'
+    db_insert_encounter "$enc"
+    run sqlite3 "$POKIDLE_DB_PATH" "SELECT variety FROM encounters WHERE id=1;"
+    [ "$output" = "zubat" ]
+}
+
 @test "db_list_encounters supports filters" {
     db_init
     local sid

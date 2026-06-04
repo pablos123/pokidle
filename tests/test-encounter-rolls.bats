@@ -285,6 +285,34 @@ EOF
     done
 }
 
+@test "encounter_roll_pokemon: emits the encountered variety" {
+    local entry='{"species":"treecko","varieties":["treecko"],"min":5,"max":7}'
+    run encounter_roll_pokemon "$entry" "forest"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.variety' <<< "$output")" = "treecko" ]
+}
+
+@test "encounter_roll_pokemon: honors the entry's qualifying form, not a random pick" {
+    # A pool entry carrying varieties[] pins the form to a type-coherent one
+    # (a steel biome's meowth must be meowth-galar). The random whole-species
+    # picker must NOT run — stub it to a bogus name that would fail the fetch.
+    encounter_pick_variety() { printf 'BOGUS-FORM'; }
+    export -f encounter_pick_variety
+    local entry='{"species":"treecko","varieties":["treecko"],"min":5,"max":7}'
+    run encounter_roll_pokemon "$entry" "forest"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.variety' <<< "$output")" = "treecko" ]
+}
+
+@test "encounter_roll_pokemon: legacy entry without varieties falls back to pick_variety" {
+    encounter_pick_variety() { printf 'treecko'; }
+    export -f encounter_pick_variety
+    local entry='{"species":"treecko","min":5,"max":7}'
+    run encounter_roll_pokemon "$entry" "forest"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.variety' <<< "$output")" = "treecko" ]
+}
+
 @test "encounter_roll_item: forest biome rolls a grass/bug held or evolution item" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_REPO_ROOT

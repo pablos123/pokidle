@@ -379,5 +379,5 @@ function evolution_apply {
         fi
     fi
 
-    db_update_encounter_evolved "${enc_id}" "${species}" "${dex_id}" "${sprite_local}" "${stats}"
+    db_update_encounter_evolved "${enc_id}" "${species}" "${dex_id}" "${sprite_local}" "${stats}" "${variety}"
 }

@@ -121,6 +121,25 @@ setup() {
     [ "$tier" = "rare" ]
 }
 
+@test "build_pool: each entry carries the forms that qualified for the biome" {
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib biome
+    load_lib encounter
+    stub_pokeapi
+    run encounter_build_pool forest
+    [ "$status" -eq 0 ]
+    entry_of() {
+        jq -c --arg sp "$1" '.tiers | to_entries[] | .value[] | select(.species==$sp)' <<< "$output"
+    }
+    # A bare-form species lists itself as its only variety.
+    [ "$(entry_of caterpie | jq -c '.varieties')" = '["caterpie"]' ]
+    # wormadam reaches the bug pool only via its variety-suffixed forms; the one
+    # with a resolvable /pokemon entry (plant) is recorded as the qualifying form.
+    [ "$(entry_of wormadam | jq -r '.varieties[0]')" = "wormadam-plant" ]
+}
+
 @test "build_pool: min/max levels come from species' own evolution_details" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
@@ -169,27 +188,27 @@ setup() {
     [ "$status" -ne 0 ]
 }
 
-@test "encounter_pool_save writes schema:3 and tiers wrapper" {
+@test "encounter_pool_save writes schema:4 and tiers wrapper" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     local pool='{"tiers":{"common":[{"species":"zubat","min":5,"max":8}],"uncommon":[],"rare":[],"very_rare":[]},"berries":[]}'
     encounter_pool_save cave "$pool"
     local saved
     saved="$(cat "$POKIDLE_CACHE_DIR/pools/cave.json")"
-    [ "$(jq -r '.schema' <<< "$saved")" = "3" ]
+    [ "$(jq -r '.schema' <<< "$saved")" = "4" ]
     [ "$(jq -r '.biome' <<< "$saved")" = "cave" ]
     [ "$(jq -r '.tiers.common[0].species' <<< "$saved")" = "zubat" ]
     [ "$(jq '.tiers.uncommon | type' <<< "$saved")" = "\"array\"" ]
 }
 
-@test "encounter_pool_load returns full v3 file on read" {
+@test "encounter_pool_load returns full v4 file on read" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     local pool='{"tiers":{"common":[{"species":"zubat","min":5,"max":8}],"uncommon":[],"rare":[],"very_rare":[]},"berries":[]}'
     encounter_pool_save cave "$pool"
     run encounter_pool_load cave
     [ "$status" -eq 0 ]
-    [ "$(jq -r '.schema' <<< "$output")" = "3" ]
+    [ "$(jq -r '.schema' <<< "$output")" = "4" ]
     [ "$(jq -r '.tiers.common[0].species' <<< "$output")" = "zubat" ]
 }
 
@@ -287,7 +306,7 @@ EOF
     [ "$has_cheri" = "false" ]
 }
 
-@test "pool save: schema version is 3" {
+@test "pool save: schema version is 4" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
@@ -295,7 +314,7 @@ EOF
     encounter_pool_save fakebiome '{"tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[]}'
     local sch
     sch="$(jq -r '.schema' "$POKIDLE_CACHE_DIR/pools/fakebiome.json")"
-    [ "$sch" = "3" ]
+    [ "$sch" = "4" ]
 }
 
 @test "encounter_item_is_evolution: stones true, held items false" {

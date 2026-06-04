@@ -184,6 +184,48 @@ setup() {
     [ "$row" = "linoone,264" ]
 }
 
+@test "evolution_apply: refreshes the variety to the evolved form" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    load_lib db
+    load_lib encounter
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('orchard', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json, friendship,
+            iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
+            ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe)
+            VALUES (1, 1700000000, 'zigzagoon', 'zigzagoon', 263, 20, 'hardy', 'pickup', 0, 'M', 0, '[]',
+                70, 10,10,10,10,10,10, 0,0,0,0,0,0);"
+
+    pokeapi_get() {
+        case "$1" in
+            pokemon/linoone)
+                printf '%s' '{"id":264,"sprites":{"front_default":"linoone.png","front_shiny":""},
+                  "stats":[
+                    {"base_stat":78,"stat":{"name":"hp"}},
+                    {"base_stat":70,"stat":{"name":"attack"}},
+                    {"base_stat":61,"stat":{"name":"defense"}},
+                    {"base_stat":50,"stat":{"name":"special-attack"}},
+                    {"base_stat":61,"stat":{"name":"special-defense"}},
+                    {"base_stat":100,"stat":{"name":"speed"}}]}'
+                ;;
+            nature/hardy) printf '{"increased_stat":null,"decreased_stat":null}' ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+
+    local path='{"species":"linoone","kind":"synthetic","evo":{"min_level":20}}'
+    run evolution_apply 1 "$path"
+    [ "$status" -eq 0 ]
+    local variety
+    variety="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT variety FROM encounters WHERE id=1;")"
+    [ "$variety" = "linoone" ]
+}
+
 @test "pokidle tick evolve --json: synthetic candidate evolves on tier-pass" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"

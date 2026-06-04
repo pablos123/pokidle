@@ -43,6 +43,11 @@ function db_init {
     if ! _db_column_exists item_drops consumed_at; then
         db_exec "ALTER TABLE item_drops ADD COLUMN consumed_at INTEGER;"
     fi
+    # variety holds the specific encountered form (e.g. meowth-galar). Bare-form
+    # mons leave it equal to species. Rows predating this column read as NULL.
+    if ! _db_column_exists encounters variety; then
+        db_exec "ALTER TABLE encounters ADD COLUMN variety TEXT;"
+    fi
 }
 
 # db_exec <sql>...
@@ -99,6 +104,7 @@ function db_active_biome_session {
 # Required keys: session_id, encountered_at, species, dex_id, level, nature,
 # ability, is_hidden_ability, gender, shiny, held_berry, ivs[6], evs[6],
 # stats[6], moves[], sprite_path.
+# Optional: variety (the specific form, e.g. meowth-galar); defaults to species.
 function db_insert_encounter {
     local enc="$1"
     # jq filter emits SQL literals: NULL for null, single-quoted with doubled
@@ -108,7 +114,7 @@ function db_insert_encounter {
     read -r -d '' jq_filter <<'JQ' || true
 def sqstr: if . == null then "NULL" else "'" + (tostring | gsub("'"; "''")) + "'" end;
 "INSERT INTO encounters (
-    session_id, encountered_at, species, dex_id, level,
+    session_id, encountered_at, species, variety, dex_id, level,
     nature, ability, is_hidden_ability, gender, shiny, held_berry,
     friendship,
     iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
@@ -119,6 +125,7 @@ def sqstr: if . == null then "NULL" else "'" + (tostring | gsub("'"; "''")) + "'
     \(.session_id),
     \(.encountered_at),
     \(.species | sqstr),
+    \((.variety // .species) | sqstr),
     \(.dex_id),
     \(.level),
     \(.nature | sqstr),
@@ -376,15 +383,17 @@ function db_update_encounter_friendship {
     db_exec "UPDATE encounters SET friendship=${friendship} WHERE id=${id};"
 }
 
-# db_update_encounter_evolved <id> <species> <dex_id> <sprite> <stats_str>
-# Update species/dex_id/sprite_path + the 6 stat columns after an evolution.
-# stats_str is "hp atk def spa spd spe" (space-separated integers).
+# db_update_encounter_evolved <id> <species> <dex_id> <sprite> <stats_str> <variety>
+# Update species/variety/dex_id/sprite_path + the 6 stat columns after an
+# evolution. stats_str is "hp atk def spa spd spe" (space-separated integers).
+# variety is the evolved form; defaults to species when empty.
 function db_update_encounter_evolved {
     local id="$1"
     local species="$2"
     local dex_id="$3"
     local sprite="$4"
     local stats_str="$5"
+    local variety="${6:-$species}"
     if ! _db_assert_int "${id}" id; then
         return 2
     fi
@@ -404,7 +413,7 @@ function db_update_encounter_evolved {
         sprite_sql="'${sprite//\'/\'\'}'"
     fi
     db_exec "UPDATE encounters
-        SET species='${species//\'/\'\'}', dex_id=${dex_id}, sprite_path=${sprite_sql},
+        SET species='${species//\'/\'\'}', variety='${variety//\'/\'\'}', dex_id=${dex_id}, sprite_path=${sprite_sql},
             stat_hp=${stats[0]}, stat_atk=${stats[1]}, stat_def=${stats[2]},
             stat_spa=${stats[3]}, stat_spd=${stats[4]}, stat_spe=${stats[5]}
         WHERE id=${id};"

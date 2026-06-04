@@ -131,6 +131,32 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     [[ "$output" != *"Pidgey"* ]]
 }
 
+@test "pokidle encounters lists the regional form, not the bare species" {
+    _seed_schema
+    local sid; sid="$(_mk_session crystal-cavern)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'meowth', 'meowth-galar', 10161, 12, 'adamant', 'pickup', 0, 'M', 0, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 50,50,50,50,50,50, '[\"scratch\"]', NULL);"
+    run "$REPO_ROOT/pokidle" encounters --no-images
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Lv.12 meowth-galar"* ]]
+}
+
+@test "pokidle encounters falls back to species when variety is NULL (legacy rows)" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" zubat "$now"
+    run "$REPO_ROOT/pokidle" encounters --no-images
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Lv.50 zubat"* ]]
+}
+
 @test "pokidle help exits 0" {
     run "$REPO_ROOT/pokidle" help
     [ "$status" -eq 0 ]
@@ -165,9 +191,11 @@ EOF
     # Pool: 1 common + 1 uncommon = 2 species.
     [[ "$output" == *"Possible encounters: 2   Possible items: 4"* ]]
     [[ "$output" == *"Encounters: 2   Items: 1"* ]]
-    # Possible-line is line 2.
+    # Types line (cave = rock dark) is line 2, possible-line is line 3.
     line2="$(printf '%s\n' "$output" | sed -n '2p')"
-    [[ "$line2" == "Possible encounters: 2   Possible items: 4" ]]
+    [[ "$line2" == "Types: rock, dark" ]]
+    line3="$(printf '%s\n' "$output" | sed -n '3p')"
+    [[ "$line3" == "Possible encounters: 2   Possible items: 4" ]]
 }
 
 @test "pokidle current --items lists biome item drop pool alphabetically" {
@@ -230,11 +258,53 @@ EOF
     run "$REPO_ROOT/pokidle" current --no-images
     [ "$status" -eq 0 ]
     [[ "$output" == *"Active biome: cave"* ]]
-    # No image rendered: summary occupies exactly 5 lines.
-    [ "$(printf '%s\n' "$output" | wc -l)" -eq 5 ]
-    # Possible-line is still line 2.
+    # No image rendered: summary occupies exactly 6 lines (incl. the Types line).
+    [ "$(printf '%s\n' "$output" | wc -l)" -eq 6 ]
+    # Types line is line 2, possible-line is line 3.
     line2="$(printf '%s\n' "$output" | sed -n '2p')"
-    [[ "$line2" == Possible\ encounters:* ]]
+    [[ "$line2" == Types:* ]]
+    line3="$(printf '%s\n' "$output" | sed -n '3p')"
+    [[ "$line3" == Possible\ encounters:* ]]
+}
+
+@test "pokidle current --encounters shows the qualifying form name" {
+    _seed_schema
+    _mk_session crystal-cavern > /dev/null
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/crystal-cavern.json" <<'EOF'
+{
+  "biome": "crystal-cavern",
+  "built_at": "2026-05-28T00:00:00Z",
+  "schema": 4,
+  "tiers": {
+    "common":    [{"species":"meowth","varieties":["meowth-galar"],"min":5,"max":15}],
+    "uncommon":  [{"species":"geodude","varieties":["geodude"],"min":5,"max":12}],
+    "rare":      [], "very_rare": []
+  },
+  "berries": []
+}
+EOF
+    run "$REPO_ROOT/pokidle" current --encounters
+    [ "$status" -eq 0 ]
+    # The steel form is shown, not the bare (Normal-type) species name.
+    [[ "$output" == *"meowth-galar (L5-15)"* ]]
+    [[ "$output" != *"  meowth (L5-15)"* ]]
+    # Bare-form species still render as their plain name.
+    [[ "$output" == *"geodude (L5-12)"* ]]
+}
+
+@test "pokidle current --encounters: legacy schema-3 pool still lists bare species" {
+    _seed_schema
+    _mk_session cave > /dev/null
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
+{"biome":"cave","built_at":"2026-05-28T00:00:00Z","schema":3,
+ "tiers":{"common":[{"species":"zubat","min":5,"max":10}],
+          "uncommon":[],"rare":[],"very_rare":[]},"berries":[]}
+EOF
+    run "$REPO_ROOT/pokidle" current --encounters
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"zubat (L5-10)"* ]]
 }
 
 @test "pokidle current --items and --encounters are mutually exclusive" {

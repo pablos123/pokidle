@@ -1348,6 +1348,10 @@ function pokidle_list {
         fi
         local sp
         sp="$(jq -r '.species' <<<"${enc}")"
+        # The displayed name is the encountered form (e.g. meowth-galar); rows
+        # predating the variety column (NULL) fall back to the bare species.
+        local form
+        form="$(jq -r '.variety // .species' <<<"${enc}")"
         local lvl
         lvl="$(jq -r '.level' <<<"${enc}")"
         local nat
@@ -1366,7 +1370,7 @@ function pokidle_list {
             local sprite
             sprite="$(jq -r '.sprite_path // ""' <<<"${enc}")"
             if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
-                sprite="$(_pokidle_pokemon_sprite "${sp}" "${shiny}")"
+                sprite="$(_pokidle_pokemon_sprite "${form}" "${shiny}")"
             fi
             _pokidle_render_sprite "${sprite}"
         fi
@@ -1375,7 +1379,7 @@ function pokidle_list {
             shiny_mark=" ✨"
         fi
         printf '%s   %s   Lv.%s %s%s\n' \
-            "$(date -d "@${ts}" '+%F %H:%M')" "${biome}" "${lvl}" "${sp}" "${shiny_mark}"
+            "$(date -d "@${ts}" '+%F %H:%M')" "${biome}" "${lvl}" "${form}" "${shiny_mark}"
         printf '   %s · %s · %s\n' "${nat}" "${abil}" "${gender}"
         local ivs
         ivs="$(jq -r '"\(.iv_hp)/\(.iv_atk)/\(.iv_def)/\(.iv_spa)/\(.iv_spd)/\(.iv_spe)"' <<<"${enc}")"
@@ -1588,12 +1592,29 @@ function _pokidle_current_summary {
     enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=${id};")"
     local item_count
     item_count="$(db_query "SELECT COUNT(*) FROM item_drops WHERE session_id=${id};")"
+    local -a btypes=()
+    mapfile -t btypes < <(biome_types_for "${biome}" 2>/dev/null)
+    local types_csv=""
+    if ((${#btypes[@]} > 0)); then
+        printf -v types_csv '%s, ' "${btypes[@]}"
+        types_csv="${types_csv%, }"
+    fi
     # Biome image above the summary, rendered with the same chafa call the
     # encounters/items lists use (native terminal graphics when available).
+    # Padded with blank lines so it stands clear of the surrounding text — but
+    # only when an image will actually render, so the text-only summary keeps
+    # its tight layout.
     if ((!no_images)); then
-        _pokidle_render_sprite "$(_biome_icon_path "${biome}")"
+        local icon
+        icon="$(_biome_icon_path "${biome}")"
+        if [[ -n "${icon}" ]] && command -v chafa >/dev/null; then
+            printf '\n'
+            _pokidle_render_sprite "${icon}"
+            printf '\n'
+        fi
     fi
     printf 'Active biome: %s  (session #%s)\n' "${biome}" "${id}"
+    printf 'Types: %s\n' "${types_csv}"
     printf 'Possible encounters: %s   Possible items: %s\n' "${poss_enc}" "${poss_item}"
     printf 'Started: %s\n' "$(date -d "@${started_at}")"
     printf 'Time remaining: %s\n' "$(_pokidle_biome_time_left "${started_at}" "${now}")"
@@ -1609,7 +1630,10 @@ function _pokidle_current_items {
 
 # _pokidle_current_encounters <biome>
 # Print the encounter pool for biome, grouped by tier (common, uncommon, rare,
-# very_rare). Empty tiers are skipped. Species sorted within each tier.
+# very_rare). Empty tiers are skipped. Each entry's qualifying forms (schema-4
+# varieties[], e.g. meowth-galar in a steel biome) are listed by their form
+# name; legacy pools without varieties[] fall back to the bare species. Sorted
+# by displayed name within each tier.
 function _pokidle_current_encounters {
     local biome="$1"
     local pool
@@ -1620,8 +1644,9 @@ function _pokidle_current_encounters {
     local tier
     for tier in common uncommon rare very_rare; do
         local rows
-        rows="$(jq -r --arg t "${tier}" \
-            '.tiers[$t] // [] | sort_by(.species) | .[] | "  \(.species) (L\(.min)-\(.max))"' \
+        rows="$(jq -r --arg t "${tier}" '
+            [ .tiers[$t][]? as $e | ($e.varieties // [$e.species])[] | {name: ., min: $e.min, max: $e.max} ]
+            | sort_by(.name) | .[] | "  \(.name) (L\(.min)-\(.max))"' \
             <<<"${pool}")"
         if [[ -z "${rows}" ]]; then
             continue
