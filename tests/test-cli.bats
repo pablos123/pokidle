@@ -588,3 +588,28 @@ _seed_pokeapi_cache() {
     grep -qi "ice-stone" <<< "$output"
     grep -qi "(used)" <<< "$output"
 }
+
+@test "biomes lists all 36 biomes with labels and types" {
+    run "$REPO_ROOT/pokidle" biomes
+    [ "$status" -eq 0 ]
+    [ "$(printf '%s\n' "$output" | wc -l)" -eq 36 ]
+    grep -q "^Forest .* grass / bug$" <<< "$output"
+    grep -q "Dragon's Nest .* dragon / psychic$" <<< "$output"
+    grep -q "Cathedral .* steel / fairy$" <<< "$output"
+}
+
+@test "biomes --json emits 36 well-formed objects" {
+    run "$REPO_ROOT/pokidle" biomes --json
+    [ "$status" -eq 0 ]
+    [ "$(jq 'length' <<< "$output")" -eq 36 ]
+    [ "$(jq -r '.[0].id' <<< "$output")" = "forest" ]
+    [ "$(jq -r '.[0].label' <<< "$output")" = "Forest" ]
+    [ "$(jq -rc '.[0].types' <<< "$output")" = '["grass","bug"]' ]
+    [ "$(jq '[.[] | select(.types | length != 2)] | length' <<< "$output")" -eq 0 ]
+}
+
+@test "biomes rejects an unknown flag" {
+    run "$REPO_ROOT/pokidle" biomes --bogus
+    [ "$status" -eq 2 ]
+    grep -qi "unknown flag" <<< "$output"
+}

@@ -31,7 +31,7 @@ function _pokidle {
     local cmd="${COMP_WORDS[1]:-}"
 
     local commands="daemon tick encounters export items stats current rebuild-pool \
-switch-biome clean setup uninstall help"
+switch-biome biomes clean setup uninstall help"
 
     # First positional arg: the subcommand.
     if ((COMP_CWORD == 1)); then
@@ -93,6 +93,11 @@ run start stop restart status logs enable disable" -- "${cur}")
                 local biomes
                 biomes="$(_pokidle_biome_ids)"
                 mapfile -t COMPREPLY < <(compgen -W "${biomes}" -- "${cur}")
+            fi
+            ;;
+        biomes)
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "--json" -- "${cur}")
             fi
             ;;
         setup)

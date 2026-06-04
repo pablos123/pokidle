@@ -100,6 +100,7 @@ Commands:
                           Force pool rebuild (one or all; type-derived).
                           --yes skips the all-mode confirm prompt.
   switch-biome <biome>    Close active session, open new session in <biome>
+  biomes [--json]         List all 36 biomes (label + types) in catalog order
   clean <pools|db|all> [--yes]
                           pools = wipe pool cache
                           db    = wipe sqlite DB at $POKIDLE_DB_PATH
@@ -1817,6 +1818,41 @@ function pokidle_switch_biome {
     printf 'switched to %s (session %s)\n' "${biome}" "${new_sid}"
 }
 
+# pokidle_biomes [--json]
+# List the full biome catalog (label + two types) in catalog order. Read-only:
+# prints static data from lib/biome.bash, no DB or pool-cache access.
+function pokidle_biomes {
+    local -i emit_json=0
+    while (($# > 0)); do
+        case "$1" in
+            --json)
+                emit_json=1
+                shift
+                ;;
+            *)
+                printf 'biomes: unknown flag %s\n' "$1" >&2
+                return 2
+                ;;
+        esac
+    done
+
+    local id
+    if ((emit_json)); then
+        local -a objs=()
+        for id in "${BIOME_IDS[@]}"; do
+            objs+=("$(jq -n --arg id "${id}" --arg label "${BIOME_LABELS[${id}]}" \
+                --arg types "${BIOME_TYPES[${id}]}" \
+                '{id: $id, label: $label, types: ($types | split(" "))}')")
+        done
+        printf '%s\n' "${objs[@]}" | jq -s '.'
+        return 0
+    fi
+
+    for id in "${BIOME_IDS[@]}"; do
+        printf '%-16s%s\n' "${BIOME_LABELS[${id}]}" "${BIOME_TYPES[${id}]// / \/ }"
+    done
+}
+
 # pokidle_setup [--no-enable]
 # Install config, assets, shipped pools, bin symlinks, and the systemd user
 # unit, then enable+start it (--no-enable installs only). App-owned artifacts
@@ -2045,6 +2081,7 @@ if [[ "${POKIDLE_TEST_SKIP_DISPATCH:-0}" == "0" ]]; then
         current) pokidle_current "$@" ;;
         rebuild-pool) pokidle_rebuild_pool "$@" ;;
         switch-biome) pokidle_switch_biome "$@" ;;
+        biomes) pokidle_biomes "$@" ;;
         clean) pokidle_clean "$@" ;;
         setup) pokidle_setup "$@" ;;
         uninstall) pokidle_uninstall "$@" ;;
