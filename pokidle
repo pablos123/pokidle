@@ -1886,7 +1886,11 @@ function pokidle_setup {
 
     # 2c. Seed encounter pools from share/pools so first run skips the
     #     ~2 hour cold rebuild. Copies (not symlinks) so later
-    #     `pokidle rebuild-pool` writes to the cache, not the repo.
+    #     `pokidle rebuild-pool` writes to the cache, not the repo. A shipped
+    #     pool that is newer than the cached copy (e.g. after `git pull`)
+    #     overwrites it, so form/pool upgrades land on the next setup without a
+    #     manual rebuild. A cached pool the user rebuilt themselves is newer
+    #     than the shipped file, so it is kept.
     local ship_pools="${POKIDLE_REPO_ROOT}/share/pools"
     local cache_pools="${POKIDLE_CACHE_DIR}/pools"
     if [[ -d "${ship_pools}" ]] && compgen -G "${ship_pools}/*.json" >/dev/null; then
@@ -1897,7 +1901,7 @@ function pokidle_setup {
         for ship_pool in "${ship_pools}"/*.json; do
             local name="${ship_pool##*/}"
             local dst="${cache_pools}/${name}"
-            if [[ -f "${dst}" ]]; then
+            if [[ -f "${dst}" && ! "${ship_pool}" -nt "${dst}" ]]; then
                 skipped=$((skipped + 1))
                 continue
             fi
@@ -1908,7 +1912,7 @@ function pokidle_setup {
             printf 'seeded %d pool(s) into %s\n' "${seeded}" "${cache_pools}"
         fi
         if ((skipped > 0)); then
-            printf 'kept %d existing pool(s) (run rebuild-pool to regenerate)\n' "${skipped}"
+            printf 'kept %d up-to-date pool(s)\n' "${skipped}"
         fi
     fi
 

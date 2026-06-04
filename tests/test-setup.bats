@@ -78,17 +78,36 @@ EOF
     [ -f "$XDG_CACHE_HOME/pokidle/pools/_bats_seed.json" ]
 }
 
-@test "pokidle setup keeps existing cached pool" {
+@test "pokidle setup keeps a cached pool that is newer than the shipped copy" {
     mkdir -p "$REPO_ROOT/share/pools" "$XDG_CACHE_HOME/pokidle/pools"
     local fixture="$REPO_ROOT/share/pools/_bats_keep.json"
     local cached="$XDG_CACHE_HOME/pokidle/pools/_bats_keep.json"
-    echo '{"biome":"_bats_keep","new":1,"tiers":{},"berries":[]}' > "$fixture"
-    echo '{"biome":"_bats_keep","old":1,"tiers":{},"berries":[]}' > "$cached"
+    echo '{"biome":"_bats_keep","shipped":1,"tiers":{},"berries":[]}' > "$fixture"
+    echo '{"biome":"_bats_keep","cached":1,"tiers":{},"berries":[]}' > "$cached"
+    # Cached copy is newer (e.g. user ran rebuild-pool) -> must be kept.
+    touch -d '2020-01-01' "$fixture"
+    touch -d '2030-01-01' "$cached"
     run "$REPO_ROOT/pokidle" setup
     local status_ok=$status
     rm -f "$fixture"
     [ "$status_ok" -eq 0 ]
-    grep -q '"old":1' "$cached"
+    grep -q '"cached":1' "$cached"
+}
+
+@test "pokidle setup overwrites a cached pool when the shipped copy is newer" {
+    mkdir -p "$REPO_ROOT/share/pools" "$XDG_CACHE_HOME/pokidle/pools"
+    local fixture="$REPO_ROOT/share/pools/_bats_fresh.json"
+    local cached="$XDG_CACHE_HOME/pokidle/pools/_bats_fresh.json"
+    echo '{"biome":"_bats_fresh","shipped":1,"tiers":{},"berries":[]}' > "$fixture"
+    echo '{"biome":"_bats_fresh","cached":1,"tiers":{},"berries":[]}' > "$cached"
+    # Shipped copy is newer (e.g. after git pull) -> must overwrite the cache.
+    touch -d '2020-01-01' "$cached"
+    touch -d '2030-01-01' "$fixture"
+    run "$REPO_ROOT/pokidle" setup
+    local status_ok=$status
+    rm -f "$fixture"
+    [ "$status_ok" -eq 0 ]
+    grep -q '"shipped":1' "$cached"
 }
 
 @test "pokidle setup rejects the removed --force flag" {
