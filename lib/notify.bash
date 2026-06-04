@@ -84,6 +84,24 @@ function notify_pokemon {
     local moves
     moves="$(jq -r '.moves | map("• \(.)") | join("\n")' <<<"${enc}")"
 
+    # Optional IV/EV block, rendered before the moves. Off by default so the
+    # notification is unchanged unless POKIDLE_NOTIFY_IVS_EVS=1.
+    local stat_block=""
+    if [[ "${POKIDLE_NOTIFY_IVS_EVS:-0}" == "1" ]]; then
+        local ivs evs
+        ivs="$(jq -r 'if (.ivs | type) == "array" and (.ivs | length) > 0 then (.ivs | join("/")) else "" end' <<<"${enc}")"
+        evs="$(jq -r 'if (.evs | type) == "array" and (.evs | length) > 0 then (.evs | join("/")) else "" end' <<<"${enc}")"
+        if [[ -n "${ivs}" ]]; then
+            stat_block+="IVs: ${ivs}"$'\n'
+        fi
+        if [[ -n "${evs}" ]]; then
+            stat_block+="EVs: ${evs}"$'\n'
+        fi
+        if [[ -n "${stat_block}" ]]; then
+            stat_block+=$'\n'
+        fi
+    fi
+
     local sp_title
     sp_title="$(titlecase_words "${species}")"
     local nat_title
@@ -106,7 +124,7 @@ function notify_pokemon {
     fi
 
     local title="${prefix}Lv.${level} ${sp_title}"
-    local body="${nat_title}  ·  ${abil_title}"$'\n\n'"${moves}"
+    local body="${nat_title}  ·  ${abil_title}"$'\n\n'"${stat_block}${moves}"
     if [[ -n "${held}" && "${held}" != "null" ]]; then
         body+=$'\n\n'"Held: ${held}"
     fi

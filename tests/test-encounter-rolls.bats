@@ -307,3 +307,90 @@ EOF
         return 1
     fi
 }
+
+@test "_encounter_variety_is_battle_only: flags mega/gmax/primal/eternamax, allows base/regional" {
+    _encounter_variety_is_battle_only charizard-mega-x
+    _encounter_variety_is_battle_only charizard-mega-y
+    _encounter_variety_is_battle_only gengar-mega
+    _encounter_variety_is_battle_only venusaur-gmax
+    _encounter_variety_is_battle_only kyogre-primal
+    _encounter_variety_is_battle_only eternatus-eternamax
+    ! _encounter_variety_is_battle_only gengar
+    ! _encounter_variety_is_battle_only meowth-galar
+    ! _encounter_variety_is_battle_only raichu-alola
+    ! _encounter_variety_is_battle_only lycanroc-midnight
+}
+
+@test "encounter_pick_variety: never selects a battle-only form" {
+    pokeapi_get() {
+        case "$1" in
+            pokemon-species/gengar)
+                printf '%s' '{"varieties":[{"pokemon":{"name":"gengar"}},{"pokemon":{"name":"gengar-mega"}},{"pokemon":{"name":"gengar-gmax"}}]}'
+                ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+    local i v
+    for i in $(seq 1 80); do
+        v="$(encounter_pick_variety gengar)"
+        case "$v" in
+            *-mega | *-mega-x | *-mega-y | *-gmax | *-primal | *-eternamax)
+                printf 'battle-only form leaked: %s\n' "$v" >&2
+                return 1
+                ;;
+        esac
+    done
+    # gengar is the only non-battle-only survivor, so it must always be chosen.
+    [ "$v" = "gengar" ]
+}
+
+@test "encounter_pick_variety: keeps regional formes selectable" {
+    pokeapi_get() {
+        case "$1" in
+            pokemon-species/meowth)
+                printf '%s' '{"varieties":[{"pokemon":{"name":"meowth"}},{"pokemon":{"name":"meowth-galar"}},{"pokemon":{"name":"meowth-gmax"}}]}'
+                ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+    local i v seen_base=0 seen_galar=0
+    for i in $(seq 1 120); do
+        v="$(encounter_pick_variety meowth)"
+        [ "$v" = "meowth" ] && seen_base=1
+        [ "$v" = "meowth-galar" ] && seen_galar=1
+        [ "$v" = "meowth-gmax" ] && { printf 'gmax leaked\n' >&2; return 1; }
+    done
+    (( seen_base && seen_galar ))
+}
+
+@test "encounter_roll_moves: empty variety moveset falls back to base species" {
+    pokeapi_get() {
+        case "$1" in
+            pokemon/snorlax-gmax) printf '%s' '{"moves":[]}' ;;
+            pokemon/snorlax)
+                printf '%s' '{"moves":[{"move":{"name":"body-slam"},"version_group_details":[{"move_learn_method":{"name":"level-up"},"level_learned_at":1}]}]}'
+                ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+    run encounter_roll_moves snorlax-gmax 50 snorlax
+    [ "$status" -eq 0 ]
+    [ "$output" != "[]" ]
+    [[ "$output" == *body-slam* ]]
+}
+
+@test "encounter_roll_moves: no fallback arg keeps prior 2-arg behavior (empty stays empty)" {
+    pokeapi_get() {
+        case "$1" in
+            pokemon/snorlax-gmax) printf '%s' '{"moves":[]}' ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+    run encounter_roll_moves snorlax-gmax 50
+    [ "$status" -eq 0 ]
+    [ "$output" = "[]" ]
+}

@@ -90,11 +90,12 @@ Commands:
                             --no-images       Skip inline sprite previews
                             --json            Emit raw JSON
   stats                   Aggregates: totals, shinies, by biome, top species
-  current [--items|--encounters]
+  current [--items|--encounters] [--no-images]
                           Bare: active biome, time remaining, session +
-                          all-time counts.
+                          all-time counts, with the biome image above it.
                           --items       Candidate item drops for the biome.
                           --encounters  Candidate species, grouped by tier.
+                          --no-images   Skip the biome image (summary only).
   rebuild-pool [biome] [--yes]
                           Force pool rebuild (one or all; type-derived).
                           --yes skips the all-mode confirm prompt.
@@ -1487,13 +1488,15 @@ function pokidle_stats {
         awk -F'\t' '{ printf "  %-12s %5d\n", $1, $2 }'
 }
 
-# pokidle_current [--items|--encounters]
-# Bare: active biome, time remaining, this-session and all-time counts.
+# pokidle_current [--items|--encounters] [--no-images]
+# Bare: active biome, time remaining, this-session and all-time counts, with the
+#   biome image rendered above the summary (suppress with --no-images).
 # --items: candidate item drops for the active biome (one slug per line).
 # --encounters: candidate species grouped by tier; lines like "audino (L5-15)".
 function pokidle_current {
     db_init
     local mode="summary"
+    local -i no_images=0
     while (($# > 0)); do
         case "$1" in
             --items)
@@ -1510,6 +1513,10 @@ function pokidle_current {
                     return 2
                 fi
                 mode="encounters"
+                shift
+                ;;
+            --no-images | --no-image)
+                no_images=1
                 shift
                 ;;
             *)
@@ -1538,18 +1545,20 @@ function pokidle_current {
             _pokidle_current_encounters "${biome}"
             ;;
         summary)
-            _pokidle_current_summary "${id}" "${biome}" "${started_at}"
+            _pokidle_current_summary "${id}" "${biome}" "${started_at}" "${no_images}"
             ;;
     esac
 }
 
-# _pokidle_current_summary <session_id> <biome> <started_at>
+# _pokidle_current_summary <session_id> <biome> <started_at> [no_images]
 # Print the active-biome summary: biome name, session id, pool/item-pool sizes,
-# start time, time remaining, and session encounter/item counts.
+# start time, time remaining, and session encounter/item counts. Unless
+# no_images is 1, the biome image is rendered as a column to the right.
 function _pokidle_current_summary {
     local id="$1"
     local biome="$2"
     local started_at="$3"
+    local -i no_images="${4:-0}"
     local now
     now="$(date +%s)"
     local -i elapsed=$((now - started_at))
@@ -1565,6 +1574,11 @@ function _pokidle_current_summary {
     enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=${id};")"
     local item_count
     item_count="$(db_query "SELECT COUNT(*) FROM item_drops WHERE session_id=${id};")"
+    # Biome image above the summary, rendered with the same chafa call the
+    # encounters/items lists use (native terminal graphics when available).
+    if ((!no_images)); then
+        _pokidle_render_sprite "$(_biome_icon_path "${biome}")"
+    fi
     printf 'Active biome: %s  (session #%s)\n' "${biome}" "${id}"
     printf 'Possible encounters: %s   Possible items: %s\n' "${poss_enc}" "${poss_item}"
     printf 'Started: %s\n' "$(date -d "@${started_at}")"

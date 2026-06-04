@@ -105,6 +105,19 @@ if [[ -z "${LEGENDARY_TYPES[*]:-}" ]]; then
         [glastrier]="ice"
         [spectrier]="ghost"
         [calyrex]="psychic grass"
+        # Gen 9
+        [koraidon]="fighting dragon"
+        [miraidon]="electric dragon"
+        ["wo-chien"]="dark grass"
+        ["chien-pao"]="dark ice"
+        ["ting-lu"]="dark ground"
+        ["chi-yu"]="dark fire"
+        [okidogi]="poison fighting"
+        [munkidori]="poison psychic"
+        [fezandipiti]="poison fairy"
+        [ogerpon]="grass"
+        [terapagos]="normal"
+        [pecharunt]="poison ghost"
     )
 fi
 
@@ -226,7 +239,7 @@ function legendary_build_encounter {
     is_hidden="$(jq -r 'if .is_hidden then 1 else 0 end' <<<"${ability_obj}")"
 
     local moves_json
-    if ! moves_json="$(encounter_roll_moves "${variety}" "${level}")"; then
+    if ! moves_json="$(encounter_roll_moves "${variety}" "${level}" "${sp}")"; then
         return 1
     fi
     local gender

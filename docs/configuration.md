@@ -106,6 +106,7 @@ The species is chosen at random among legendaries whose types intersect the acti
 | `POKIDLE_NOTIFY_EVOLVE` | `1` | Evolution notifications. |
 | `POKIDLE_NOTIFY_LEVEL` | `0` | Level-up tick notifications (per mon). |
 | `POKIDLE_NOTIFY_FRIENDSHIP` | `0` | Friendship tick notifications (per mon). |
+| `POKIDLE_NOTIFY_IVS_EVS` | `0` | `1` = include `IVs:`/`EVs:` lines in pokemon encounter notifications, before the moves. |
 
 `level` and `friendship` only iterate the **current-week** encounters; older catches are never touched and never notify.
 

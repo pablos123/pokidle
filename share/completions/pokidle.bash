@@ -76,7 +76,7 @@ run start stop restart status logs enable disable" -- "${cur}")
             ;;
         current)
             if [[ "${cur}" == -* ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "--items --encounters" -- "${cur}")
+                mapfile -t COMPREPLY < <(compgen -W "--items --encounters --no-images" -- "${cur}")
             fi
             ;;
         clean)

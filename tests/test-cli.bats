@@ -224,6 +224,19 @@ EOF
     [ "$g" -lt "$z" ]
 }
 
+@test "pokidle current --no-images prints the bare summary unchanged" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    run "$REPO_ROOT/pokidle" current --no-images
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Active biome: cave"* ]]
+    # No image rendered: summary occupies exactly 5 lines.
+    [ "$(printf '%s\n' "$output" | wc -l)" -eq 5 ]
+    # Possible-line is still line 2.
+    line2="$(printf '%s\n' "$output" | sed -n '2p')"
+    [[ "$line2" == Possible\ encounters:* ]]
+}
+
 @test "pokidle current --items and --encounters are mutually exclusive" {
     run "$REPO_ROOT/pokidle" current --items --encounters
     [ "$status" -eq 2 ]

@@ -458,12 +458,16 @@ function encounter_roll_ability {
     jq -c ".[${idx}]" <<<"${pool}"
 }
 
-# encounter_roll_moves <species> <level>
+# encounter_roll_moves <species> <level> [fallback_species]
 # Roll up to 4 moves from the union of (level-up + machine + egg + tutor) where
 # level_learned_at <= level. Prints a JSON array of move-name strings.
+# If the moveset is empty and a distinct fallback_species is given, retry with
+# it — guards against forms PokeAPI ships move-less (the encounter keeps its
+# bare species name, so the base species is the right fallback).
 function encounter_roll_moves {
     local species="$1"
     local level="$2"
+    local fallback="${3:-}"
     local poke
     if ! poke="$(pokeapi_get "pokemon/${species}")"; then
         return 1
@@ -492,6 +496,10 @@ function encounter_roll_moves {
 
     local -i n="${#arr[@]}"
     if ((n == 0)); then
+        if [[ -n "${fallback}" && "${fallback}" != "${species}" ]]; then
+            encounter_roll_moves "${fallback}" "${level}"
+            return
+        fi
         printf '[]'
         return
     fi
@@ -600,6 +608,19 @@ function encounter_species_for_name {
 # encounter_pick_variety <species>
 # Print a random variety name from /pokemon-species/<sp>.varieties[]. Falls
 # back to <sp> if the species lookup fails or the varieties array is empty.
+# _encounter_variety_is_battle_only <variety-name>
+# True (exit 0) if the name is a battle-only transformation — Mega, Primal,
+# Gigantamax, Eternamax. PokeAPI ships these forms with an empty moveset (their
+# moves belong to the base form) and they are never wild-encounterable, so they
+# must not be rolled as encounter varieties. Regional/cosmetic formes (alola,
+# galar, hisui, midnight, …) are legitimate and return false.
+function _encounter_variety_is_battle_only {
+    case "$1" in
+        *-mega | *-mega-x | *-mega-y | *-primal | *-gmax | *-eternamax) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 function encounter_pick_variety {
     local sp="$1"
     local spec
@@ -607,19 +628,24 @@ function encounter_pick_variety {
         printf '%s' "${sp}"
         return
     fi
-    local -i n
-    n="$(jq '(.varieties // []) | length' <<<"${spec}")"
+    # Gather every variety, dropping battle-only transformations (mega/gmax/…).
+    local -a varieties=()
+    local v
+    while IFS= read -r v; do
+        if [[ -z "${v}" || "${v}" == "null" ]]; then
+            continue
+        fi
+        if _encounter_variety_is_battle_only "${v}"; then
+            continue
+        fi
+        varieties+=("${v}")
+    done < <(jq -r '(.varieties // [])[].pokemon.name // empty' <<<"${spec}")
+    local -i n="${#varieties[@]}"
     if ((n == 0)); then
         printf '%s' "${sp}"
         return
     fi
-    local -i idx=$((RANDOM % n))
-    local name
-    name="$(jq -r --argjson i "${idx}" '.varieties[$i].pokemon.name // empty' <<<"${spec}")"
-    if [[ -z "${name}" || "${name}" == "null" ]]; then
-        name="${sp}"
-    fi
-    printf '%s' "${name}"
+    printf '%s' "${varieties[$((RANDOM % n))]}"
 }
 
 # encounter_walk_chain <chain_json>
@@ -931,7 +957,7 @@ function encounter_roll_pokemon {
     is_hidden="$(jq -r 'if .is_hidden then 1 else 0 end' <<<"${ability_obj}")"
 
     local moves_json
-    if ! moves_json="$(encounter_roll_moves "${variety}" "${level}")"; then
+    if ! moves_json="$(encounter_roll_moves "${variety}" "${level}" "${sp}")"; then
         return 1
     fi
 

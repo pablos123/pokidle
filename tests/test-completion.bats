@@ -115,10 +115,11 @@ _complete() {
     [[ "$output" == *--yes* ]]
 }
 
-@test "pokidle: current dash completes --items and --encounters" {
+@test "pokidle: current dash completes --items, --encounters and --no-images" {
     run _complete _pokidle pokidle current --
     [[ "$output" == *--items* ]]
     [[ "$output" == *--encounters* ]]
+    [[ "$output" == *--no-images* ]]
 }
 
 @test "pokidle: current --i filters to --items" {

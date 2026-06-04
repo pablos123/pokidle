@@ -23,6 +23,21 @@ setup() {
     [ -n "${LEGENDARY_TYPES[zacian]:-}" ]
 }
 
+@test "LEGENDARY_TYPES: contains gen-9 legendaries and mythical with correct types" {
+    [ "${LEGENDARY_TYPES[koraidon]}" = "fighting dragon" ]
+    [ "${LEGENDARY_TYPES[miraidon]}" = "electric dragon" ]
+    [ "${LEGENDARY_TYPES[wo-chien]}" = "dark grass" ]
+    [ "${LEGENDARY_TYPES[chien-pao]}" = "dark ice" ]
+    [ "${LEGENDARY_TYPES[ting-lu]}" = "dark ground" ]
+    [ "${LEGENDARY_TYPES[chi-yu]}" = "dark fire" ]
+    [ "${LEGENDARY_TYPES[okidogi]}" = "poison fighting" ]
+    [ "${LEGENDARY_TYPES[munkidori]}" = "poison psychic" ]
+    [ "${LEGENDARY_TYPES[fezandipiti]}" = "poison fairy" ]
+    [ "${LEGENDARY_TYPES[ogerpon]}" = "grass" ]
+    [ "${LEGENDARY_TYPES[terapagos]}" = "normal" ]
+    [ "${LEGENDARY_TYPES[pecharunt]}" = "poison ghost" ]
+}
+
 @test "LEGENDARY_TYPES: every PokeAPI primary type has at least one legendary" {
     local types=(
         normal fighting flying poison ground rock bug ghost steel

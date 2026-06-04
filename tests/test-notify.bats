@@ -44,6 +44,41 @@ setup() {
     [[ "$output" == *"Zubat"* ]]
 }
 
+@test "notify_pokemon: POKIDLE_NOTIFY_IVS_EVS=1 shows IVs/EVs before the moves" {
+    local enc='{
+        "species":"zubat","level":7,"nature":"timid","ability":"inner-focus",
+        "gender":"M","shiny":0,"held_berry":null,
+        "ivs":[1,2,3,4,5,6],"evs":[10,20,30,40,50,60],
+        "stats":[22,18,15,12,15,30],
+        "moves":["leech-life"],
+        "sprite_path":"/tmp/zubat.png","biome_label":"Cave"
+    }'
+    POKIDLE_NOTIFY_IVS_EVS=1 run notify_pokemon "$enc"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"IVs: 1/2/3/4/5/6"* ]]
+    [[ "$output" == *"EVs: 10/20/30/40/50/60"* ]]
+    # IVs/EVs render before the move bullets.
+    local ivpos movepos
+    ivpos="$(printf '%s\n' "$output" | grep -n 'IVs:' | head -1 | cut -d: -f1)"
+    movepos="$(printf '%s\n' "$output" | grep -n 'leech-life' | head -1 | cut -d: -f1)"
+    [ "$ivpos" -lt "$movepos" ]
+}
+
+@test "notify_pokemon: default hides IVs/EVs (notification unchanged)" {
+    local enc='{
+        "species":"zubat","level":7,"nature":"timid","ability":"inner-focus",
+        "gender":"M","shiny":0,"held_berry":null,
+        "ivs":[1,2,3,4,5,6],"evs":[10,20,30,40,50,60],
+        "stats":[22,18,15,12,15,30],
+        "moves":["leech-life"],
+        "sprite_path":"/tmp/zubat.png","biome_label":"Cave"
+    }'
+    run notify_pokemon "$enc"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"IVs:"* ]]
+    [[ "$output" != *"EVs:"* ]]
+}
+
 @test "notify_item: dry-run renders item line" {
     local item='{"item":"everstone","sprite_path":"/tmp/everstone.png","biome_label":"Cave"}'
     run notify_item "$item"
