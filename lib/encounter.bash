@@ -608,20 +608,27 @@ function encounter_species_for_name {
 # encounter_pick_variety <species>
 # Print a random variety name from /pokemon-species/<sp>.varieties[]. Falls
 # back to <sp> if the species lookup fails or the varieties array is empty.
-# _encounter_variety_is_battle_only <variety-name>
-# True (exit 0) if the name is a non-wild form — Mega, Primal, Gigantamax,
-# Eternamax, a Totem boss, or a one-off event transform (Ash-Greninja's
-# battle-bond, Bloodmoon Ursaluna) that PokeAPI leaves without an is_battle_only
-# flag. These are never wild-encounterable, so they must not be rolled or pooled
-# as encounter varieties. Regional/cosmetic formes (alola, galar, hisui,
-# midnight, …) are legitimate and return false. The authoritative is_battle_only
-# flag (see _encounter_form_is_battle_only) covers the rest, including mega-z and
-# stance/transform forms whose names don't betray them.
-function _encounter_variety_is_battle_only {
+# _encounter_variety_is_non_wild <variety-name>
+# True (exit 0) if the name is a form that is never found in the wild and so
+# must not be rolled or pooled as an encounter variety:
+#   - battle-only transformations: Mega, Primal, Gigantamax, Eternamax
+#   - Totem bosses
+#   - one-off event transforms PokeAPI leaves without an is_battle_only flag
+#     (Ash-Greninja's battle-bond, Bloodmoon Ursaluna)
+#   - cosmetic event-distribution forms (Pikachu's caps, cosplay outfits, and
+#     the Let's-Go starter Pikachu/Eevee) — same stats as the base form, only
+#     ever handed out at events
+# Regional/cosmetic-but-wild formes (alola, galar, hisui, midnight, …) are
+# legitimate and return false. The authoritative is_battle_only flag (see
+# _encounter_form_is_battle_only) covers the battle/stance forms whose names
+# don't betray them (mega-z, aegislash-blade, …).
+function _encounter_variety_is_non_wild {
     case "$1" in
         *-mega | *-mega-x | *-mega-y | *-primal | *-gmax | *-eternamax) return 0 ;;
         *-totem | *-totem-*) return 0 ;;
         *-battle-bond | *-bloodmoon) return 0 ;;
+        *-cap | *-cosplay | *-starter) return 0 ;;
+        *-rock-star | *-belle | *-pop-star | *-phd | *-libre) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -647,14 +654,14 @@ function encounter_pick_variety {
         printf '%s' "${sp}"
         return
     fi
-    # Gather every variety, dropping battle-only transformations (mega/gmax/…).
+    # Gather every variety, dropping non-wild forms (mega/gmax/totem/cosmetic/…).
     local -a varieties=()
     local v
     while IFS= read -r v; do
         if [[ -z "${v}" || "${v}" == "null" ]]; then
             continue
         fi
-        if _encounter_variety_is_battle_only "${v}"; then
+        if _encounter_variety_is_non_wild "${v}"; then
             continue
         fi
         varieties+=("${v}")
@@ -732,7 +739,7 @@ function encounter_build_pool {
         if [[ -z "${raw_name}" ]]; then
             continue
         fi
-        if _encounter_variety_is_battle_only "${raw_name}"; then
+        if _encounter_variety_is_non_wild "${raw_name}"; then
             continue
         fi
         # Forms whose name doesn't betray them (mega-z, aegislash-blade, …) are

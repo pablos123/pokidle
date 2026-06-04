@@ -326,21 +326,25 @@ EOF
     fi
 }
 
-@test "_encounter_variety_is_battle_only: flags mega/gmax/primal/eternamax/totem, allows base/regional" {
-    _encounter_variety_is_battle_only charizard-mega-x
-    _encounter_variety_is_battle_only charizard-mega-y
-    _encounter_variety_is_battle_only gengar-mega
-    _encounter_variety_is_battle_only venusaur-gmax
-    _encounter_variety_is_battle_only kyogre-primal
-    _encounter_variety_is_battle_only eternatus-eternamax
-    _encounter_variety_is_battle_only gumshoos-totem
-    _encounter_variety_is_battle_only raticate-totem-alola
-    _encounter_variety_is_battle_only greninja-battle-bond
-    _encounter_variety_is_battle_only ursaluna-bloodmoon
-    ! _encounter_variety_is_battle_only gengar
-    ! _encounter_variety_is_battle_only meowth-galar
-    ! _encounter_variety_is_battle_only raichu-alola
-    ! _encounter_variety_is_battle_only lycanroc-midnight
+@test "_encounter_variety_is_non_wild: flags battle/totem/event/cosmetic forms, allows base/regional" {
+    _encounter_variety_is_non_wild charizard-mega-x
+    _encounter_variety_is_non_wild charizard-mega-y
+    _encounter_variety_is_non_wild gengar-mega
+    _encounter_variety_is_non_wild venusaur-gmax
+    _encounter_variety_is_non_wild kyogre-primal
+    _encounter_variety_is_non_wild eternatus-eternamax
+    _encounter_variety_is_non_wild gumshoos-totem
+    _encounter_variety_is_non_wild raticate-totem-alola
+    _encounter_variety_is_non_wild greninja-battle-bond
+    _encounter_variety_is_non_wild ursaluna-bloodmoon
+    _encounter_variety_is_non_wild pikachu-original-cap
+    _encounter_variety_is_non_wild pikachu-cosplay
+    _encounter_variety_is_non_wild pikachu-rock-star
+    _encounter_variety_is_non_wild eevee-starter
+    ! _encounter_variety_is_non_wild gengar
+    ! _encounter_variety_is_non_wild meowth-galar
+    ! _encounter_variety_is_non_wild raichu-alola
+    ! _encounter_variety_is_non_wild lycanroc-midnight
 }
 
 @test "_encounter_form_is_battle_only: reads is_battle_only from /pokemon-form" {

@@ -19,9 +19,10 @@ setup() {
         bad="$(jq '[.tiers[][] | select((.varieties // []) | length == 0)] | length' "$f")"
         [ "$bad" = "0" ] || { echo "varietyless entries in $f: $bad"; false; }
         # No non-wild forms leaked into varieties: mega (any -mega…, incl mega-z),
-        # gmax/primal/eternamax, totems, or battle-stance/transform forms.
+        # gmax/primal/eternamax, totems, battle-stance/transform forms, or
+        # cosmetic event forms (Pikachu caps/cosplay, Let's-Go starters).
         local leaked
-        leaked="$(jq -r '[.tiers[][].varieties[] | select(test("-mega|-primal|-gmax|-eternamax|-totem|-zen$|-hangry$|-gulping$|-gorging$|-busted$|-blade$|-noice$|-school$|-hero$|-ash$|-battle-bond$|-bloodmoon$"))] | length' "$f")"
+        leaked="$(jq -r '[.tiers[][].varieties[] | select(test("-mega|-primal|-gmax|-eternamax|-totem|-zen$|-hangry$|-gulping$|-gorging$|-busted$|-blade$|-noice$|-school$|-hero$|-ash$|-battle-bond$|-bloodmoon$|-cap$|-cosplay$|-starter$|-rock-star$|-belle$|-pop-star$|-phd$|-libre$"))] | length' "$f")"
         [ "$leaked" = "0" ] || { echo "non-wild forms in $f: $leaked"; false; }
     done
 }
