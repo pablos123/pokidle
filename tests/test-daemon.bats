@@ -158,7 +158,7 @@ source_pokidle_lib() {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
-    printf '%s' '{"biome":"cave","schema":3,"tiers":{"common":[{"species":"zubat","min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}' \
+    printf '%s' '{"biome":"cave","tiers":{"common":[{"species":"zubat","varieties":["zubat"],"min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}' \
         > "$POKIDLE_CACHE_DIR/pools/cave.json"
     source_pokidle_lib
     sqlite3 "$POKIDLE_DB_PATH" \
@@ -210,8 +210,8 @@ source_pokidle_lib() {
     local id
     id="$(biome_ids | head -n 1)"
     jq -n --arg b "$id" '
-        {biome: $b, schema: 3, tiers: {
-            common: [range(0; 50) | {species: ("s\(.))"), min: 5, max: 8}],
+        {biome: $b, tiers: {
+            common: [range(0; 50) | {species: ("s\(.))"), varieties: [("s\(.))")], min: 5, max: 8}],
             uncommon: [], rare: [], very_rare: []
         }}
     ' > "$POKIDLE_CACHE_DIR/pools/$id.json"

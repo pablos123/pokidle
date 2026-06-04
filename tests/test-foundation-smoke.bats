@@ -30,8 +30,8 @@ teardown() {
     local id
     while IFS= read -r id; do
         jq -n --arg b "$id" '
-            {biome: $b, schema: 3, tiers: {
-                common: [range(0; 50) | {species: ("s\(.))"), min: 5, max: 8}],
+            {biome: $b, tiers: {
+                common: [range(0; 50) | {species: ("s\(.))"), varieties: [("s\(.))")], min: 5, max: 8}],
                 uncommon: [], rare: [], very_rare: []
             }}
         ' > "$POKIDLE_CACHE_DIR/pools/$id.json"

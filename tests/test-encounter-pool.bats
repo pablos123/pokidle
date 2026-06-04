@@ -9,6 +9,23 @@ setup() {
     stub_pokeapi
 }
 
+@test "shipped pools: every entry carries varieties, none battle-only, no schema key" {
+    local f
+    for f in "$REPO_ROOT"/share/pools/*.json; do
+        # No legacy schema key.
+        [ "$(jq 'has("schema")' "$f")" = "false" ] || { echo "schema key in $f"; false; }
+        # Every entry has a non-empty varieties[].
+        local bad
+        bad="$(jq '[.tiers[][] | select((.varieties // []) | length == 0)] | length' "$f")"
+        [ "$bad" = "0" ] || { echo "varietyless entries in $f: $bad"; false; }
+        # No non-wild forms leaked into varieties: mega (any -mega…, incl mega-z),
+        # gmax/primal/eternamax, totems, or battle-stance/transform forms.
+        local leaked
+        leaked="$(jq -r '[.tiers[][].varieties[] | select(test("-mega|-primal|-gmax|-eternamax|-totem|-zen$|-hangry$|-gulping$|-gorging$|-busted$|-blade$|-noice$|-school$|-hero$|-ash$|-battle-bond$|-bloodmoon$"))] | length' "$f")"
+        [ "$leaked" = "0" ] || { echo "non-wild forms in $f: $leaked"; false; }
+    done
+}
+
 @test "walk_chain: treecko line yields 3 stages with correct levels" {
     local chain
     chain="$(cat "$FIXTURE_DIR/evolution-chain-142.json")"
@@ -213,7 +230,7 @@ setup() {
 }
 
 @test "encounter_roll_pool_entry returns species from a populated tier" {
-    local pool='{"schema":3,"tiers":{"common":[{"species":"zubat","min":5,"max":8}],"uncommon":[],"rare":[],"very_rare":[]}}'
+    local pool='{"tiers":{"common":[{"species":"zubat","min":5,"max":8}],"uncommon":[],"rare":[],"very_rare":[]}}'
     run encounter_roll_pool_entry "$pool"
     [ "$status" -eq 0 ]
     [ "$(jq -r '.species' <<< "$output")" = "zubat" ]
@@ -222,14 +239,14 @@ setup() {
 }
 
 @test "encounter_roll_pool_entry falls back forward when only very_rare populated" {
-    local pool='{"schema":3,"tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[{"species":"mew","min":40,"max":40}]}}'
+    local pool='{"tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[{"species":"mew","min":40,"max":40}]}}'
     run encounter_roll_pool_entry "$pool"
     [ "$status" -eq 0 ]
     [ "$(jq -r '.species' <<< "$output")" = "mew" ]
 }
 
 @test "encounter_roll_pool_entry errors when all tiers empty" {
-    local pool='{"schema":3,"tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]}}'
+    local pool='{"tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]}}'
     run encounter_roll_pool_entry "$pool"
     [ "$status" -ne 0 ]
 }
@@ -239,7 +256,7 @@ setup() {
     export POKIDLE_CACHE_DIR
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
-{"biome":"cave","schema":3,"tiers":{
+{"biome":"cave","tiers":{
   "common":[{"species":"zubat","min":5,"max":8}],
   "uncommon":[{"species":"golbat","min":22,"max":25}],
   "rare":[],"very_rare":[]

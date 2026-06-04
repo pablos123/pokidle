@@ -218,7 +218,6 @@ setup() {
     cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<EOF
 {
     "biome": "cave",
-    "schema": 3,
     "tiers": {"common":[],"uncommon":[],"rare":[],"very_rare":[]},
     "berries": ["rawst", "aspear", "chesto", "lum"]
 }
@@ -258,7 +257,7 @@ EOF
 
 @test "encounter_roll_pokemon: encounter JSON includes friendship from species" {
     # Reuse existing fixtures + override pokeapi_get for species call.
-    local entry='{"species":"treecko","min":5,"max":7}'
+    local entry='{"species":"treecko","varieties":["treecko"],"min":5,"max":7}'
     run encounter_roll_pokemon "$entry" "forest"
     [ "$status" -eq 0 ]
     local fr
@@ -272,7 +271,7 @@ EOF
     mkdir -p "$POKIDLE_CONFIG_DIR"
     export POKIDLE_CONFIG_DIR
 
-    local entry='{"species":"treecko","min":5,"max":7,"pct":100}'
+    local entry='{"species":"treecko","varieties":["treecko"],"min":5,"max":7,"pct":100}'
     run encounter_roll_pokemon "$entry" "cave"
     [ "$status" -eq 0 ]
 
@@ -304,15 +303,6 @@ EOF
     [ "$(jq -r '.variety' <<< "$output")" = "treecko" ]
 }
 
-@test "encounter_roll_pokemon: entry without varieties falls back to pick_variety" {
-    encounter_pick_variety() { printf 'treecko'; }
-    export -f encounter_pick_variety
-    local entry='{"species":"treecko","min":5,"max":7}'
-    run encounter_roll_pokemon "$entry" "forest"
-    [ "$status" -eq 0 ]
-    [ "$(jq -r '.variety' <<< "$output")" = "treecko" ]
-}
-
 @test "encounter_roll_item: forest biome rolls a grass/bug held or evolution item" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_REPO_ROOT
@@ -336,17 +326,28 @@ EOF
     fi
 }
 
-@test "_encounter_variety_is_battle_only: flags mega/gmax/primal/eternamax, allows base/regional" {
+@test "_encounter_variety_is_battle_only: flags mega/gmax/primal/eternamax/totem, allows base/regional" {
     _encounter_variety_is_battle_only charizard-mega-x
     _encounter_variety_is_battle_only charizard-mega-y
     _encounter_variety_is_battle_only gengar-mega
     _encounter_variety_is_battle_only venusaur-gmax
     _encounter_variety_is_battle_only kyogre-primal
     _encounter_variety_is_battle_only eternatus-eternamax
+    _encounter_variety_is_battle_only gumshoos-totem
+    _encounter_variety_is_battle_only raticate-totem-alola
+    _encounter_variety_is_battle_only greninja-battle-bond
+    _encounter_variety_is_battle_only ursaluna-bloodmoon
     ! _encounter_variety_is_battle_only gengar
     ! _encounter_variety_is_battle_only meowth-galar
     ! _encounter_variety_is_battle_only raichu-alola
     ! _encounter_variety_is_battle_only lycanroc-midnight
+}
+
+@test "_encounter_form_is_battle_only: reads is_battle_only from /pokemon-form" {
+    _encounter_form_is_battle_only aegislash-blade
+    ! _encounter_form_is_battle_only meowth-galar
+    # Unknown form (no fixture / 404) is treated as wild (not battle-only).
+    ! _encounter_form_is_battle_only made-up-form
 }
 
 @test "encounter_pick_variety: never selects a battle-only form" {

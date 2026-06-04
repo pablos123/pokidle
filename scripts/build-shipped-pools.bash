@@ -4,7 +4,7 @@
 # the repo. End users never run this — `pokidle setup` copies the
 # shipped pools into $POKIDLE_CACHE_DIR.
 #
-# Usage: scripts/build-shipped-pools.sh [--keep-cache]
+# Usage: scripts/build-shipped-pools.bash [--keep-cache]
 #   --keep-cache  do not wipe $POKIDLE_CACHE_DIR/pools before rebuilding
 
 set -Eeuo pipefail

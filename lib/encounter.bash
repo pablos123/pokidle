@@ -609,16 +609,35 @@ function encounter_species_for_name {
 # Print a random variety name from /pokemon-species/<sp>.varieties[]. Falls
 # back to <sp> if the species lookup fails or the varieties array is empty.
 # _encounter_variety_is_battle_only <variety-name>
-# True (exit 0) if the name is a battle-only transformation — Mega, Primal,
-# Gigantamax, Eternamax. PokeAPI ships these forms with an empty moveset (their
-# moves belong to the base form) and they are never wild-encounterable, so they
-# must not be rolled as encounter varieties. Regional/cosmetic formes (alola,
-# galar, hisui, midnight, …) are legitimate and return false.
+# True (exit 0) if the name is a non-wild form — Mega, Primal, Gigantamax,
+# Eternamax, a Totem boss, or a one-off event transform (Ash-Greninja's
+# battle-bond, Bloodmoon Ursaluna) that PokeAPI leaves without an is_battle_only
+# flag. These are never wild-encounterable, so they must not be rolled or pooled
+# as encounter varieties. Regional/cosmetic formes (alola, galar, hisui,
+# midnight, …) are legitimate and return false. The authoritative is_battle_only
+# flag (see _encounter_form_is_battle_only) covers the rest, including mega-z and
+# stance/transform forms whose names don't betray them.
 function _encounter_variety_is_battle_only {
     case "$1" in
         *-mega | *-mega-x | *-mega-y | *-primal | *-gmax | *-eternamax) return 0 ;;
+        *-totem | *-totem-*) return 0 ;;
+        *-battle-bond | *-bloodmoon) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+# _encounter_form_is_battle_only <variety-name>
+# True (exit 0) if PokeAPI's /pokemon-form/<name> marks the form is_battle_only.
+# This is the authoritative catch the name-suffix check above cannot give —
+# e.g. mega-z forms (absol-mega-z) and stance/transform forms (aegislash-blade,
+# morpeko-hangry, mimikyu-busted). A missing form (404) or absent flag means the
+# form is wild-encounterable, so return 1.
+function _encounter_form_is_battle_only {
+    local form
+    if ! form="$(pokeapi_get "pokemon-form/$1" 2>/dev/null)"; then
+        return 1
+    fi
+    [[ "$(jq -r '.is_battle_only // false' <<<"${form}")" == "true" ]]
 }
 
 function encounter_pick_variety {
@@ -704,10 +723,22 @@ function encounter_build_pool {
     #     reached the pool — that is the form actually present in this biome's
     #     types (e.g. a steel biome holds meowth-galar, not bare meowth). The
     #     bare name keys species-level data; the variety drives the encounter.
+    #     Battle-only/totem forms (mega, gmax, …) carry a biome type but are
+    #     never wild-encounterable, so they are dropped here; a species whose
+    #     only type-matching form is battle-only thus never enters the pool.
     local species_to_varieties='{}'
     local raw_name
     while IFS= read -r raw_name; do
         if [[ -z "${raw_name}" ]]; then
+            continue
+        fi
+        if _encounter_variety_is_battle_only "${raw_name}"; then
+            continue
+        fi
+        # Forms whose name doesn't betray them (mega-z, aegislash-blade, …) are
+        # caught by the authoritative is_battle_only flag. Only hyphenated names
+        # can be non-base forms, so bare species skip the extra fetch.
+        if [[ "${raw_name}" == *-* ]] && _encounter_form_is_battle_only "${raw_name}"; then
             continue
         fi
         local bare
@@ -842,7 +873,7 @@ function encounter_pool_path {
 
 # encounter_pool_save <biome> <body_json>
 # Write a pool file for biome from the build_pool output. Pools are shipped
-# with the repo and regenerated wholesale (scripts/build-shipped-pools.sh), so
+# with the repo and regenerated wholesale (scripts/build-shipped-pools.bash), so
 # there is no on-disk version: the shipped pools always match the current code.
 function encounter_pool_save {
     local biome="$1"
@@ -875,7 +906,7 @@ function encounter_pool_load {
 }
 
 # encounter_roll_pool_entry <pool_json>
-# Roll a pool entry from a pool {schema:3, tiers:{...}}. Pick a tier by fixed
+# Roll a pool entry from a pool {tiers:{...}}. Pick a tier by fixed
 # weights, walk forward to the next non-empty tier on an empty bucket, then pick
 # uniformly inside. Returns 1 if every tier is empty.
 function encounter_roll_pool_entry {
@@ -921,23 +952,14 @@ function encounter_roll_pokemon {
     local hi
     hi="$(jq -r '.max' <<<"${entry}")"
 
-    # Pick the encountered form. Pool entries carry varieties[]: the forms that
-    # reached this biome via its types (so a steel biome yields meowth-galar,
-    # never bare Normal meowth) — roll uniformly among those. An entry with no
-    # varieties[] falls back to a whole-species pick that rolls between every
-    # forme. /pokemon and ability/move fetches use the variety; the encounter's
+    # Pick the encountered form. Every pool entry carries a non-empty
+    # varieties[]: the forms that reached this biome via its types (so a steel
+    # biome yields meowth-galar, never bare Normal meowth). Roll uniformly among
+    # them. /pokemon and ability/move fetches use the variety; the encounter's
     # species field stays bare.
     local -a vlist=()
-    mapfile -t vlist < <(jq -r '(.varieties // [])[]' <<<"${entry}")
-    local variety
-    if ((${#vlist[@]} > 0)); then
-        variety="${vlist[$((RANDOM % ${#vlist[@]}))]}"
-    else
-        variety="$(encounter_pick_variety "${sp}")"
-    fi
-    if [[ -z "${variety}" || "${variety}" == "null" ]]; then
-        variety="${sp}"
-    fi
+    mapfile -t vlist < <(jq -r '.varieties[]' <<<"${entry}")
+    local variety="${vlist[$((RANDOM % ${#vlist[@]}))]}"
 
     local poke
     if ! poke="$(pokeapi_get "pokemon/${variety}")"; then

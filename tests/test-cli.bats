@@ -196,7 +196,7 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     # Provide a pool file so "Possible encounters" is non-zero.
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
-{"biome":"cave","built_at":"2026-05-28T00:00:00Z","schema":3,
+{"biome":"cave","built_at":"2026-05-28T00:00:00Z",
  "tiers":{"common":[{"species":"zubat","min":5,"max":10}],
           "uncommon":[{"species":"machop","min":8,"max":15}],
           "rare":[],"very_rare":[]},
@@ -244,12 +244,11 @@ EOF
 {
   "biome": "cave",
   "built_at": "2026-05-28T00:00:00Z",
-  "schema": 3,
   "tiers": {
-    "common":    [{"species":"zubat","min":5,"max":10},{"species":"geodude","min":5,"max":12}],
-    "uncommon":  [{"species":"machop","min":8,"max":15}],
+    "common":    [{"species":"zubat","varieties":["zubat"],"min":5,"max":10},{"species":"geodude","varieties":["geodude"],"min":5,"max":12}],
+    "uncommon":  [{"species":"machop","varieties":["machop"],"min":8,"max":15}],
     "rare":      [],
-    "very_rare": [{"species":"mewtwo","min":50,"max":60}]
+    "very_rare": [{"species":"mewtwo","varieties":["mewtwo"],"min":50,"max":60}]
   },
   "berries": []
 }
@@ -292,7 +291,6 @@ EOF
 {
   "biome": "crystal-cavern",
   "built_at": "2026-05-28T00:00:00Z",
-  "schema": 4,
   "tiers": {
     "common":    [{"species":"meowth","varieties":["meowth-galar"],"min":5,"max":15}],
     "uncommon":  [{"species":"geodude","varieties":["geodude"],"min":5,"max":12}],
@@ -308,20 +306,6 @@ EOF
     [[ "$output" != *"  meowth (L5-15)"* ]]
     # Bare-form species still render as their plain name.
     [[ "$output" == *"geodude (L5-12)"* ]]
-}
-
-@test "pokidle current --encounters: entry without varieties lists the bare species" {
-    _seed_schema
-    _mk_session cave > /dev/null
-    mkdir -p "$POKIDLE_CACHE_DIR/pools"
-    cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
-{"biome":"cave","built_at":"2026-05-28T00:00:00Z",
- "tiers":{"common":[{"species":"zubat","min":5,"max":10}],
-          "uncommon":[],"rare":[],"very_rare":[]},"berries":[]}
-EOF
-    run "$REPO_ROOT/pokidle" current --encounters
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"zubat (L5-10)"* ]]
 }
 
 @test "pokidle current --items and --encounters are mutually exclusive" {
@@ -500,7 +484,7 @@ _seed_pokeapi_cache() {
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
 
-    local pool='{"biome":"cave","built_at":"2026-05-08T00:00:00Z","schema":3,"tiers":{"common":[{"species":"treecko","min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}'
+    local pool='{"biome":"cave","built_at":"2026-05-08T00:00:00Z","tiers":{"common":[{"species":"treecko","varieties":["treecko"],"min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}'
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
 
@@ -524,7 +508,7 @@ _seed_pokeapi_cache() {
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
 
-    local pool='{"biome":"cave","built_at":"2026-05-08T00:00:00Z","schema":3,"tiers":{"common":[{"species":"treecko","min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}'
+    local pool='{"biome":"cave","built_at":"2026-05-08T00:00:00Z","tiers":{"common":[{"species":"treecko","varieties":["treecko"],"min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}'
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
 
