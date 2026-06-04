@@ -416,7 +416,7 @@ function db_update_encounter_evolved {
 # consumed, "0" if none was available.
 function db_consume_one_item_drop {
     local item="$1"
-    local now="$2"
+    local now="${2-}"
     if [[ -z "${now}" ]]; then
         now="$(date +%s)"
     fi

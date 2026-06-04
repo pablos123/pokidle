@@ -426,6 +426,26 @@ teardown() {
     [ "$output" = "0" ]
 }
 
+@test "db_consume_one_item_drop defaults now when omitted (nounset-safe)" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    load_lib db
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);
+        INSERT INTO item_drops(session_id, encountered_at, item) VALUES
+            (1, 100, 'water-stone');"
+    # evolution_apply calls this with one arg under the daemon's `set -u`; the
+    # missing optional <now> must not crash with "$2: unbound variable".
+    set -u
+    run db_consume_one_item_drop water-stone
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+    local consumed; consumed="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT consumed_at FROM item_drops WHERE encountered_at=100;")"
+    [ -n "$consumed" ]
+}
+
 @test "db_list_item_drops hides consumed by default, --include-consumed shows" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
