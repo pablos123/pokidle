@@ -1,8 +1,8 @@
 # pokidle
 
-A passive Pokémon encounter daemon for the Linux desktop.
+A passive Pokémon encounter daemon for the Linux desktop written in `bash`.
 
-Non-intrusive notifications on a slow cadence: it encounters wild Pokémon, drops items, levels/befriends/evolves your current-week catches, and rarely spawns a legendary. Shinies included!
+Non-intrusive notifications on a slow cadence: it encounters wild Pokémon, drops items, levels/befriends/evolves your current-week catches, and rarely spawns a legendary.
 
 A CLI inspects, filters, and exports your catches for battling in Showdown.
 
@@ -42,10 +42,10 @@ To relocate: `uninstall`, move the clone, then `setup` again.
 ## Update
 
 ```
-git -C <repo> pull && pokidle setup
+git -C <pokidle_repo_path> pull && pokidle setup
 ```
 
-`setup` re-seeds any biome pool whose shipped copy is newer than your cached one, so encounter/form updates apply automatically — no manual `rebuild-pool`. A pool you rebuilt yourself stays newer than the shipped file and is kept. Your catches (the SQLite DB) are never touched.
+`setup` re-seeds any biome pool. A pool you rebuilt yourself stays newer than the shipped file and is kept. Your catches (the SQLite DB) are never touched.
 
 ## Usage
 
