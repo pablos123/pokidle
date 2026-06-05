@@ -151,14 +151,15 @@ JQ
 # List encounters as JSON. Filters parsed from argv:
 #   --shiny --since YYYY-MM-DD --until YYYY-MM-DD --biome <id>
 #   --species <name> --nature <name> --min-iv-total N --limit N
-#   --newest-first
-# Always selects the newest N rows (--limit). By default they are emitted
-# oldest-first (newest at the bottom); --newest-first emits newest-first.
+#   --sort date|name|level --reverse
+# Always selects the newest N rows (--limit), then orders that window by the
+# chosen key. Ascending by default (date=oldest-first); --reverse flips it.
 function db_list_encounters {
     local -a where=()
     local -i limit=50
     local ts
-    local -i newest_first=0
+    local sort_key="date"
+    local -i reverse=0
     while (($# > 0)); do
         case "$1" in
             --shiny)
@@ -205,8 +206,20 @@ function db_list_encounters {
                 limit="$2"
                 shift 2
                 ;;
-            --newest-first)
-                newest_first=1
+            --sort)
+                case "$2" in
+                    date | name | level)
+                        sort_key="$2"
+                        ;;
+                    *)
+                        printf 'db_list_encounters: invalid --sort: %s (date|name|level)\n' "$2" >&2
+                        return 2
+                        ;;
+                esac
+                shift 2
+                ;;
+            --reverse)
+                reverse=1
                 shift
                 ;;
             *)
@@ -215,6 +228,16 @@ function db_list_encounters {
                 ;;
         esac
     done
+    local order_expr
+    case "${sort_key}" in
+        name) order_expr="COALESCE(variety, species) COLLATE NOCASE" ;;
+        level) order_expr="level" ;;
+        *) order_expr="encountered_at" ;;
+    esac
+    local dir="ASC"
+    if ((reverse)); then
+        dir="DESC"
+    fi
     local sql="SELECT e.*, s.biome_id FROM encounters e JOIN biome_sessions s ON s.id=e.session_id"
     if ((${#where[@]})); then
         local joined
@@ -222,10 +245,7 @@ function db_list_encounters {
         sql+=" WHERE ${joined% AND }"
     fi
     sql+=" ORDER BY e.encountered_at DESC LIMIT ${limit}"
-    if ((!newest_first)); then
-        sql="SELECT * FROM (${sql}) ORDER BY encountered_at ASC"
-    fi
-    sql+=";"
+    sql="SELECT * FROM (${sql}) ORDER BY ${order_expr} ${dir}, encountered_at ${dir}, id ${dir};"
     db_query_json "${sql}"
 }
 
@@ -253,13 +273,17 @@ function db_insert_item_drop {
 # db_list_item_drops [filters...]
 # List item drops as JSON. Filters parsed from argv:
 #   --since YYYY-MM-DD --until YYYY-MM-DD --biome <id> --item <name>
-#   --limit N --newest-first --include-consumed
+#   --limit N --sort date|name --reverse --include-consumed
+# Always selects the newest N rows (--limit), then orders that window by the
+# chosen key. Ascending by default (date=oldest-first); --reverse flips it.
+# --sort level is accepted but treated as date (items have no level).
 # Consumed drops are excluded unless --include-consumed is given.
 function db_list_item_drops {
     local -a where=()
     local -i limit=50
     local ts
-    local -i newest_first=0
+    local sort_key="date"
+    local -i reverse=0
     local -i include_consumed=0
     while (($# > 0)); do
         case "$1" in
@@ -292,8 +316,20 @@ function db_list_item_drops {
                 limit="$2"
                 shift 2
                 ;;
-            --newest-first)
-                newest_first=1
+            --sort)
+                case "$2" in
+                    date | name | level)
+                        sort_key="$2"
+                        ;;
+                    *)
+                        printf 'db_list_item_drops: invalid --sort: %s (date|name)\n' "$2" >&2
+                        return 2
+                        ;;
+                esac
+                shift 2
+                ;;
+            --reverse)
+                reverse=1
                 shift
                 ;;
             --include-consumed)
@@ -309,6 +345,14 @@ function db_list_item_drops {
     if ((!include_consumed)); then
         where+=("d.consumed_at IS NULL")
     fi
+    local order_expr="encountered_at"
+    if [[ "${sort_key}" == "name" ]]; then
+        order_expr="item COLLATE NOCASE"
+    fi
+    local dir="ASC"
+    if ((reverse)); then
+        dir="DESC"
+    fi
     local sql="SELECT d.*, s.biome_id FROM item_drops d JOIN biome_sessions s ON s.id=d.session_id"
     if ((${#where[@]})); then
         local joined
@@ -316,10 +360,7 @@ function db_list_item_drops {
         sql+=" WHERE ${joined% AND }"
     fi
     sql+=" ORDER BY d.encountered_at DESC LIMIT ${limit}"
-    if ((!newest_first)); then
-        sql="SELECT * FROM (${sql}) ORDER BY encountered_at ASC"
-    fi
-    sql+=";"
+    sql="SELECT * FROM (${sql}) ORDER BY ${order_expr} ${dir}, encountered_at ${dir}, id ${dir};"
     db_query_json "${sql}"
 }
 
@@ -458,4 +499,76 @@ function db_state_set {
 function db_state_get {
     local key="$1"
     db_query "SELECT value FROM daemon_state WHERE key='${key//\'/\'\'}';"
+}
+
+# db_log_event <kind> <summary>
+# Append one event_log row stamped with the current epoch.
+function db_log_event {
+    local kind="$1"
+    local summary="$2"
+    db_exec "INSERT INTO event_log(ts, kind, summary)
+             VALUES ($(date +%s), '${kind//\'/\'\'}', '${summary//\'/\'\'}');"
+}
+
+# db_log_prune <retention_seconds>
+# Delete event_log rows older than <retention_seconds> before now.
+function db_log_prune {
+    local retention="$1"
+    if ! _db_assert_int "${retention}" retention; then
+        return 2
+    fi
+    db_exec "DELETE FROM event_log WHERE ts < ($(date +%s) - ${retention});"
+}
+
+# db_list_log [--kind K] [--limit N] [--reverse] <retention_seconds>
+# List event_log rows within the retention window as JSON. Oldest-first by
+# default; --reverse flips to newest-first. <retention_seconds> is required.
+function db_list_log {
+    local -a where=()
+    local -i limit=0
+    local -i reverse=0
+    local retention=""
+    while (($# > 0)); do
+        case "$1" in
+            --kind)
+                where+=("kind='${2//\'/\'\'}'")
+                shift 2
+                ;;
+            --limit)
+                if ! _db_assert_int "$2" --limit; then
+                    return 2
+                fi
+                limit="$2"
+                shift 2
+                ;;
+            --reverse)
+                reverse=1
+                shift
+                ;;
+            -*)
+                printf 'db_list_log: unknown flag: %s\n' "$1" >&2
+                return 2
+                ;;
+            *)
+                retention="$1"
+                shift
+                ;;
+        esac
+    done
+    if ! _db_assert_int "${retention}" retention; then
+        return 2
+    fi
+    where+=("ts >= ($(date +%s) - ${retention})")
+    local dir="ASC"
+    if ((reverse)); then
+        dir="DESC"
+    fi
+    local joined
+    printf -v joined '%s AND ' "${where[@]}"
+    local sql="SELECT id, ts, kind, summary FROM event_log WHERE ${joined% AND } ORDER BY ts ${dir}, id ${dir}"
+    if ((limit > 0)); then
+        sql+=" LIMIT ${limit}"
+    fi
+    sql+=";"
+    db_query_json "${sql}"
 }

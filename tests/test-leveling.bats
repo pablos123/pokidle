@@ -72,6 +72,48 @@ _seed_rattata_in_current_week() {
     [ "$hit" = "1" ]
 }
 
+@test "pokidle tick level --no-dry-run logs a level event" {
+    _seed_rattata_in_current_week
+    local i
+    for i in {1..60}; do
+        "$REPO_ROOT/pokidle" tick level --no-dry-run --no-notify --json 2>/dev/null > /dev/null
+        local c
+        c="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM event_log WHERE kind='level';")"
+        if (( c > 0 )); then break; fi
+    done
+    run sqlite3 "$POKIDLE_DB_PATH" "SELECT kind || '|' || summary FROM event_log WHERE kind='level' LIMIT 1;"
+    [ "$status" -eq 0 ]
+    [[ "$output" == "level|rattata #1  "* ]]
+}
+
+@test "pokidle tick level --dry-run logs nothing" {
+    _seed_rattata_in_current_week
+    local i
+    for i in {1..40}; do
+        "$REPO_ROOT/pokidle" tick level --dry-run --no-notify --json 2>/dev/null > /dev/null
+    done
+    local c
+    c="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM event_log;")"
+    [ "$c" = "0" ]
+}
+
+@test "pokidle log prints one line per event; --kind and --json filter" {
+    _seed_rattata_in_current_week
+    sqlite3 "$POKIDLE_DB_PATH" "INSERT INTO event_log(ts, kind, summary) VALUES
+        ($(date +%s), 'encounter', 'Pikachu Lv.12 M [forest]'),
+        ($(date +%s), 'item', 'oran-berry [forest]');"
+    run "$REPO_ROOT/pokidle" log 2>/dev/null
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pikachu Lv.12 M [forest]"* ]]
+    [[ "$output" == *"oran-berry [forest]"* ]]
+    [ "$(printf '%s\n' "$output" | grep -c .)" = "2" ]
+    run "$REPO_ROOT/pokidle" log --kind item 2>/dev/null
+    [[ "$output" == *"oran-berry"* ]]
+    [[ "$output" != *"Pikachu"* ]]
+    run "$REPO_ROOT/pokidle" log --json 2>/dev/null
+    [ "$(jq 'length' <<< "$output")" = "2" ]
+}
+
 @test "pokidle tick level: dry-run does not write to DB" {
     _seed_rattata_in_current_week
     "$REPO_ROOT/pokidle" tick level --dry-run --no-notify --json 2>/dev/null > /dev/null

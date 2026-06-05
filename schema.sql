@@ -53,3 +53,11 @@ CREATE TABLE IF NOT EXISTS daemon_state (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS event_log (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts      INTEGER NOT NULL,
+    kind    TEXT NOT NULL,
+    summary TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_event_log_ts ON event_log(ts);

@@ -71,7 +71,8 @@ Commands:
                             --nature NAME     Exact nature match
                             --min-iv-total N  Min summed IVs
                             --limit N         Cap rows (default 50)
-                            --newest-first    Newest at top (default: bottom)
+                            --sort KEY        date|name|level (default: date)
+                            --reverse         Reverse the sort (default: ascending)
                             --no-images       Skip inline sprite previews
                             --json            Emit raw JSON
   export [filters]        Random Pokémon Showdown team: up to 6 distinct
@@ -86,8 +87,14 @@ Commands:
                             --item NAME       Substring match on item
                             --limit N         Cap rows (default 50)
                             --all             Include used (consumed) drops
-                            --newest-first    Newest at top (default: bottom)
+                            --sort KEY        date|name (default: date)
+                            --reverse         Reverse the sort (default: ascending)
                             --no-images       Skip inline sprite previews
+                            --json            Emit raw JSON
+  log [filters]           One line per logged tick event (last 7 days)
+                            --kind KIND       encounter|item|level|friendship|evolve|legendary
+                            --limit N         Cap rows
+                            --reverse         Newest first (default: oldest first)
                             --json            Emit raw JSON
   stats                   Aggregates: totals, shinies, by biome, top species
   current [--items|--encounters] [--no-images]
@@ -331,6 +338,8 @@ function _pokidle_daemon_run {
             next_legendary="$(_pokidle_next_tick_target "${now}" "${POKIDLE_LEGENDARY_INTERVAL:-86400}")"
             _pokidle_persist_target last_legendary_tick_target "${next_legendary}"
         fi
+
+        db_log_prune $((${POKIDLE_LOG_RETENTION_DAYS:-7} * 86400))
 
         local -i biome_end=$((biome_started_at + ${POKIDLE_BIOME_HOURS:-3} * 3600))
         local -i next_event=${next_pokemon}
@@ -599,6 +608,7 @@ function pokidle_tick {
                     . + {session_id: $sid, encountered_at: $ts, sprite_path: $sp}
                 ' <<<"${enc}")"
                 db_insert_encounter "${enc_for_db}"
+                _pokidle_log_encounter encounter "${enc}" "${biome}"
             fi
             if ((no_notify == 0)) && [[ "${POKIDLE_NOTIFY_POKEMON:-1}" == "1" ]]; then
                 notify_pokemon "${enc_with_meta}"
@@ -625,6 +635,7 @@ function pokidle_tick {
             ' <<<"${item_json}")"
             if ((dry_run == 0)); then
                 db_insert_item_drop "${sid}" "$(date +%s)" "${item_name}" "${sprite_path}"
+                db_log_event item "${item_name} [${biome}]"
             fi
             if ((no_notify == 0)) && [[ "${POKIDLE_NOTIFY_ITEM:-1}" == "1" ]]; then
                 notify_item "${item_with_meta}"
@@ -736,6 +747,7 @@ function pokidle_tick_level {
 
         if ((dry_run == 0)); then
             db_update_encounter_level_stats "${id}" "${new_level}" "${stats}"
+            db_log_event level "${species} #${id}  ${level} → ${new_level}"
         fi
         if ((notify_on)); then
             notify_level "${species}" "${level}" "${new_level}"
@@ -823,6 +835,7 @@ function pokidle_tick_friendship {
 
         if ((dry_run == 0)); then
             db_update_encounter_friendship "${id}" "${fr_new}"
+            db_log_event friendship "${species} #${id}  ${fr_old} → ${fr_new}"
         fi
         if ((notify_on)); then
             notify_friendship "${species}" "${fr_old}" "${fr_new}"
@@ -968,6 +981,7 @@ function pokidle_tick_evolve {
             if ! evolution_apply "${enc_id}" "${pick}"; then
                 continue
             fi
+            db_log_event evolve "${species} → ${new_species} #${enc_id}"
         fi
         if ((no_notify == 0)) && [[ "${POKIDLE_NOTIFY_EVOLVE:-1}" == "1" ]]; then
             local sprite_meta
@@ -1089,6 +1103,7 @@ function pokidle_tick_legendary {
             . + {session_id: $sid, encountered_at: $ts, sprite_path: $sp}
         ' <<<"${enc}")"
         db_insert_encounter "${enc_for_db}"
+        _pokidle_log_encounter legendary "${enc}" "${biome}"
     fi
 
     if ((no_notify == 0)) && [[ "${POKIDLE_NOTIFY_POKEMON:-1}" == "1" ]]; then
@@ -1151,6 +1166,20 @@ function _pokidle_item_sprite {
         return 0
     fi
 }
+# _pokidle_log_encounter <kind> <enc-json> <biome>
+# Append an event_log row for a persisted pokemon/legendary encounter. Shiny is
+# rendered as the literal "(shiny)".
+function _pokidle_log_encounter {
+    local kind="$1"
+    local enc="$2"
+    local biome="$3"
+    local summary
+    summary="$(jq -r --arg b "${biome}" '
+        "\(.variety // .species) Lv.\(.level) \(.gender) [\($b)]"
+        + (if .shiny == 1 then " (shiny)" else "" end)' <<<"${enc}")"
+    db_log_event "${kind}" "${summary}"
+}
+
 # _pokidle_shuffle <array_name>
 # Fisher-Yates shuffle of a named array, in place, using $RANDOM.
 function _pokidle_shuffle {
@@ -1468,6 +1497,50 @@ function pokidle_items {
     done < <(jq -c '.[]' <<<"${rows}")
 }
 
+# pokidle_log [filters...]
+# One line per logged tick event within the retention window
+# (POKIDLE_LOG_RETENTION_DAYS, default 7). Oldest-first by default. Flags:
+# --kind <k> --limit N --reverse --json.
+function pokidle_log {
+    db_init
+    local -i json_mode=0
+    local -a args=()
+    while (($# > 0)); do
+        case "$1" in
+            --json)
+                json_mode=1
+                shift
+                ;;
+            *)
+                args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    local -i retention=$((${POKIDLE_LOG_RETENTION_DAYS:-7} * 86400))
+    local rows
+    rows="$(db_list_log "${args[@]}" "${retention}")"
+
+    if ((json_mode)); then
+        printf '%s\n' "${rows}"
+        return
+    fi
+
+    local row
+    while IFS= read -r row; do
+        if [[ -z "${row}" ]]; then
+            continue
+        fi
+        local ts
+        ts="$(jq -r '.ts' <<<"${row}")"
+        local kind
+        kind="$(jq -r '.kind' <<<"${row}")"
+        local summary
+        summary="$(jq -r '.summary' <<<"${row}")"
+        printf '%s   %-10s %s\n' "$(date -d "@${ts}" '+%F %H:%M')" "${kind}" "${summary}"
+    done < <(jq -c '.[]' <<<"${rows}")
+}
 # pokidle_stats
 # Print aggregate stats: total encounters, shinies (with rate), per-biome
 # counts, and the top species.
@@ -2077,6 +2150,7 @@ if [[ "${POKIDLE_TEST_SKIP_DISPATCH:-0}" == "0" ]]; then
         encounters) pokidle_list "$@" ;;
         export) pokidle_export "$@" ;;
         items) pokidle_items "$@" ;;
+        log) pokidle_log "$@" ;;
         stats) pokidle_stats "$@" ;;
         current) pokidle_current "$@" ;;
         rebuild-pool) pokidle_rebuild_pool "$@" ;;

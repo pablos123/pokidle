@@ -96,6 +96,17 @@ The species is chosen at random among legendaries whose types intersect the acti
 | `POKIDLE_IMG_WIDTH` | `16` | Sprite width (terminal cells) for previews in `encounters` / `items`. Requires `chafa`. |
 | `POKIDLE_SEPARATOR` | `-` | Character repeated to draw the row separator between `encounters` and `items` entries. |
 
+## Event log
+
+The daemon records one row per real tick event (encounter, item, level,
+friendship, evolve, legendary) in the `event_log` table; `pokidle log` prints
+them one line each. Rows older than the retention window are pruned by the
+daemon on each loop, and `pokidle log` never displays rows beyond the window.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `POKIDLE_LOG_RETENTION_DAYS` | `7` | Days of event-log history to keep and display. |
+
 ## Notifications and sound
 
 | Variable | Default | Meaning |

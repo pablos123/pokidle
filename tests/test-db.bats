@@ -534,6 +534,180 @@ teardown() {
     [ "$(jq -r '.[0].species' <<< "$output")" = "pidgey" ]
 }
 
+seed_sort_encounters() {
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id,
+            level, nature, ability, is_hidden_ability, gender, shiny, moves_json, friendship)
+            VALUES
+            (1, 1700000100, 'zubat',  'zubat',        41, 30, 'hardy', 'guts', 0, 'M', 0, '[]', 70),
+            (1, 1700000200, 'abra',   'abra',          63, 10, 'hardy', 'guts', 0, 'M', 0, '[]', 70),
+            (1, 1700000300, 'meowth', 'meowth-galar',  52, 20, 'hardy', 'guts', 0, 'M', 0, '[]', 70);"
+}
+
+@test "db_list_encounters default sort is oldest-first by date" {
+    seed_sort_encounters
+    run db_list_encounters --limit 10
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '[.[].species] | join(",")' <<< "$output")" = "zubat,abra,meowth" ]
+}
+
+@test "db_list_encounters --reverse flips date to newest-first" {
+    seed_sort_encounters
+    run db_list_encounters --limit 10 --reverse
+    [ "$(jq -r '[.[].species] | join(",")' <<< "$output")" = "meowth,abra,zubat" ]
+}
+
+@test "db_list_encounters --sort name orders by displayed form (A-Z), --reverse flips" {
+    seed_sort_encounters
+    run db_list_encounters --limit 10 --sort name
+    [ "$(jq -r '[.[].variety] | join(",")' <<< "$output")" = "abra,meowth-galar,zubat" ]
+    run db_list_encounters --limit 10 --sort name --reverse
+    [ "$(jq -r '[.[].variety] | join(",")' <<< "$output")" = "zubat,meowth-galar,abra" ]
+}
+
+@test "db_list_encounters --sort level orders low-to-high, --reverse high-to-low" {
+    seed_sort_encounters
+    run db_list_encounters --limit 10 --sort level
+    [ "$(jq -r '[.[].level] | join(",")' <<< "$output")" = "10,20,30" ]
+    run db_list_encounters --limit 10 --sort level --reverse
+    [ "$(jq -r '[.[].level] | join(",")' <<< "$output")" = "30,20,10" ]
+}
+
+@test "db_list_encounters --limit selects newest-N window then sorts" {
+    seed_sort_encounters
+    # Newest 2 by date are meowth(300) and abra(200); sorted by name -> abra, meowth.
+    run db_list_encounters --limit 2 --sort name
+    [ "$(jq 'length' <<< "$output")" = "2" ]
+    [ "$(jq -r '[.[].variety] | join(",")' <<< "$output")" = "abra,meowth-galar" ]
+}
+
+@test "db_list_encounters rejects invalid --sort key" {
+    db_init
+    run db_list_encounters --sort bogus
+    [ "$status" -ne 0 ]
+}
+
+@test "db_list_encounters no longer accepts --newest-first" {
+    db_init
+    run db_list_encounters --newest-first
+    [ "$status" -ne 0 ]
+}
+
+@test "db_list_item_drops --sort name orders alphabetically, --reverse flips" {
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);
+        INSERT INTO item_drops(session_id, encountered_at, item) VALUES
+            (1, 100, 'water-stone'),
+            (1, 200, 'everstone'),
+            (1, 300, 'oran-berry');"
+    run db_list_item_drops --sort name
+    [ "$(jq -r '[.[].item] | join(",")' <<< "$output")" = "everstone,oran-berry,water-stone" ]
+    run db_list_item_drops --sort name --reverse
+    [ "$(jq -r '[.[].item] | join(",")' <<< "$output")" = "water-stone,oran-berry,everstone" ]
+}
+
+@test "db_list_item_drops --sort level is accepted and falls back to date" {
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);
+        INSERT INTO item_drops(session_id, encountered_at, item) VALUES
+            (1, 100, 'water-stone'),
+            (1, 200, 'everstone');"
+    run db_list_item_drops --sort level
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '[.[].item] | join(",")' <<< "$output")" = "water-stone,everstone" ]
+}
+
+@test "db_list_item_drops rejects an unknown --sort key" {
+    db_init
+    run db_list_item_drops --sort bogus
+    [ "$status" -ne 0 ]
+}
+
+@test "db_list_item_drops no longer accepts --newest-first" {
+    db_init
+    run db_list_item_drops --newest-first
+    [ "$status" -ne 0 ]
+}
+
+@test "db_log_event inserts and db_list_log returns it" {
+    db_init
+    db_log_event encounter "Pikachu Lv.12 M [forest]"
+    run db_list_log 604800
+    [ "$status" -eq 0 ]
+    [ "$(jq 'length' <<< "$output")" = "1" ]
+    [ "$(jq -r '.[0].kind' <<< "$output")" = "encounter" ]
+    [ "$(jq -r '.[0].summary' <<< "$output")" = "Pikachu Lv.12 M [forest]" ]
+}
+
+@test "db_log_event escapes single quotes in the summary" {
+    db_init
+    db_log_event item "king's-rock [cave]"
+    run db_list_log 604800
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.[0].summary' <<< "$output")" = "king's-rock [cave]" ]
+}
+
+@test "db_log_prune deletes rows older than the window, keeps newer" {
+    db_init
+    local now old recent
+    now="$(date +%s)"
+    old=$((now - 8 * 86400))
+    recent=$((now - 1 * 86400))
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO event_log(ts, kind, summary) VALUES
+            ($old, 'item', 'stale'),
+            ($recent, 'item', 'fresh');"
+    db_log_prune $((7 * 86400))
+    run sqlite3 "$POKIDLE_DB_PATH" "SELECT summary FROM event_log ORDER BY ts;"
+    [ "$output" = "fresh" ]
+}
+
+@test "db_list_log read filter hides out-of-window rows even if unpruned" {
+    db_init
+    local now old recent
+    now="$(date +%s)"
+    old=$((now - 8 * 86400))
+    recent=$((now - 1 * 86400))
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO event_log(ts, kind, summary) VALUES
+            ($old, 'item', 'stale'),
+            ($recent, 'item', 'fresh');"
+    run db_list_log $((7 * 86400))
+    [ "$(jq 'length' <<< "$output")" = "1" ]
+    [ "$(jq -r '.[0].summary' <<< "$output")" = "fresh" ]
+}
+
+@test "db_list_log --kind filters, --reverse and --limit apply" {
+    db_init
+    local now
+    now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO event_log(ts, kind, summary) VALUES
+            ($((now - 300)), 'encounter', 'first'),
+            ($((now - 200)), 'item',      'an-item'),
+            ($((now - 100)), 'encounter', 'second');"
+    run db_list_log --kind encounter 604800
+    [ "$(jq 'length' <<< "$output")" = "2" ]
+    [ "$(jq -r '[.[].summary] | join(",")' <<< "$output")" = "first,second" ]
+    run db_list_log --reverse 604800
+    [ "$(jq -r '.[0].summary' <<< "$output")" = "second" ]
+    run db_list_log --limit 1 604800
+    [ "$(jq 'length' <<< "$output")" = "1" ]
+    [ "$(jq -r '.[0].summary' <<< "$output")" = "first" ]
+}
+
+@test "db_list_log requires an integer retention" {
+    db_init
+    run db_list_log
+    [ "$status" -ne 0 ]
+    run db_list_log notanint
+    [ "$status" -ne 0 ]
+}
+
 @test "db_init adds consumed_at column to a pre-existing item_drops" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
