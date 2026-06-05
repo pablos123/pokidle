@@ -520,6 +520,59 @@ function encounter_roll_moves {
     printf ']'
 }
 
+# encounter_legal_moves <species>
+# Print, one per line, every move <species> can learn in its most recent
+# MAINLINE generation — the learnset Pokémon Showdown's current-gen validator
+# accepts on a freshly imported set. Moves that survive only in older gens
+# (Machoke's Tackle), only in isolated side-games whose movepools never transfer
+# (Legends Arceus / Colosseum / XD / Let's Go — Roselia's Poison Powder), or only
+# as gen 1-2 Virtual-Console entries (Doduo's Curse) are excluded, since Showdown
+# rejects a team carrying them. Reads ONLY the warm pokeapi cache, never the
+# network: every exported mon's /pokemon body is already cached from when its
+# moves were rolled, so this is free. Returns 1 (printing nothing) when the
+# species is uncached or no mainline learnset is present, so callers fall back to
+# keeping the stored moves unfiltered rather than dropping a mon on missing data.
+function encounter_legal_moves {
+    local species="$1"
+    local poke
+    if ! poke="$(cache_get "pokemon/${species}")"; then
+        return 1
+    fi
+    # vgrank maps each MAINLINE version group to its generation number; isolated
+    # side-games (legends-arceus, colosseum, xd, lets-go-…) and Japan-only gen 1
+    # dumps are deliberately absent, so they rank null and never count toward the
+    # latest generation nor contribute legal moves.
+    local out
+    out="$(jq -r '
+        def vgrank: {
+            "red-blue":1,"yellow":1,
+            "gold-silver":2,"crystal":2,
+            "ruby-sapphire":3,"emerald":3,"firered-leafgreen":3,
+            "diamond-pearl":4,"platinum":4,"heartgold-soulsilver":4,
+            "black-white":5,"black-2-white-2":5,
+            "x-y":6,"omega-ruby-alpha-sapphire":6,
+            "sun-moon":7,"ultra-sun-ultra-moon":7,
+            "sword-shield":8,"brilliant-diamond-shining-pearl":8,
+            "scarlet-violet":9
+        };
+        (vgrank) as $rank
+        | ([.moves[].version_group_details[].version_group.name | $rank[.] // empty] | max) as $g
+        | if $g == null then empty else
+            [ .moves[]
+              | .move.name as $name
+              | select(any(.version_group_details[];
+                  ($rank[.version_group.name] == $g) and
+                  (.move_learn_method.name | IN("level-up","machine","egg","tutor"))))
+              | $name ]
+            | unique | .[]
+          end
+    ' <<<"${poke}")"
+    if [[ -z "${out}" ]]; then
+        return 1
+    fi
+    printf '%s\n' "${out}"
+}
+
 # encounter_roll_gender <species>
 # Print "F", "M", or "genderless" based on the species' gender_rate.
 function encounter_roll_gender {

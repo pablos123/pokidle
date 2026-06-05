@@ -660,6 +660,82 @@ _seed_pokeapi_cache() {
     ! grep -qi "exp" <<< "$output"
 }
 
+# Seed a crafted /pokemon body into the binary's pokeapi cache so the export's
+# move-legality filter has a deterministic learnset to read (no network).
+_seed_pokemon_moves() { # $1 species  $2 raw moves[] json
+    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
+    printf '{"moves":%s}' "$2" > "$POKEAPI_CACHE_DIR/pokemon/$1.json"
+}
+
+_ins_enc_moves() { # $1 sid  $2 species  $3 ts  $4 moves_json
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe,
+            ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe,
+            moves_json, sprite_path)
+        VALUES ($1, $3, '$2', 1, 50, 'adamant', 'overgrow', 0, 'M', 0, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 100,100,100,100,100,100,
+            '$4', NULL);"
+}
+
+@test "export drops moves the species can't learn in its current gen" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    # roselia stored Poison Powder (legends-arceus-only) alongside a legal move.
+    _ins_enc_moves "$sid" roselia "$now" '["poison-powder","giga-drain"]'
+    _seed_pokemon_moves roselia '[
+        {"move":{"name":"poison-powder"},"version_group_details":[
+            {"version_group":{"name":"legends-arceus"},"move_learn_method":{"name":"level-up"},"level_learned_at":11}]},
+        {"move":{"name":"giga-drain"},"version_group_details":[
+            {"version_group":{"name":"sword-shield"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]}
+    ]'
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Roselia"* ]]
+    [[ "$output" == *"Giga Drain"* ]]
+    [[ "$output" != *"Poison Powder"* ]]
+}
+
+@test "export skips a mon left with no legal moves" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    # doduo's only stored move (Curse) is a gen 1-2 VC-transfer entry -> illegal.
+    _ins_enc_moves "$sid" doduo "$now" '["curse"]'
+    _ins_enc_moves "$sid" pidgey "$now" '["gust"]'
+    _seed_pokemon_moves doduo '[
+        {"move":{"name":"curse"},"version_group_details":[
+            {"version_group":{"name":"gold-silver"},"move_learn_method":{"name":"level-up"},"level_learned_at":1}]},
+        {"move":{"name":"peck"},"version_group_details":[
+            {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"level-up"},"level_learned_at":1}]}
+    ]'
+    _seed_pokemon_moves pidgey '[
+        {"move":{"name":"gust"},"version_group_details":[
+            {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"level-up"},"level_learned_at":1}]}
+    ]'
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pidgey"* ]]
+    [[ "$output" != *"Doduo"* ]]
+    local n; n="$(grep -c 'Nature' <<< "$output")"
+    [ "$n" -eq 1 ]
+}
+
+@test "export keeps stored moves when the species isn't cached (graceful degrade)" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    # No /pokemon cache entry -> filter is a no-op, the stored move survives.
+    _ins_enc_moves "$sid" snorlax "$now" '["body-slam"]'
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Snorlax"* ]]
+    [[ "$output" == *"Body Slam"* ]]
+}
+
 @test "items hides consumed by default, --all shows them marked (used)" {
     _seed_schema
     sqlite3 "$POKIDLE_DB_PATH" "

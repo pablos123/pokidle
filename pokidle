@@ -84,9 +84,10 @@ Commands:
                           --since/--until), each given a distinct, Showdown-
                           legal held item from item drops in the same window.
                           Accepts the same filters as encounters (incl.
-                          --min-level/--max-level). Event-only species (Paradox
-                          Pokémon) are never exported, as Showdown rejects them
-                          on import.
+                          --min-level/--max-level). Each mon's moves are trimmed
+                          to its current-gen learnset and event-only species
+                          (Paradox Pokémon) are never exported, as Showdown
+                          rejects both on import.
   items [filters]         Pretty list of item drops
                             --since DATE      Drops at/after DATE
                             --until DATE      Drops at/before DATE
@@ -1290,9 +1291,11 @@ function _pokidle_shuffle {
 # overridable via --since/--until), one random encounter per species. Held
 # items are drawn from item_drops in the same window — distinct across the
 # team — with each mon's own berry as one additional candidate. Only items
-# Showdown accepts are assigned, so every team imports cleanly. Other list
-# filters (--shiny/--species/--biome/--nature/--min-iv-total) constrain the
-# encounter pool.
+# Showdown accepts are assigned, and each mon's stored moveset is trimmed to its
+# current-gen learnset (see encounter_legal_moves) — dropping moves Showdown
+# rejects, and the mon entirely if none remain legal — so every team imports
+# cleanly. Other list filters (--shiny/--species/--biome/--nature/--min-iv-total)
+# constrain the encounter pool.
 function pokidle_export {
     db_init
     local -a filters=()
@@ -1390,6 +1393,27 @@ function pokidle_export {
         enc="$(jq -c --arg s "${sp}" --argjson i "$((RANDOM % cnt))" \
             '[.[] | select(.species==$s)][$i]' <<<"${rows}")"
 
+        # Restrict the stored moveset to what Showdown's current-gen validator
+        # accepts for this species/form (drops older-gen-only, side-game-only,
+        # and gen 1-2 VC-transfer moves). encounter_legal_moves reads only the
+        # warm cache; if the form is uncached it returns non-zero and the stored
+        # moves pass through untouched. A mon left with no legal move can't form
+        # a valid set, so it is dropped — the same way event-only species are.
+        local variety
+        variety="$(jq -r '.variety // .species' <<<"${enc}")"
+        local moves_json
+        moves_json="$(jq -c '.moves_json | fromjson' <<<"${enc}")"
+        local legal
+        if legal="$(encounter_legal_moves "${variety}")"; then
+            local legal_json
+            legal_json="$(jq -R -s -c 'split("\n") | map(select(length > 0))' <<<"${legal}")"
+            moves_json="$(jq -c --argjson legal "${legal_json}" \
+                '[.[] | select(IN($legal[]))]' <<<"${moves_json}")"
+            if [[ "$(jq 'length' <<<"${moves_json}")" -eq 0 ]]; then
+                continue
+            fi
+        fi
+
         # Candidate item pool: unused window items + this mon's own berry
         # (bare berry slug normalized to "<name>-berry").
         local -a cands=()
@@ -1415,12 +1439,12 @@ function pokidle_export {
         fi
 
         local norm
-        norm="$(jq -c --arg item "${chosen}" '{
+        norm="$(jq -c --arg item "${chosen}" --argjson moves "${moves_json}" '{
             species: (.variety // .species), level, nature, ability, is_hidden_ability, shiny,
             held_item: ($item | select(. != "") // null),
             ivs: [.iv_hp,.iv_atk,.iv_def,.iv_spa,.iv_spd,.iv_spe],
             evs: [.ev_hp,.ev_atk,.ev_def,.ev_spa,.ev_spd,.ev_spe],
-            moves: (.moves_json | fromjson)
+            moves: $moves
         }' <<<"${enc}")"
         printf '%s' "${sep}"
         showdown_format "${norm}"

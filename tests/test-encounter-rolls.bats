@@ -427,3 +427,51 @@ EOF
     [ "$status" -eq 0 ]
     [ "$output" = "[]" ]
 }
+
+# encounter_legal_moves reads only the warm pokeapi cache; seed a crafted
+# /pokemon body so the test is deterministic and never touches the network.
+_seed_legal_moves_fixture() { # $1 species  $2 raw moves[] json
+    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKEAPI_CACHE_DIR
+    load_lib cache
+    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
+    printf '{"moves":%s}' "$2" > "$POKEAPI_CACHE_DIR/pokemon/$1.json"
+}
+
+@test "encounter_legal_moves: keeps current-gen learnset, drops older-gen-only moves" {
+    # Tackle survives only in gen 1-2; thunderbolt is in the latest gen (SV).
+    _seed_legal_moves_fixture mon '[
+        {"move":{"name":"tackle"},"version_group_details":[
+            {"version_group":{"name":"red-blue"},"move_learn_method":{"name":"level-up"},"level_learned_at":1}]},
+        {"move":{"name":"thunderbolt"},"version_group_details":[
+            {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]}
+    ]'
+    run encounter_legal_moves mon
+    [ "$status" -eq 0 ]
+    [[ "$output" == *thunderbolt* ]]
+    [[ "$output" != *tackle* ]]
+}
+
+@test "encounter_legal_moves: drops isolated side-game (Legends Arceus) moves" {
+    # poison-powder is learnable only in legends-arceus; the mainline gen is SwSh.
+    _seed_legal_moves_fixture mon '[
+        {"move":{"name":"poison-powder"},"version_group_details":[
+            {"version_group":{"name":"legends-arceus"},"move_learn_method":{"name":"level-up"},"level_learned_at":11}]},
+        {"move":{"name":"giga-drain"},"version_group_details":[
+            {"version_group":{"name":"sword-shield"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]}
+    ]'
+    run encounter_legal_moves mon
+    [ "$status" -eq 0 ]
+    [[ "$output" == *giga-drain* ]]
+    [[ "$output" != *poison-powder* ]]
+}
+
+@test "encounter_legal_moves: returns non-zero for an uncached species" {
+    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKEAPI_CACHE_DIR
+    load_lib cache
+    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
+    run encounter_legal_moves never-cached
+    [ "$status" -ne 0 ]
+    [ -z "$output" ]
+}
