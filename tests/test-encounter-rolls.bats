@@ -438,22 +438,40 @@ _seed_legal_moves_fixture() { # $1 species  $2 raw moves[] json
     printf '{"moves":%s}' "$2" > "$POKEAPI_CACHE_DIR/pokemon/$1.json"
 }
 
-@test "encounter_legal_moves: keeps current-gen learnset, drops older-gen-only moves" {
-    # Tackle survives only in gen 1-2; thunderbolt is in the latest gen (SV).
+@test "encounter_legal_moves: keeps an older-gen move that transfers up to National Dex" {
+    # A move learnable only in a normal Gen 3 game still transfers to Gen 9
+    # National Dex, so it must survive even though no later gen relearns it.
     _seed_legal_moves_fixture mon '[
-        {"move":{"name":"tackle"},"version_group_details":[
-            {"version_group":{"name":"red-blue"},"move_learn_method":{"name":"level-up"},"level_learned_at":1}]},
+        {"move":{"name":"ancient-power"},"version_group_details":[
+            {"version_group":{"name":"emerald"},"move_learn_method":{"name":"tutor"},"level_learned_at":0}]},
         {"move":{"name":"thunderbolt"},"version_group_details":[
             {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]}
     ]'
     run encounter_legal_moves mon
     [ "$status" -eq 0 ]
+    [[ "$output" == *ancient-power* ]]
     [[ "$output" == *thunderbolt* ]]
-    [[ "$output" != *tackle* ]]
+}
+
+@test "encounter_legal_moves: drops gen 1-2 (Virtual Console) only moves" {
+    # Curse here is learnable only in gen 2; reaching Gen 9 would need a VC
+    # transfer with 3 perfect IVs we don't roll, so it is dropped.
+    _seed_legal_moves_fixture mon '[
+        {"move":{"name":"curse"},"version_group_details":[
+            {"version_group":{"name":"gold-silver"},"move_learn_method":{"name":"machine"},"level_learned_at":0},
+            {"version_group":{"name":"crystal"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]},
+        {"move":{"name":"peck"},"version_group_details":[
+            {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"level-up"},"level_learned_at":1}]}
+    ]'
+    run encounter_legal_moves mon
+    [ "$status" -eq 0 ]
+    [[ "$output" == *peck* ]]
+    [[ "$output" != *curse* ]]
 }
 
 @test "encounter_legal_moves: drops isolated side-game (Legends Arceus) moves" {
-    # poison-powder is learnable only in legends-arceus; the mainline gen is SwSh.
+    # poison-powder is learnable only in legends-arceus, whose movepool never
+    # transfers to National Dex.
     _seed_legal_moves_fixture mon '[
         {"move":{"name":"poison-powder"},"version_group_details":[
             {"version_group":{"name":"legends-arceus"},"move_learn_method":{"name":"level-up"},"level_learned_at":11}]},

@@ -85,9 +85,9 @@ Commands:
                           legal held item from item drops in the same window.
                           Accepts the same filters as encounters (incl.
                           --min-level/--max-level). Each mon's moves are trimmed
-                          to its current-gen learnset and event-only species
-                          (Paradox Pokémon) are never exported, as Showdown
-                          rejects both on import.
+                          to its Gen 9 National Dex legal set and event-only
+                          species (Paradox Pokémon) are never exported, as
+                          Showdown rejects both on import.
   items [filters]         Pretty list of item drops
                             --since DATE      Drops at/after DATE
                             --until DATE      Drops at/before DATE
@@ -1292,10 +1292,12 @@ function _pokidle_shuffle {
 # items are drawn from item_drops in the same window — distinct across the
 # team — with each mon's own berry as one additional candidate. Only items
 # Showdown accepts are assigned, and each mon's stored moveset is trimmed to its
-# current-gen learnset (see encounter_legal_moves) — dropping moves Showdown
-# rejects, and the mon entirely if none remain legal — so every team imports
-# cleanly. Other list filters (--shiny/--species/--biome/--nature/--min-iv-total)
-# constrain the encounter pool.
+# Gen 9 National Dex legal moves (see encounter_legal_moves) — dropping moves
+# only obtainable from non-transferable origins (Legends Arceus, Let's Go, gen
+# 1-2 Virtual Console), and the mon entirely if none remain legal — so every team
+# imports cleanly. Other list filters
+# (--shiny/--species/--biome/--nature/--min-iv-total) constrain the encounter
+# pool.
 function pokidle_export {
     db_init
     local -a filters=()
@@ -1393,12 +1395,13 @@ function pokidle_export {
         enc="$(jq -c --arg s "${sp}" --argjson i "$((RANDOM % cnt))" \
             '[.[] | select(.species==$s)][$i]' <<<"${rows}")"
 
-        # Restrict the stored moveset to what Showdown's current-gen validator
-        # accepts for this species/form (drops older-gen-only, side-game-only,
-        # and gen 1-2 VC-transfer moves). encounter_legal_moves reads only the
-        # warm cache; if the form is uncached it returns non-zero and the stored
-        # moves pass through untouched. A mon left with no legal move can't form
-        # a valid set, so it is dropped — the same way event-only species are.
+        # Restrict the stored moveset to what Showdown's Gen 9 National Dex
+        # validator accepts for this species/form (drops moves obtainable only
+        # from non-transferable origins — Legends Arceus, Let's Go, gen 1-2
+        # Virtual Console). encounter_legal_moves reads only the warm cache; if
+        # the form is uncached it returns non-zero and the stored moves pass
+        # through untouched. A mon left with no legal move can't form a valid
+        # set, so it is dropped — the same way event-only species are.
         local variety
         variety="$(jq -r '.variety // .species' <<<"${enc}")"
         local moves_json

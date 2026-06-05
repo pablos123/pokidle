@@ -521,51 +521,51 @@ function encounter_roll_moves {
 }
 
 # encounter_legal_moves <species>
-# Print, one per line, every move <species> can learn in its most recent
-# MAINLINE generation — the learnset Pokémon Showdown's current-gen validator
-# accepts on a freshly imported set. Moves that survive only in older gens
-# (Machoke's Tackle), only in isolated side-games whose movepools never transfer
-# (Legends Arceus / Colosseum / XD / Let's Go — Roselia's Poison Powder), or only
-# as gen 1-2 Virtual-Console entries (Doduo's Curse) are excluded, since Showdown
-# rejects a team carrying them. Reads ONLY the warm pokeapi cache, never the
-# network: every exported mon's /pokemon body is already cached from when its
-# moves were rolled, so this is free. Returns 1 (printing nothing) when the
-# species is uncached or no mainline learnset is present, so callers fall back to
-# keeping the stored moves unfiltered rather than dropping a mon on missing data.
+# Print, one per line, every move <species> can learn that is legal in Pokémon
+# Showdown's Gen 9 (National Dex) formats — the target for exports. National Dex
+# accepts moves from ANY past generation that can transfer up the Pokémon
+# HOME/Bank chain, so almost every learnset entry stays legal; only moves whose
+# EVERY learn-entry sits in a non-transferable origin are excluded:
+#   - isolated side-games whose movepools never transfer: Legends Arceus and
+#     Let's Go (e.g. Machoke's and Roselia's Tackle / Poison Powder), and
+#   - gen 1-2 only, which would require a Virtual-Console transfer with ≥3
+#     perfect IVs we don't roll (e.g. Doduo's Curse).
+# A move learnable in any normal Gen 3-9 game (Colosseum/XD included — they trade
+# into the Gen 3 chain) is kept even when later gens dropped it from the
+# learnset. Reads ONLY the warm pokeapi cache, never the network: every exported
+# mon's /pokemon body is already cached from when its moves were rolled, so this
+# is free. Returns 1 (printing nothing) when the species is uncached or has no
+# transferable moves, so callers fall back to keeping the stored moves unfiltered
+# rather than dropping a mon on missing data.
 function encounter_legal_moves {
     local species="$1"
     local poke
     if ! poke="$(cache_get "pokemon/${species}")"; then
         return 1
     fi
-    # vgrank maps each MAINLINE version group to its generation number; isolated
-    # side-games (legends-arceus, colosseum, xd, lets-go-…) and Japan-only gen 1
-    # dumps are deliberately absent, so they rank null and never count toward the
-    # latest generation nor contribute legal moves.
+    # A move survives if at least one of its learn-entries is a standard method
+    # in a TRANSFERABLE version group. The set below is every mainline Gen 3-9
+    # game plus the Gen 3 GameCube titles; gen 1-2 (Virtual Console), Legends
+    # Arceus, Let's Go, and Japan-only Gen 1 dumps are deliberately absent, so
+    # moves available only there are dropped.
     local out
     out="$(jq -r '
-        def vgrank: {
-            "red-blue":1,"yellow":1,
-            "gold-silver":2,"crystal":2,
-            "ruby-sapphire":3,"emerald":3,"firered-leafgreen":3,
-            "diamond-pearl":4,"platinum":4,"heartgold-soulsilver":4,
-            "black-white":5,"black-2-white-2":5,
-            "x-y":6,"omega-ruby-alpha-sapphire":6,
-            "sun-moon":7,"ultra-sun-ultra-moon":7,
-            "sword-shield":8,"brilliant-diamond-shining-pearl":8,
-            "scarlet-violet":9
+        def transferable: {
+            "ruby-sapphire":1,"emerald":1,"firered-leafgreen":1,"colosseum":1,"xd":1,
+            "diamond-pearl":1,"platinum":1,"heartgold-soulsilver":1,
+            "black-white":1,"black-2-white-2":1,
+            "x-y":1,"omega-ruby-alpha-sapphire":1,
+            "sun-moon":1,"ultra-sun-ultra-moon":1,
+            "sword-shield":1,"brilliant-diamond-shining-pearl":1,
+            "scarlet-violet":1
         };
-        (vgrank) as $rank
-        | ([.moves[].version_group_details[].version_group.name | $rank[.] // empty] | max) as $g
-        | if $g == null then empty else
-            [ .moves[]
-              | .move.name as $name
-              | select(any(.version_group_details[];
-                  ($rank[.version_group.name] == $g) and
-                  (.move_learn_method.name | IN("level-up","machine","egg","tutor"))))
-              | $name ]
-            | unique | .[]
-          end
+        [ .moves[]
+          | .move.name as $name
+          | select(any(.version_group_details[];
+              (transferable[.version_group.name] // false) and
+              (.move_learn_method.name | IN("level-up","machine","egg","tutor"))))
+          | $name ]
+        | unique | .[]
     ' <<<"${poke}")"
     if [[ -z "${out}" ]]; then
         return 1

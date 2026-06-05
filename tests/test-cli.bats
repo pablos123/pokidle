@@ -680,7 +680,7 @@ _ins_enc_moves() { # $1 sid  $2 species  $3 ts  $4 moves_json
             '$4', NULL);"
 }
 
-@test "export drops moves the species can't learn in its current gen" {
+@test "export drops moves not legal in Gen 9 National Dex" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
     local now; now="$(date +%s)"
@@ -697,6 +697,25 @@ _ins_enc_moves() { # $1 sid  $2 species  $3 ts  $4 moves_json
     [[ "$output" == *"Roselia"* ]]
     [[ "$output" == *"Giga Drain"* ]]
     [[ "$output" != *"Poison Powder"* ]]
+}
+
+@test "export keeps an older-gen move that transfers to National Dex" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    # rock-slide is learnable only in a Gen 3 game here; National Dex accepts it
+    # via transfer, so the export must NOT strip it.
+    _ins_enc_moves "$sid" gengar "$now" '["rock-slide","shadow-ball"]'
+    _seed_pokemon_moves gengar '[
+        {"move":{"name":"rock-slide"},"version_group_details":[
+            {"version_group":{"name":"emerald"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]},
+        {"move":{"name":"shadow-ball"},"version_group_details":[
+            {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]}
+    ]'
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Rock Slide"* ]]
+    [[ "$output" == *"Shadow Ball"* ]]
 }
 
 @test "export skips a mon left with no legal moves" {
