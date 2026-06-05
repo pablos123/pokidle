@@ -543,14 +543,17 @@ _seed_pokeapi_cache() {
     [ -z "$output" ]
 }
 
-@test "pokidle tick pokemon: rejected (no longer a valid kind)" {
-    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
-    sqlite3 "$POKIDLE_DB_PATH" \
-        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
-
+@test "pokidle tick pokemon: rejected as an unknown kind" {
     run "$REPO_ROOT/pokidle" tick pokemon --dry-run --no-notify
     [ "$status" -eq 2 ]
-    [[ "$output" == *"kind must be encounter or item"* ]]
+    [[ "$output" == *"unknown kind: pokemon"* ]]
+}
+
+@test "pokidle tick (bare): a kind is required, prints usage, exits 2" {
+    run "$REPO_ROOT/pokidle" tick
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"a kind is required"* ]]
+    [[ "$output" == *"Usage:"* ]]
 }
 
 @test "export omits evolution-stone drops as held items" {
