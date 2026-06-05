@@ -502,9 +502,8 @@ function _pokidle_print_encounter {
 
 # pokidle_tick <kind> [flags]
 # Run a single roll. kind: encounter | item (level/friendship/evolve/legendary
-# dispatch to their own functions; pokemon is a back-compat alias for encounter).
-# Flags: --dry-run (default) / --no-dry-run / --no-notify / --no-images /
-# --no-output / --json.
+# dispatch to their own functions). Flags: --dry-run (default) / --no-dry-run /
+# --no-notify / --no-images / --no-output / --json.
 function pokidle_tick {
     local kind="${1:-encounter}"
     if (($# > 0)); then
@@ -586,7 +585,7 @@ function pokidle_tick {
     label="$(biome_label "${biome}")"
 
     case "${kind}" in
-        encounter | pokemon)
+        encounter)
             if [[ ! -f "$(encounter_pool_path "${biome}")" ]]; then
                 printf 'tick: no pool for %s — run rebuild-pool first\n' "${biome}" >&2
                 return 1
@@ -677,10 +676,12 @@ function pokidle_tick {
 }
 # pokidle_tick_level [flags]
 # Probabilistically level up current-week encounters (chance falls off toward
-# level 100), recomputing stats. Flags as pokidle_tick.
+# level 100), recomputing stats. Flags as pokidle_tick (--no-images is accepted
+# for a uniform interface but is a no-op: this tick renders no inline sprite).
 function pokidle_tick_level {
     local -i dry_run=1
     local -i no_notify=0
+    local -i no_output=0
     local -i emit_json=0
     while (($# > 0)); do
         case "$1" in
@@ -694,6 +695,13 @@ function pokidle_tick_level {
                 ;;
             --no-notify)
                 no_notify=1
+                shift
+                ;;
+            --no-images)
+                shift
+                ;;
+            --no-output)
+                no_output=1
                 shift
                 ;;
             --json)
@@ -780,6 +788,9 @@ function pokidle_tick_level {
             '. + [{id:$id, species:$sp, from:$from, to:$to}]' <<<"${leveled}")"
     done
 
+    if ((no_output)); then
+        return 0
+    fi
     if ((emit_json)); then
         jq -n --argjson l "${leveled}" '{leveled: $l}'
     else
@@ -794,10 +805,12 @@ function pokidle_tick_level {
 }
 # pokidle_tick_friendship [flags]
 # Probabilistically raise friendship on current-week encounters. Flags as
-# pokidle_tick.
+# pokidle_tick (--no-images is accepted for a uniform interface but is a no-op:
+# this tick renders no inline sprite).
 function pokidle_tick_friendship {
     local -i dry_run=1
     local -i no_notify=0
+    local -i no_output=0
     local -i emit_json=0
     while (($# > 0)); do
         case "$1" in
@@ -811,6 +824,13 @@ function pokidle_tick_friendship {
                 ;;
             --no-notify)
                 no_notify=1
+                shift
+                ;;
+            --no-images)
+                shift
+                ;;
+            --no-output)
+                no_output=1
                 shift
                 ;;
             --json)
@@ -868,6 +888,9 @@ function pokidle_tick_friendship {
             '. + [{id:$id, species:$sp, from:$from, to:$to}]' <<<"${befriended}")"
     done
 
+    if ((no_output)); then
+        return 0
+    fi
     if ((emit_json)); then
         jq -n --argjson b "${befriended}" '{befriended: $b}'
     else
@@ -883,10 +906,12 @@ function pokidle_tick_friendship {
 # pokidle_tick_evolve [flags]
 # Probabilistically evolve eligible current-week encounters (chance keyed to the
 # species' pool tier), consuming item drops for item evolutions. Flags as
-# pokidle_tick.
+# pokidle_tick (--no-images is accepted for a uniform interface but is a no-op:
+# this tick renders no inline sprite).
 function pokidle_tick_evolve {
     local -i dry_run=1
     local -i no_notify=0
+    local -i no_output=0
     local -i emit_json=0
     while (($# > 0)); do
         case "$1" in
@@ -900,6 +925,13 @@ function pokidle_tick_evolve {
                 ;;
             --no-notify)
                 no_notify=1
+                shift
+                ;;
+            --no-images)
+                shift
+                ;;
+            --no-output)
+                no_output=1
                 shift
                 ;;
             --json)
@@ -1023,6 +1055,9 @@ function pokidle_tick_evolve {
             '. + [{id:$id, from:$from, to:$to, kind:$kind}]' <<<"${evolved}")"
     done
 
+    if ((no_output)); then
+        return 0
+    fi
     if ((emit_json)); then
         jq -n --argjson e "${evolved}" '{evolved: $e}'
     else

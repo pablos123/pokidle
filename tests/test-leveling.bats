@@ -72,6 +72,20 @@ _seed_rattata_in_current_week() {
     [ "$hit" = "1" ]
 }
 
+@test "pokidle tick level --no-output: prints nothing (no 'no candidates' line)" {
+    _seed_rattata_in_current_week
+    run "$REPO_ROOT/pokidle" tick level --dry-run --no-notify --no-output
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "pokidle tick level --no-images: accepted no-op, still prints" {
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    run "$REPO_ROOT/pokidle" tick level --dry-run --no-notify --no-images
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"no candidates leveled"* ]]
+}
+
 @test "pokidle tick level --no-dry-run logs a level event" {
     _seed_rattata_in_current_week
     local i
