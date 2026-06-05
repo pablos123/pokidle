@@ -47,9 +47,9 @@ run start stop restart status logs enable disable" -- "${cur}")
             fi
             ;;
         tick)
-            local kinds="pokemon item level friendship evolve legendary"
+            local kinds="encounter item level friendship evolve legendary"
             if [[ "${cur}" == -* ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "--no-dry-run --no-notify --json" -- "${cur}")
+                mapfile -t COMPREPLY < <(compgen -W "--no-dry-run --no-notify --no-images --no-output --json" -- "${cur}")
             else
                 mapfile -t COMPREPLY < <(compgen -W "${kinds}" -- "${cur}")
             fi

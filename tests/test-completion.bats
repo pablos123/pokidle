@@ -53,7 +53,7 @@ _complete() {
 
 @test "pokidle: tick completes kinds" {
     run _complete _pokidle pokidle tick ''
-    [[ "$output" == *pokemon* ]]
+    [[ "$output" == *encounter* ]]
     [[ "$output" == *legendary* ]]
     [[ "$output" == *evolve* ]]
 }

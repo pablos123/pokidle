@@ -154,7 +154,7 @@ source_pokidle_lib() {
     [ "$n" = "0" ]          # wrote no empty-name row
 }
 
-@test "pokidle_tick pokemon: a failed roll fails the tick, no empty encounter/output (daemon if-! context)" {
+@test "pokidle_tick encounter: a failed roll fails the tick, no empty encounter/output (daemon if-! context)" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
@@ -167,7 +167,7 @@ source_pokidle_lib() {
     pokeapi_get() { return 1; }
     export -f pokeapi_get
     local out="$BATS_TMPDIR/pkmn.$$"
-    if pokidle_tick pokemon --no-dry-run --no-notify --json >"$out" 2>/dev/null; then
+    if pokidle_tick encounter --no-dry-run --no-notify --json >"$out" 2>/dev/null; then
         fired=1
     else
         fired=0

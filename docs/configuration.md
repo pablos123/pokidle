@@ -22,7 +22,7 @@ systemctl --user daemon-reload && systemctl --user restart pokidle.service
 ```
 
 For one-off CLI runs you can also prefix the command:
-`POKIDLE_SHINY_RATE=8 pokidle tick pokemon`.
+`POKIDLE_SHINY_RATE=8 pokidle tick encounter`.
 
 ## Tick cadence
 

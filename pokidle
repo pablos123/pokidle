@@ -58,9 +58,11 @@ Commands:
                             enable    Start on login
                             disable   Don't start on login
   tick <kind> [flags]     Run a single roll now (default: dry-run, no DB write)
-                            kind: pokemon | item | level | friendship | evolve | legendary
+                            kind: encounter | item | level | friendship | evolve | legendary
                             --no-dry-run    Persist DB writes
                             --no-notify     Skip notify-send
+                            --no-images     Skip the inline sprite preview
+                            --no-output     Print nothing (still notifies)
                             --json          Emit JSON to stdout
   encounters [filters]    Pretty list of pokemon encounters
                             --shiny           Only shinies
@@ -286,8 +288,8 @@ function _pokidle_daemon_run {
 
         if ((now >= next_pokemon)); then
             if _pokidle_should_fire "${now}" "${next_pokemon}" "${POKIDLE_POKEMON_ENABLED:-1}" "${POKIDLE_POKEMON_INTERVAL:-3600}"; then
-                if ! pokidle_tick pokemon --no-dry-run; then
-                    printf 'daemon: pokemon tick failed (continuing)\n' >&2
+                if ! pokidle_tick encounter --no-dry-run; then
+                    printf 'daemon: encounter tick failed (continuing)\n' >&2
                 fi
             fi
             next_pokemon="$(_pokidle_next_tick_target "${now}" "${POKIDLE_POKEMON_INTERVAL:-3600}")"
@@ -499,11 +501,12 @@ function _pokidle_print_encounter {
 }
 
 # pokidle_tick <kind> [flags]
-# Run a single roll. kind: pokemon | item (level/friendship/evolve/legendary
-# dispatch to their own functions). Flags: --dry-run (default) / --no-dry-run /
-# --no-notify / --json.
+# Run a single roll. kind: encounter | item (level/friendship/evolve/legendary
+# dispatch to their own functions; pokemon is a back-compat alias for encounter).
+# Flags: --dry-run (default) / --no-dry-run / --no-notify / --no-images /
+# --no-output / --json.
 function pokidle_tick {
-    local kind="${1:-pokemon}"
+    local kind="${1:-encounter}"
     if (($# > 0)); then
         shift
     fi
@@ -531,6 +534,8 @@ function pokidle_tick {
 
     local -i dry_run=1
     local -i no_notify=0
+    local -i no_images=0
+    local -i no_output=0
     local -i emit_json=0
     while (($# > 0)); do
         case "$1" in
@@ -544,6 +549,14 @@ function pokidle_tick {
                 ;;
             --no-notify)
                 no_notify=1
+                shift
+                ;;
+            --no-images)
+                no_images=1
+                shift
+                ;;
+            --no-output)
+                no_output=1
                 shift
                 ;;
             --json)
@@ -573,7 +586,7 @@ function pokidle_tick {
     label="$(biome_label "${biome}")"
 
     case "${kind}" in
-        pokemon)
+        encounter | pokemon)
             if [[ ! -f "$(encounter_pool_path "${biome}")" ]]; then
                 printf 'tick: no pool for %s — run rebuild-pool first\n' "${biome}" >&2
                 return 1
@@ -613,10 +626,15 @@ function pokidle_tick {
             if ((no_notify == 0)) && [[ "${POKIDLE_NOTIFY_POKEMON:-1}" == "1" ]]; then
                 notify_pokemon "${enc_with_meta}"
             fi
-            if ((emit_json)); then
-                printf '%s\n' "${enc_with_meta}"
-            else
-                _pokidle_print_encounter pokemon "${enc_with_meta}"
+            if ((no_output == 0)); then
+                if ((!no_images)); then
+                    _pokidle_render_sprite "${sprite_path}"
+                fi
+                if ((emit_json)); then
+                    printf '%s\n' "${enc_with_meta}"
+                else
+                    _pokidle_print_encounter encounter "${enc_with_meta}"
+                fi
             fi
             ;;
         item)
@@ -640,14 +658,19 @@ function pokidle_tick {
             if ((no_notify == 0)) && [[ "${POKIDLE_NOTIFY_ITEM:-1}" == "1" ]]; then
                 notify_item "${item_with_meta}"
             fi
-            if ((emit_json)); then
-                printf '%s\n' "${item_with_meta}"
-            else
-                jq -r '"item: \(.item) [\(.biome_label)]"' <<<"${item_with_meta}"
+            if ((no_output == 0)); then
+                if ((!no_images)); then
+                    _pokidle_render_sprite "${sprite_path}"
+                fi
+                if ((emit_json)); then
+                    printf '%s\n' "${item_with_meta}"
+                else
+                    jq -r '"item: \(.item) [\(.biome_label)]"' <<<"${item_with_meta}"
+                fi
             fi
             ;;
         *)
-            printf 'tick: kind must be pokemon or item\n' >&2
+            printf 'tick: kind must be encounter or item\n' >&2
             return 2
             ;;
     esac
@@ -1018,6 +1041,8 @@ function pokidle_tick_evolve {
 function pokidle_tick_legendary {
     local -i dry_run=1
     local -i no_notify=0
+    local -i no_images=0
+    local -i no_output=0
     local -i emit_json=0
     while (($# > 0)); do
         case "$1" in
@@ -1031,6 +1056,14 @@ function pokidle_tick_legendary {
                 ;;
             --no-notify)
                 no_notify=1
+                shift
+                ;;
+            --no-images)
+                no_images=1
+                shift
+                ;;
+            --no-output)
+                no_output=1
                 shift
                 ;;
             --json)
@@ -1059,10 +1092,12 @@ function pokidle_tick_legendary {
 
     local chance="${POKIDLE_LEGENDARY_CHANCE:-3}"
     if ((RANDOM % 100 >= chance)); then
-        if ((emit_json)); then
-            jq -n '{spawned: false}'
-        else
-            printf 'legendary: no spawn this tick (chance=%s)\n' "${chance}"
+        if ((no_output == 0)); then
+            if ((emit_json)); then
+                jq -n '{spawned: false}'
+            else
+                printf 'legendary: no spawn this tick (chance=%s)\n' "${chance}"
+            fi
         fi
         return 0
     fi
@@ -1078,7 +1113,7 @@ function pokidle_tick_legendary {
     local sprite_url
     sprite_url="$(jq -r '.sprite_url // ""' <<<"${enc}")"
     local sprite_path=""
-    if [[ -n "${sprite_url}" ]] && ((no_notify == 0)); then
+    if [[ -n "${sprite_url}" ]] && { ((no_notify == 0)) || { ((no_output == 0)) && ((!no_images)); }; }; then
         sprite_path="${POKIDLE_CACHE_DIR}/sprites/${species}.png"
         mkdir -p -- "${sprite_path%/*}"
         if [[ ! -f "${sprite_path}" ]]; then
@@ -1110,10 +1145,15 @@ function pokidle_tick_legendary {
         notify_pokemon "${enc_with_meta}"
     fi
 
-    if ((emit_json)); then
-        printf '%s\n' "${enc_with_meta}"
-    else
-        _pokidle_print_encounter legendary "${enc_with_meta}"
+    if ((no_output == 0)); then
+        if ((!no_images)); then
+            _pokidle_render_sprite "${sprite_path}"
+        fi
+        if ((emit_json)); then
+            printf '%s\n' "${enc_with_meta}"
+        else
+            _pokidle_print_encounter legendary "${enc_with_meta}"
+        fi
     fi
 }
 

@@ -479,7 +479,7 @@ _seed_pokeapi_cache() {
     [[ "$output" == *"Total encounters"* ]]
 }
 
-@test "pokidle tick pokemon --dry-run --no-notify --json: emits encounter without writing db" {
+@test "pokidle tick encounter --dry-run --no-notify --json: emits encounter without writing db" {
     sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
@@ -492,7 +492,7 @@ _seed_pokeapi_cache() {
     export POKEAPI_CACHE_DIR
     _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
 
-    run "$REPO_ROOT/pokidle" tick pokemon --dry-run --no-notify --json
+    run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --json
     [ "$status" -eq 0 ]
     local sp
     sp="$(jq -r '.species' <<< "$output")"
@@ -503,7 +503,7 @@ _seed_pokeapi_cache() {
     [ "$n" = "0" ]
 }
 
-@test "pokidle tick pokemon (non-json): stdout includes ability and moves like the notification" {
+@test "pokidle tick encounter (non-json): stdout includes ability and moves like the notification" {
     sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
@@ -516,13 +516,49 @@ _seed_pokeapi_cache() {
     export POKEAPI_CACHE_DIR
     _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
 
-    run "$REPO_ROOT/pokidle" tick pokemon --dry-run --no-notify
+    run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --no-images
     [ "$status" -eq 0 ]
     [[ "$output" == *"treecko"* ]]
     [[ "$output" =~ (overgrow|unburden) ]]
     [[ "$output" == *"moves:"* ]]
     [[ "$output" == *"ivs:"* ]]
     [[ "$output" == *"evs:"* ]]
+}
+
+@test "pokidle tick encounter --no-output: succeeds and prints nothing" {
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
+
+    local pool='{"biome":"cave","built_at":"2026-05-08T00:00:00Z","tiers":{"common":[{"species":"treecko","varieties":["treecko"],"min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}'
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
+
+    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+
+    run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --no-output
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "pokidle tick pokemon: back-compat alias for encounter" {
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
+
+    local pool='{"biome":"cave","built_at":"2026-05-08T00:00:00Z","tiers":{"common":[{"species":"treecko","varieties":["treecko"],"min":5,"max":7}],"uncommon":[],"rare":[],"very_rare":[]}}'
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
+
+    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+
+    run "$REPO_ROOT/pokidle" tick pokemon --dry-run --no-notify --no-images --json
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.species' <<< "$output")" = "treecko" ]
 }
 
 @test "export omits evolution-stone drops as held items" {
