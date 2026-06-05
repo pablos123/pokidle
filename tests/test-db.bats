@@ -187,6 +187,41 @@ teardown() {
     [[ "$output" == *"pidgey"* ]]
 }
 
+@test "db_list_encounters --min-level/--max-level filter by level (inclusive)" {
+    db_init
+    local sid
+    sid="$(db_open_biome_session 'cave' 1700000000)"
+    db_insert_encounter '{"session_id":'"$sid"',"encountered_at":1700000100,"species":"pidgey","dex_id":16,"level":3,"nature":"jolly","ability":"keen-eye","is_hidden_ability":0,"gender":"F","shiny":0,"held_berry":null,"friendship":70,"ivs":[1,2,3,4,5,6],"evs":[0,0,0,0,0,0],"stats":[10,10,10,10,10,10],"moves":["tackle"],"sprite_path":null}'
+    db_insert_encounter '{"session_id":'"$sid"',"encountered_at":1700000200,"species":"zubat","dex_id":41,"level":7,"nature":"adamant","ability":"inner-focus","is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"friendship":70,"ivs":[1,2,3,4,5,6],"evs":[0,0,0,0,0,0],"stats":[10,10,10,10,10,10],"moves":["bite"],"sprite_path":null}'
+    db_insert_encounter '{"session_id":'"$sid"',"encountered_at":1700000300,"species":"onix","dex_id":95,"level":20,"nature":"brave","ability":"sturdy","is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"friendship":70,"ivs":[1,2,3,4,5,6],"evs":[0,0,0,0,0,0],"stats":[10,10,10,10,10,10],"moves":["tackle"],"sprite_path":null}'
+
+    run db_list_encounters --min-level 7
+    [ "$status" -eq 0 ]
+    [[ "$output" == *zubat* ]]
+    [[ "$output" == *onix* ]]
+    [[ "$output" != *pidgey* ]]
+
+    run db_list_encounters --max-level 7
+    [ "$status" -eq 0 ]
+    [[ "$output" == *pidgey* ]]
+    [[ "$output" == *zubat* ]]
+    [[ "$output" != *onix* ]]
+
+    run db_list_encounters --min-level 5 --max-level 10
+    [ "$status" -eq 0 ]
+    [[ "$output" == *zubat* ]]
+    [[ "$output" != *pidgey* ]]
+    [[ "$output" != *onix* ]]
+}
+
+@test "db_list_encounters --min-level/--max-level reject non-integer" {
+    db_init
+    run db_list_encounters --min-level "abc"
+    [ "$status" -eq 2 ]
+    run db_list_encounters --max-level "1; DROP TABLE encounters"
+    [ "$status" -eq 2 ]
+}
+
 @test "db_insert_item_drop persists" {
     db_init
     local sid

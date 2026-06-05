@@ -87,14 +87,17 @@ if [[ -z "${ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME[*]:-}" ]]; then
     )
 fi
 
-# Every held item / berry Pokémon Showdown accepts on a National Dex AG set,
-# as a slug->1 set for O(1) membership. National Dex AG is the most permissive
-# format, so anything legal here is legal everywhere. The export command gates
-# each candidate on it (see encounter_item_is_showdown_legal). Excludes
-# Showdown's "Useless items" group: Poké Balls, evolution stones, sweets,
-# bottle caps, trade-evo items, TRs, fossils, EV-reducer berries that Showdown
-# classifies as useless (hondew/pomeg/qualot/tamato — grepa and kelpsy are in
-# the "Items" group and legal). Update when Showdown's legal item list changes.
+# Held items / berries the export may put on ANY Pokémon, as a slug->1 set for
+# O(1) membership. The export assigns items at random across the team, so the
+# invariant here is universal holdability: an item belongs only if every species
+# can legally hold it in a standard format. The export gates each candidate on
+# it (see encounter_item_is_showdown_legal) so a team always imports cleanly.
+# Excludes Showdown's "Useless items" group (Poké Balls, evolution stones,
+# sweets, bottle caps, trade-evo items, TRs, fossils, and the EV-reducer berries
+# hondew/pomeg/qualot/tamato — grepa and kelpsy are in the "Items" group and
+# legal) AND species/form/generation-locked items (Mega Stones, Z-crystals,
+# Silvally Memories, Genesect Drives, signature orbs/masks/etc.) that Showdown
+# rejects when held by the wrong mon. Update when Showdown's legal list changes.
 if [[ -z "${ENCOUNTER_SHOWDOWN_ITEMS[*]:-}" ]]; then
     # Keys are quoted so shfmt does not parse the hyphens as arithmetic
     # subtraction in an indexed-array subscript and rewrite e.g. [zap-plate] to
@@ -142,47 +145,13 @@ if [[ -z "${ENCOUNTER_SHOWDOWN_ITEMS[*]:-}" ]]; then
         ["utility-umbrella"]=1 ["wacan-berry"]=1 ["wave-incense"]=1
         ["weakness-policy"]=1 ["white-herb"]=1 ["wide-lens"]=1 ["wiki-berry"]=1
         ["wise-glasses"]=1 ["yache-berry"]=1 ["zap-plate"]=1 ["zoom-lens"]=1
-        # Type-locked Z-crystals
-        ["buginium-z"]=1 ["darkinium-z"]=1 ["dragonium-z"]=1 ["electrium-z"]=1
-        ["fairium-z"]=1 ["fightinium-z"]=1 ["firium-z"]=1 ["flyinium-z"]=1
-        ["ghostium-z"]=1 ["grassium-z"]=1 ["groundium-z"]=1 ["icium-z"]=1
-        ["normalium-z"]=1 ["poisonium-z"]=1 ["psychium-z"]=1 ["rockium-z"]=1
-        ["steelium-z"]=1 ["waterium-z"]=1
-        # Silvally Memories (Multi-Attack type changers)
-        ["bug-memory"]=1 ["dark-memory"]=1 ["dragon-memory"]=1 ["electric-memory"]=1
-        ["fairy-memory"]=1 ["fighting-memory"]=1 ["fire-memory"]=1 ["flying-memory"]=1
-        ["ghost-memory"]=1 ["grass-memory"]=1 ["ground-memory"]=1 ["ice-memory"]=1
-        ["poison-memory"]=1 ["psychic-memory"]=1 ["rock-memory"]=1 ["steel-memory"]=1
-        ["water-memory"]=1
-        # Genesect Drives
-        ["burn-drive"]=1 ["chill-drive"]=1 ["douse-drive"]=1 ["shock-drive"]=1
-        # Mega Stones
-        ["abomasite"]=1 ["absolite"]=1 ["aerodactylite"]=1 ["aggronite"]=1
-        ["alakazite"]=1 ["altarianite"]=1 ["ampharosite"]=1 ["audinite"]=1
-        ["banettite"]=1 ["beedrillite"]=1 ["blastoisinite"]=1 ["blazikenite"]=1
-        ["cameruptite"]=1 ["charizardite-x"]=1 ["charizardite-y"]=1 ["diancite"]=1
-        ["galladite"]=1 ["garchompite"]=1 ["gardevoirite"]=1 ["gengarite"]=1
-        ["glalitite"]=1 ["gyaradosite"]=1 ["heracronite"]=1 ["houndoominite"]=1
-        ["kangaskhanite"]=1 ["latiasite"]=1 ["latiosite"]=1 ["lopunnite"]=1
-        ["lucarionite"]=1 ["manectite"]=1 ["mawilite"]=1 ["medichamite"]=1
-        ["metagrossite"]=1 ["mewtwonite-x"]=1 ["mewtwonite-y"]=1 ["pidgeotite"]=1
-        ["pinsirite"]=1 ["sablenite"]=1 ["salamencite"]=1 ["sceptilite"]=1
-        ["scizorite"]=1 ["sharpedonite"]=1 ["slowbronite"]=1 ["steelixite"]=1
-        ["swampertite"]=1 ["tyranitarite"]=1 ["venusaurite"]=1
-        # Pokémon-locked Z-crystals
-        ["aloraichium-z"]=1 ["decidium-z"]=1 ["eevium-z"]=1 ["incinium-z"]=1
-        ["kommonium-z"]=1 ["lunalium-z"]=1 ["lycanium-z"]=1 ["marshadium-z"]=1
-        ["mewnium-z"]=1 ["mimikium-z"]=1 ["pikanium-z"]=1 ["pikashunium-z"]=1
-        ["primarium-z"]=1 ["snorlium-z"]=1 ["solganium-z"]=1 ["tapunium-z"]=1
-        ["ultranecrozium-z"]=1
-        # Pokémon-specific signature items
-        ["adamant-crystal"]=1 ["adamant-orb"]=1 ["blue-orb"]=1
-        ["cornerstone-mask"]=1 ["deep-sea-scale"]=1 ["deep-sea-tooth"]=1
-        ["griseous-core"]=1 ["griseous-orb"]=1 ["hearthflame-mask"]=1
-        ["leek"]=1 ["light-ball"]=1 ["lucky-punch"]=1 ["lustrous-globe"]=1
-        ["lustrous-orb"]=1 ["metal-powder"]=1 ["quick-powder"]=1 ["red-orb"]=1
-        ["rusted-shield"]=1 ["rusted-sword"]=1 ["soul-dew"]=1 ["stick"]=1
-        ["thick-club"]=1 ["wellspring-mask"]=1
+        # NOTE: Mega Stones, Z-crystals, Silvally Memories, Genesect Drives, and
+        # Pokémon-specific signature items (orbs, masks, rusted gear, soul-dew,
+        # light-ball, thick-club, …) are deliberately EXCLUDED. The export
+        # assigns items at random across the team, so a species/form-locked item
+        # lands on the wrong mon (e.g. Iron Boulder @ Salamencite) and Showdown's
+        # validator rejects the whole team. Only items every species can legally
+        # hold belong here.
         # Usually useless but Showdown-legal (status berries, training braces,
         # gimmick items)
         ["aspear-berry"]=1 ["big-root"]=1 ["binding-band"]=1 ["cheri-berry"]=1
@@ -232,6 +201,33 @@ function encounter_item_is_evolution {
 # trade-evo items — is intentionally excluded).
 function encounter_item_is_showdown_legal {
     [[ -n "${ENCOUNTER_SHOWDOWN_ITEMS[$1]:-}" ]]
+}
+
+# Bare pokemon-species slugs Pokémon Showdown's team validator treats as
+# event-only: a team holding one is bounced ("… is only obtainable from an
+# event — it needs to match its event"). Seeded with the Gen IX Paradox
+# Pokémon, which are NOT flagged is_legendary/is_mythical in PokeAPI, so the
+# pool builder's legendary/mythical filter lets them through and they reach the
+# export. The export gates every species on this so a team always imports. Add
+# other event-locked species here as they surface.
+if [[ -z "${ENCOUNTER_EVENT_ONLY_SPECIES[*]:-}" ]]; then
+    declare -grA ENCOUNTER_EVENT_ONLY_SPECIES=(
+        # Ancient Paradox (Scarlet)
+        ["great-tusk"]=1 ["scream-tail"]=1 ["brute-bonnet"]=1 ["flutter-mane"]=1
+        ["slither-wing"]=1 ["sandy-shocks"]=1 ["roaring-moon"]=1 ["walking-wake"]=1
+        ["gouging-fire"]=1 ["raging-bolt"]=1
+        # Future Paradox (Violet)
+        ["iron-treads"]=1 ["iron-bundle"]=1 ["iron-hands"]=1 ["iron-jugulis"]=1
+        ["iron-moth"]=1 ["iron-thorns"]=1 ["iron-valiant"]=1 ["iron-boulder"]=1
+        ["iron-crown"]=1 ["iron-leaves"]=1
+    )
+fi
+
+# encounter_species_is_event_only <species>
+# True (exit 0) if <species> (a bare pokemon-species slug) is an event-only
+# Pokémon that Pokémon Showdown rejects on import.
+function encounter_species_is_event_only {
+    [[ -n "${ENCOUNTER_EVENT_ONLY_SPECIES[$1]:-}" ]]
 }
 
 # encounter_tier_for_capture_rate <capture_rate>

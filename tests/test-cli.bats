@@ -119,6 +119,63 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     [[ "$output" != *"Snorlax"* ]]
 }
 
+@test "export honors --min-level/--max-level bounds" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    _ins_enc_lvl() { # $1 sid  $2 species  $3 level  $4 ts
+        sqlite3 "$POKIDLE_DB_PATH" "
+            INSERT INTO encounters(session_id, encountered_at, species, dex_id, level, nature,
+                ability, is_hidden_ability, gender, shiny, held_berry,
+                iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe,
+                ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+                stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe,
+                moves_json, sprite_path)
+            VALUES ($1, $4, '$2', 1, $3, 'adamant', 'overgrow', 0, 'M', 0, NULL,
+                31,31,31,31,31,31, 0,0,0,0,0,0, 100,100,100,100,100,100,
+                '[\"tackle\"]', NULL);"
+    }
+    _ins_enc_lvl "$sid" gengar 60 "$now"
+    _ins_enc_lvl "$sid" snorlax 10 "$now"
+
+    run "$REPO_ROOT/pokidle" export --min-level 50
+    [ "$status" -eq 0 ]
+    [[ "$output" == *Gengar* ]]
+    [[ "$output" != *Snorlax* ]]
+
+    run "$REPO_ROOT/pokidle" export --max-level 20
+    [ "$status" -eq 0 ]
+    [[ "$output" == *Snorlax* ]]
+    [[ "$output" != *Gengar* ]]
+
+    run "$REPO_ROOT/pokidle" export --min-level 5 --max-level 100
+    [ "$status" -eq 0 ]
+    [[ "$output" == *Gengar* ]]
+    [[ "$output" == *Snorlax* ]]
+}
+
+@test "export rejects non-integer --min-level/--max-level" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" export --min-level abc
+    [ "$status" -ne 0 ]
+}
+
+@test "export drops event-only Paradox species" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" iron-boulder "$now"
+    _ins_enc "$sid" sandy-shocks "$now"
+    _ins_enc "$sid" pidgey "$now"
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pidgey"* ]]
+    [[ "$output" != *"Iron Boulder"* ]]
+    [[ "$output" != *"Sandy Shocks"* ]]
+    local n; n="$(grep -c 'Nature' <<< "$output")"
+    [ "$n" -eq 1 ]
+}
+
 @test "export honors --shiny filter" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"

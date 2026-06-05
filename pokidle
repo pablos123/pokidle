@@ -72,6 +72,8 @@ Commands:
                             --species NAME    Substring match on species
                             --nature NAME     Exact nature match
                             --min-iv-total N  Min summed IVs
+                            --min-level N     Encounters at/above level N
+                            --max-level N     Encounters at/below level N
                             --limit N         Cap rows (default 50)
                             --sort KEY        date|name|level (default: date)
                             --reverse         Reverse the sort (default: ascending)
@@ -81,7 +83,10 @@ Commands:
                           species from the current week (override window with
                           --since/--until), each given a distinct, Showdown-
                           legal held item from item drops in the same window.
-                          Accepts the same filters as encounters.
+                          Accepts the same filters as encounters (incl.
+                          --min-level/--max-level). Event-only species (Paradox
+                          Pokémon) are never exported, as Showdown rejects them
+                          on import.
   items [filters]         Pretty list of item drops
                             --since DATE      Drops at/after DATE
                             --until DATE      Drops at/before DATE
@@ -1335,6 +1340,18 @@ function pokidle_export {
 
     local -a species=()
     mapfile -t species < <(jq -r '[.[].species] | unique | .[]' <<<"${rows}")
+    # Drop event-only species (Gen IX Paradox mons, …): Showdown's validator
+    # rejects a team holding one, so they must never reach an exported set even
+    # though they can be encountered and stored.
+    local -a wild_species=()
+    local cand_sp
+    for cand_sp in "${species[@]}"; do
+        if encounter_species_is_event_only "${cand_sp}"; then
+            continue
+        fi
+        wild_species+=("${cand_sp}")
+    done
+    species=("${wild_species[@]}")
     if ((${#species[@]} == 0)); then
         return 0
     fi

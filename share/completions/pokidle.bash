@@ -58,14 +58,14 @@ run start stop restart status logs enable disable" -- "${cur}")
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
---limit --newest-first --no-images --json" -- "${cur}")
+--min-level --max-level --limit --newest-first --no-images --json" -- "${cur}")
             fi
             ;;
         export)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
---limit --newest-first" -- "${cur}")
+--min-level --max-level --limit --newest-first" -- "${cur}")
             fi
             ;;
         items)

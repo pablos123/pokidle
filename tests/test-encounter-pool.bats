@@ -355,29 +355,60 @@ EOF
     [ "$status" -ne 0 ]
 }
 
-@test "encounter_item_is_showdown_legal: National Dex AG additions are legal" {
-    # Mega Stones, Z-crystals, Memories, Drives, incenses, Pokémon-specific
-    # signature items — all legal in National Dex AG.
+@test "encounter_item_is_showdown_legal: form/species-locked & gen-locked items excluded" {
+    # The export assigns items at random across the team, so an item is only
+    # legal here if EVERY species can hold it. Mega Stones, Z-crystals, Silvally
+    # Memories, Genesect Drives, and Pokémon-specific signature items are tied to
+    # a species/form (Salamencite only on Salamence) or a generation that no
+    # longer carries them, so Showdown rejects them on the wrong mon.
     run encounter_item_is_showdown_legal charizardite-x
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
     run encounter_item_is_showdown_legal mewtwonite-y
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal salamencite
+    [ "$status" -ne 0 ]
     run encounter_item_is_showdown_legal firium-z
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
     run encounter_item_is_showdown_legal pikanium-z
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
     run encounter_item_is_showdown_legal fire-memory
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
     run encounter_item_is_showdown_legal burn-drive
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal soul-dew
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal light-ball
+    [ "$status" -ne 0 ]
+    run encounter_item_is_showdown_legal thick-club
+    [ "$status" -ne 0 ]
+    # Generic items every species can hold stay legal.
     run encounter_item_is_showdown_legal sea-incense
     [ "$status" -eq 0 ]
     run encounter_item_is_showdown_legal berry-juice
     [ "$status" -eq 0 ]
-    run encounter_item_is_showdown_legal light-ball
+    run encounter_item_is_showdown_legal leftovers
     [ "$status" -eq 0 ]
-    run encounter_item_is_showdown_legal thick-club
+}
+
+@test "encounter_species_is_event_only: Paradox mons true, ordinary species false" {
+    # Gen IX Paradox Pokémon are event-locked; Showdown's validator rejects a
+    # team holding one ("… is only obtainable from an event"). They are not
+    # flagged legendary/mythical in PokeAPI, so the export gates them by name.
+    run encounter_species_is_event_only sandy-shocks
     [ "$status" -eq 0 ]
+    run encounter_species_is_event_only iron-boulder
+    [ "$status" -eq 0 ]
+    run encounter_species_is_event_only iron-valiant
+    [ "$status" -eq 0 ]
+    run encounter_species_is_event_only walking-wake
+    [ "$status" -eq 0 ]
+    run encounter_species_is_event_only iron-leaves
+    [ "$status" -eq 0 ]
+    # Ordinary wild species export fine.
+    run encounter_species_is_event_only froslass
+    [ "$status" -ne 0 ]
+    run encounter_species_is_event_only pikachu
+    [ "$status" -ne 0 ]
 }
 
 @test "encounter_item_is_showdown_legal: useless EV-reducer berries excluded" {
@@ -420,22 +451,32 @@ EOF
     ! grep -qx mystic-water   <<< "$output"  # ocean's slot
 }
 
-@test "_encounter_item_pool: every showdown item drops in exactly one biome" {
-    # Coverage guarantee for the biome-keyed pool: every Showdown-legal item
-    # appears in the union of all biome buckets, no duplicates, no items
-    # outside ENCOUNTER_SHOWDOWN_ITEMS sneak into a bucket.
+@test "_encounter_item_pool: every export-legal item drops in exactly one biome" {
+    # Coverage guarantee for the biome-keyed pool: every export-legal item
+    # (ENCOUNTER_SHOWDOWN_ITEMS) is obtainable as a drop in exactly one biome.
+    # Biome buckets ALSO carry collectible-but-not-exportable items (Mega Stones,
+    # Z-crystals, Silvally Memories, Genesect Drives, signature items): those
+    # drop in-game and show in the item list, but the export gates them out so a
+    # team is always importable. They are still subject to the no-duplicate rule.
     declare -A assigned=()
-    local b it dup_count=0 rogue_count=0
+    local b it dup_count=0
     for b in "${!ENCOUNTER_ITEMS_BY_BIOME[@]}"; do
         for it in ${ENCOUNTER_ITEMS_BY_BIOME[$b]}; do
-            if [[ -n "${assigned[$it]:-}" ]]; then dup_count=$((dup_count+1)); fi
-            assigned[$it]=$b
-            if [[ -z "${ENCOUNTER_SHOWDOWN_ITEMS[$it]:-}" ]]; then
-                rogue_count=$((rogue_count+1))
+            if [[ -n "${assigned[$it]:-}" ]]; then
+                echo "duplicate drop across biomes: $it"
+                dup_count=$((dup_count+1))
             fi
+            assigned[$it]=$b
         done
     done
-    [ "$dup_count"   -eq 0 ]
-    [ "$rogue_count" -eq 0 ]
-    [ "${#assigned[@]}" -eq "${#ENCOUNTER_SHOWDOWN_ITEMS[@]}" ]
+    [ "$dup_count" -eq 0 ]
+    # Every export-legal item is reachable as a drop.
+    local missing=0 wl
+    for wl in "${!ENCOUNTER_SHOWDOWN_ITEMS[@]}"; do
+        if [[ -z "${assigned[$wl]:-}" ]]; then
+            echo "export-legal item never drops: $wl"
+            missing=$((missing+1))
+        fi
+    done
+    [ "$missing" -eq 0 ]
 }

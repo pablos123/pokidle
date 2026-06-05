@@ -199,6 +199,20 @@ function db_list_encounters {
                 where+=("(e.iv_hp+e.iv_atk+e.iv_def+e.iv_spa+e.iv_spd+e.iv_spe) >= $2")
                 shift 2
                 ;;
+            --min-level)
+                if ! _db_assert_int "$2" --min-level; then
+                    return 2
+                fi
+                where+=("e.level >= $2")
+                shift 2
+                ;;
+            --max-level)
+                if ! _db_assert_int "$2" --max-level; then
+                    return 2
+                fi
+                where+=("e.level <= $2")
+                shift 2
+                ;;
             --limit)
                 if ! _db_assert_int "$2" --limit; then
                     return 2
