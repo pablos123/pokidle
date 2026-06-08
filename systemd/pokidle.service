@@ -1,7 +1,7 @@
 [Unit]
 Description=Pokidle passive pokemon encounter daemon
-After=graphical-session.target
-PartOf=graphical-session.target
+After=graphical-session.target x-session.target
+PartOf=graphical-session.target x-session.target
 
 [Service]
 Type=simple
@@ -13,4 +13,4 @@ StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=graphical-session.target x-session.target
