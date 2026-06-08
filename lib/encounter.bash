@@ -548,6 +548,12 @@ function encounter_legal_moves {
     # game plus the Gen 3 GameCube titles; gen 1-2 (Virtual Console), Legends
     # Arceus, Let's Go, and Japan-only Gen 1 dumps are deliberately absent, so
     # moves available only there are dropped.
+    #
+    # MAINTENANCE: this is an allowlist that fails closed. Add new mainline gens
+    # here when they release (e.g. when Gen 10 lands, add its version-group
+    # name(s) as reported by PokeAPI) — until you do, moves exclusive to that
+    # new gen will be wrongly stripped from exports. Leave isolated side-games
+    # (Let's Go / Legends-Arceus-style) out: their movepools don't transfer.
     local out
     out="$(jq -r '
         def transferable: {
