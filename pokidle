@@ -85,7 +85,7 @@ Commands:
                           legal held item from item drops in the same window.
                           Accepts the same filters as encounters (incl.
                           --min-level/--max-level). Each mon's moves are trimmed
-                          to its Gen 9 National Dex legal set and event-only
+                          to its National Dex legal set and event-only
                           species (Paradox Pokémon) are never exported, as
                           Showdown rejects both on import.
   items [filters]         Pretty list of item drops
@@ -105,10 +105,11 @@ Commands:
                             --reverse         Newest first (default: oldest first)
                             --json            Emit raw JSON
   stats                   Aggregates: totals, shinies, by biome, top species
-  current [--items|--encounters] [--no-images]
+  current [--items|--berries|--encounters] [--no-images]
                           Bare: active biome, time remaining, session +
                           all-time counts, with the biome image above it.
-                          --items       Candidate item drops for the biome.
+                          --items       Candidate item drops (excl. berries).
+                          --berries     Candidate berry drops for the biome.
                           --encounters  Candidate species, grouped by tier.
                           --no-images   Skip the biome image (summary only).
   rebuild-pool [biome] [--yes]
@@ -1694,10 +1695,12 @@ function pokidle_stats {
         awk -F'\t' '{ printf "  %-12s %5d\n", $1, $2 }'
 }
 
-# pokidle_current [--items|--encounters] [--no-images]
+# pokidle_current [--items|--berries|--encounters] [--no-images]
 # Bare: active biome, time remaining, this-session and all-time counts, with the
 #   biome image rendered above the summary (suppress with --no-images).
-# --items: candidate item drops for the active biome (one slug per line).
+# --items: candidate item drops for the active biome, berries excluded (one slug
+#   per line).
+# --berries: candidate berry drops for the active biome (one slug per line).
 # --encounters: candidate species grouped by tier; lines like "audino (L5-15)".
 function pokidle_current {
     db_init
@@ -1707,15 +1710,23 @@ function pokidle_current {
         case "$1" in
             --items)
                 if [[ "${mode}" != "summary" ]]; then
-                    printf 'current: --items and --encounters are mutually exclusive\n' >&2
+                    printf 'current: --items, --berries and --encounters are mutually exclusive\n' >&2
                     return 2
                 fi
                 mode="items"
                 shift
                 ;;
+            --berries)
+                if [[ "${mode}" != "summary" ]]; then
+                    printf 'current: --items, --berries and --encounters are mutually exclusive\n' >&2
+                    return 2
+                fi
+                mode="berries"
+                shift
+                ;;
             --encounters)
                 if [[ "${mode}" != "summary" ]]; then
-                    printf 'current: --items and --encounters are mutually exclusive\n' >&2
+                    printf 'current: --items, --berries and --encounters are mutually exclusive\n' >&2
                     return 2
                 fi
                 mode="encounters"
@@ -1746,6 +1757,9 @@ function pokidle_current {
     case "${mode}" in
         items)
             _pokidle_current_items "${biome}"
+            ;;
+        berries)
+            _pokidle_current_berries "${biome}"
             ;;
         encounters)
             _pokidle_current_encounters "${biome}"
@@ -1788,8 +1802,13 @@ function _pokidle_current_summary {
     if pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
         poss_enc="$(jq '[.tiers[] | length] | add // 0' <<<"${pool}")"
     fi
-    local -i poss_item
-    poss_item="$(_encounter_item_pool "${biome}" | wc -l)"
+    # Item pool counts: berries (slugs ending in -berry) are reported separately
+    # and excluded from the item total so the two figures don't double-count.
+    local item_pool
+    item_pool="$(_encounter_item_pool "${biome}")"
+    local -i poss_item poss_berry
+    poss_berry="$(awk 'NF && /-berry$/' <<<"${item_pool}" | wc -l)"
+    poss_item="$(awk 'NF && !/-berry$/' <<<"${item_pool}" | wc -l)"
     local enc_count
     enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=${id};")"
     local item_count
@@ -1817,17 +1836,26 @@ function _pokidle_current_summary {
     fi
     printf 'Active biome: %s  (session #%s)\n' "${biome}" "${id}"
     printf 'Types: %s\n' "${types_csv}"
-    printf 'Possible encounters: %s   Possible items: %s\n' "${poss_enc}" "${poss_item}"
+    printf 'Possible encounters: %s   Possible items: %s   Berries: %s\n' "${poss_enc}" "${poss_item}" "${poss_berry}"
     printf 'Started: %s\n' "$(date -d "@${started_at}")"
     printf 'Time remaining: %s\n' "$(_pokidle_biome_time_left "${started_at}" "${now}")"
     printf 'Encounters: %s   Items: %s\n' "${enc_count}" "${item_count}"
 }
 
 # _pokidle_current_items <biome>
-# Print the item drop pool for biome, alphabetical, one slug per line.
+# Print the item drop pool for biome, berries excluded (they are listed by
+# _pokidle_current_berries), alphabetical, one slug per line.
 function _pokidle_current_items {
     local biome="$1"
-    _encounter_item_pool "${biome}" | LC_ALL=C sort -u
+    _encounter_item_pool "${biome}" | awk 'NF && !/-berry$/' | LC_ALL=C sort -u
+}
+
+# _pokidle_current_berries <biome>
+# Print the berry drops for biome — item-pool slugs ending in -berry —
+# alphabetical, one slug per line.
+function _pokidle_current_berries {
+    local biome="$1"
+    _encounter_item_pool "${biome}" | awk 'NF && /-berry$/' | LC_ALL=C sort -u
 }
 
 # _pokidle_current_encounters <biome>

@@ -261,18 +261,18 @@ _ins_item() { # $1 sid  $2 item  $3 ts
 EOF
     run "$REPO_ROOT/pokidle" current
     [ "$status" -eq 0 ]
-    # Cave bucket: rock-incense bright-powder covert-cloak houndoominite = 4 items.
-    # Pool: 1 common + 1 uncommon = 2 species.
-    [[ "$output" == *"Possible encounters: 2   Possible items: 4"* ]]
+    # Cave bucket: rock-incense bright-powder covert-cloak houndoominite = 4 items,
+    # no berries. Pool: 1 common + 1 uncommon = 2 species.
+    [[ "$output" == *"Possible encounters: 2   Possible items: 4   Berries: 0"* ]]
     [[ "$output" == *"Encounters: 2   Items: 1"* ]]
     # Types line (cave = rock dark) is line 2, possible-line is line 3.
     line2="$(printf '%s\n' "$output" | sed -n '2p')"
     [[ "$line2" == "Types: rock, dark" ]]
     line3="$(printf '%s\n' "$output" | sed -n '3p')"
-    [[ "$line3" == "Possible encounters: 2   Possible items: 4" ]]
+    [[ "$line3" == "Possible encounters: 2   Possible items: 4   Berries: 0" ]]
 }
 
-@test "pokidle current --items lists biome item drop pool alphabetically" {
+@test "pokidle current --items lists biome item drop pool alphabetically, berries excluded" {
     _seed_schema
     _mk_session glacier > /dev/null
     run "$REPO_ROOT/pokidle" current --items
@@ -280,17 +280,46 @@ EOF
     # glacier bucket: showdown items + ice-stone (evo).
     [[ "$output" == *"ice-stone"* ]]
     [[ "$output" == *"never-melt-ice"* ]]
-    [[ "$output" == *"yache-berry"* ]]
     [[ "$output" == *"glalitite"* ]]
+    # Berries are listed by --berries, not here.
+    [[ "$output" != *"yache-berry"* ]]
+    [[ "$output" != *"aspear-berry"* ]]
     # Items now live in exactly one biome — must not bleed across.
     [[ "$output" != *"charcoal"* ]]             # volcano
     [[ "$output" != *"moon-stone"* ]]           # cathedral
     [[ "$output" != *"pixie-plate"* ]]          # cathedral
-    # Alphabetical sort: aspear-berry precedes never-melt-ice.
-    local a n
-    a="$(printf '%s\n' "$output" | grep -n '^aspear-berry$'    | cut -d: -f1)"
+    # Alphabetical sort: glalitite precedes never-melt-ice.
+    local g n
+    g="$(printf '%s\n' "$output" | grep -n '^glalitite$'       | cut -d: -f1)"
     n="$(printf '%s\n' "$output" | grep -n '^never-melt-ice$'  | cut -d: -f1)"
-    [ -n "$a" ] && [ -n "$n" ] && [ "$a" -lt "$n" ]
+    [ -n "$g" ] && [ -n "$n" ] && [ "$g" -lt "$n" ]
+}
+
+@test "pokidle current --berries lists only the biome's berry drops alphabetically" {
+    _seed_schema
+    _mk_session glacier > /dev/null
+    run "$REPO_ROOT/pokidle" current --berries
+    [ "$status" -eq 0 ]
+    # glacier berries: aspear-berry, yache-berry.
+    [[ "$output" == *"aspear-berry"* ]]
+    [[ "$output" == *"yache-berry"* ]]
+    # Non-berry items are not listed here.
+    [[ "$output" != *"never-melt-ice"* ]]
+    [[ "$output" != *"ice-stone"* ]]
+    [[ "$output" != *"glalitite"* ]]
+    # Alphabetical sort: aspear-berry precedes yache-berry.
+    local a y
+    a="$(printf '%s\n' "$output" | grep -n '^aspear-berry$' | cut -d: -f1)"
+    y="$(printf '%s\n' "$output" | grep -n '^yache-berry$'  | cut -d: -f1)"
+    [ -n "$a" ] && [ -n "$y" ] && [ "$a" -lt "$y" ]
+}
+
+@test "pokidle current --berries on a berry-less biome prints nothing" {
+    _seed_schema
+    _mk_session cave > /dev/null
+    run "$REPO_ROOT/pokidle" current --berries
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
 }
 
 @test "pokidle current --encounters lists pool grouped by tier" {
@@ -367,6 +396,12 @@ EOF
 
 @test "pokidle current --items and --encounters are mutually exclusive" {
     run "$REPO_ROOT/pokidle" current --items --encounters
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"mutually exclusive"* ]]
+}
+
+@test "pokidle current --items and --berries are mutually exclusive" {
+    run "$REPO_ROOT/pokidle" current --items --berries
     [ "$status" -eq 2 ]
     [[ "$output" == *"mutually exclusive"* ]]
 }
