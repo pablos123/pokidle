@@ -105,13 +105,13 @@ Commands:
                             --reverse         Newest first (default: oldest first)
                             --json            Emit raw JSON
   stats                   Aggregates: totals, shinies, by biome, top species
-  current [--items|--berries|--encounters] [--no-images]
+  current [items|berries|encounters] [--no-images]
                           Bare: active biome, time remaining, session +
                           all-time counts, with the biome image above it.
-                          --items       Candidate item drops (excl. berries).
-                          --berries     Candidate berry drops for the biome.
-                          --encounters  Candidate species, grouped by tier.
-                          --no-images   Skip the biome image (summary only).
+                          items       Candidate item drops (excl. berries).
+                          berries     Candidate berry drops for the biome.
+                          encounters  Candidate species, grouped by tier.
+                          --no-images Skip the biome image (summary only).
   rebuild-pool [biome] [--yes]
                           Force pool rebuild (one or all; type-derived).
                           --yes skips the all-mode confirm prompt.
@@ -1706,38 +1706,28 @@ function pokidle_current {
     db_init
     local mode="summary"
     local -i no_images=0
+    local -i kind_set=0
     while (($# > 0)); do
         case "$1" in
-            --items)
-                if [[ "${mode}" != "summary" ]]; then
-                    printf 'current: --items, --berries and --encounters are mutually exclusive\n' >&2
-                    return 2
-                fi
-                mode="items"
-                shift
-                ;;
-            --berries)
-                if [[ "${mode}" != "summary" ]]; then
-                    printf 'current: --items, --berries and --encounters are mutually exclusive\n' >&2
-                    return 2
-                fi
-                mode="berries"
-                shift
-                ;;
-            --encounters)
-                if [[ "${mode}" != "summary" ]]; then
-                    printf 'current: --items, --berries and --encounters are mutually exclusive\n' >&2
-                    return 2
-                fi
-                mode="encounters"
-                shift
-                ;;
-            --no-images | --no-image)
+            --no-images)
                 no_images=1
                 shift
                 ;;
-            *)
+            -*)
                 printf 'current: unknown flag %s\n' "$1" >&2
+                return 2
+                ;;
+            items | berries | encounters)
+                if ((kind_set)); then
+                    printf 'current: only one of items|berries|encounters\n' >&2
+                    return 2
+                fi
+                mode="$1"
+                kind_set=1
+                shift
+                ;;
+            *)
+                printf 'current: unknown subcommand %s (want items|berries|encounters)\n' "$1" >&2
                 return 2
                 ;;
         esac

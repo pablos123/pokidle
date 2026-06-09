@@ -272,10 +272,10 @@ EOF
     [[ "$line3" == "Possible encounters: 2   Possible items: 4   Berries: 0" ]]
 }
 
-@test "pokidle current --items lists biome item drop pool alphabetically, berries excluded" {
+@test "pokidle current items lists biome item drop pool alphabetically, berries excluded" {
     _seed_schema
     _mk_session glacier > /dev/null
-    run "$REPO_ROOT/pokidle" current --items
+    run "$REPO_ROOT/pokidle" current items
     [ "$status" -eq 0 ]
     # glacier bucket: showdown items + ice-stone (evo).
     [[ "$output" == *"ice-stone"* ]]
@@ -295,10 +295,10 @@ EOF
     [ -n "$g" ] && [ -n "$n" ] && [ "$g" -lt "$n" ]
 }
 
-@test "pokidle current --berries lists only the biome's berry drops alphabetically" {
+@test "pokidle current berries lists only the biome's berry drops alphabetically" {
     _seed_schema
     _mk_session glacier > /dev/null
-    run "$REPO_ROOT/pokidle" current --berries
+    run "$REPO_ROOT/pokidle" current berries
     [ "$status" -eq 0 ]
     # glacier berries: aspear-berry, yache-berry.
     [[ "$output" == *"aspear-berry"* ]]
@@ -314,15 +314,15 @@ EOF
     [ -n "$a" ] && [ -n "$y" ] && [ "$a" -lt "$y" ]
 }
 
-@test "pokidle current --berries on a berry-less biome prints nothing" {
+@test "pokidle current berries on a berry-less biome prints nothing" {
     _seed_schema
     _mk_session cave > /dev/null
-    run "$REPO_ROOT/pokidle" current --berries
+    run "$REPO_ROOT/pokidle" current berries
     [ "$status" -eq 0 ]
     [ -z "$output" ]
 }
 
-@test "pokidle current --encounters lists pool grouped by tier" {
+@test "pokidle current encounters lists pool grouped by tier" {
     _seed_schema
     _mk_session cave > /dev/null
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
@@ -339,7 +339,7 @@ EOF
   "berries": []
 }
 EOF
-    run "$REPO_ROOT/pokidle" current --encounters
+    run "$REPO_ROOT/pokidle" current encounters
     [ "$status" -eq 0 ]
     [[ "$output" == *"common:"* ]]
     [[ "$output" == *"uncommon:"* ]]
@@ -369,7 +369,7 @@ EOF
     [[ "$line3" == Possible\ encounters:* ]]
 }
 
-@test "pokidle current --encounters shows the qualifying form name" {
+@test "pokidle current encounters shows the qualifying form name" {
     _seed_schema
     _mk_session crystal-cavern > /dev/null
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
@@ -385,7 +385,7 @@ EOF
   "berries": []
 }
 EOF
-    run "$REPO_ROOT/pokidle" current --encounters
+    run "$REPO_ROOT/pokidle" current encounters
     [ "$status" -eq 0 ]
     # The steel form is shown, not the bare (Normal-type) species name.
     [[ "$output" == *"meowth-galar (L5-15)"* ]]
@@ -394,16 +394,28 @@ EOF
     [[ "$output" == *"geodude (L5-12)"* ]]
 }
 
-@test "pokidle current --items and --encounters are mutually exclusive" {
-    run "$REPO_ROOT/pokidle" current --items --encounters
+@test "pokidle current rejects two kinds at once" {
+    run "$REPO_ROOT/pokidle" current items encounters
     [ "$status" -eq 2 ]
-    [[ "$output" == *"mutually exclusive"* ]]
+    [[ "$output" == *"only one"* ]]
 }
 
-@test "pokidle current --items and --berries are mutually exclusive" {
-    run "$REPO_ROOT/pokidle" current --items --berries
+@test "pokidle current rejects an unknown kind" {
+    run "$REPO_ROOT/pokidle" current bogus
     [ "$status" -eq 2 ]
-    [[ "$output" == *"mutually exclusive"* ]]
+    [[ "$output" == *"unknown subcommand"* ]]
+}
+
+@test "pokidle current rejects the removed --items flag" {
+    run "$REPO_ROOT/pokidle" current --items
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"unknown flag"* ]]
+}
+
+@test "pokidle current rejects the removed --no-image alias" {
+    run "$REPO_ROOT/pokidle" current --no-image
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"unknown flag"* ]]
 }
 
 @test "pokidle current rejects unknown flag" {

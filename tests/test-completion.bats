@@ -115,22 +115,25 @@ _complete() {
     [[ "$output" == *--yes* ]]
 }
 
-@test "pokidle: current dash completes --items, --encounters and --no-images" {
+@test "pokidle: current dash completes --no-images only" {
     run _complete _pokidle pokidle current --
-    [[ "$output" == *--items* ]]
-    [[ "$output" == *--encounters* ]]
     [[ "$output" == *--no-images* ]]
-}
-
-@test "pokidle: current --i filters to --items" {
-    run _complete _pokidle pokidle current --i
-    [[ "$output" == *--items* ]]
+    [[ "$output" != *--items* ]]
     [[ "$output" != *--encounters* ]]
 }
 
-@test "pokidle: current bare arg returns no flag suggestions" {
+@test "pokidle: current bare arg completes the kinds" {
     run _complete _pokidle pokidle current ''
+    [[ "$output" == *items* ]]
+    [[ "$output" == *berries* ]]
+    [[ "$output" == *encounters* ]]
     [[ "$output" != *--* ]]
+}
+
+@test "pokidle: current b filters to berries" {
+    run _complete _pokidle pokidle current b
+    [[ "$output" == *berries* ]]
+    [[ "$output" != *items* ]]
 }
 
 @test "pokeapi: bare arg lists subcommands" {
