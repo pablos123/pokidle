@@ -819,6 +819,60 @@ _ins_enc_moves() { # $1 sid  $2 species  $3 ts  $4 moves_json
     grep -qi "(used)" <<< "$output"
 }
 
+@test "encounters renders the full multi-line record per encounter" {
+    _seed_schema
+    local sid; sid="$(_mk_session crystal-cavern)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'meowth', 'meowth-galar', 10161, 12, 'adamant', 'pickup', 0, 'M', 0, NULL,
+            31,31,31,31,31,31, 1,2,3,4,5,6, 50,51,52,53,54,55, '[\"scratch\",\"bite\"]', NULL);"
+    run "$REPO_ROOT/pokidle" encounters --no-images
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = "$(printf '%s   crystal-cavern   Lv.12 meowth-galar' "$(date -d "@$now" '+%F %H:%M')")" ]
+    [ "${lines[1]}" = "   adamant · pickup · M" ]
+    [ "${lines[2]}" = "   Stats: 50/51/52/53/54/55" ]
+    [ "${lines[3]}" = "   IVs:   31/31/31/31/31/31" ]
+    [ "${lines[4]}" = "   EVs:   1/2/3/4/5/6" ]
+    [ "${lines[5]}" = "   Moves: scratch, bite" ]
+}
+
+@test "encounters marks shiny rows with a sparkle" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'zubat', 'zubat', 41, 7, 'jolly', 'inner-focus', 0, 'F', 1, NULL,
+            10,10,10,10,10,10, 0,0,0,0,0,0, 20,20,20,20,20,20, '[\"bite\"]', NULL);"
+    run "$REPO_ROOT/pokidle" encounters --no-images
+    [ "$status" -eq 0 ]
+    [[ "${lines[0]}" == *"Lv.7 zubat ✨" ]]
+}
+
+@test "items renders date, biome and item per row, oldest first" {
+    _seed_schema
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $now);
+        INSERT INTO item_drops(session_id, encountered_at, item, sprite_path, consumed_at) VALUES
+            (1, $((now - 200)), 'everstone', NULL, NULL),
+            (1, $((now - 100)), 'leftovers', NULL, $((now - 50)));"
+    run "$REPO_ROOT/pokidle" items --all --no-images
+    [ "$status" -eq 0 ]
+    local l1 l2
+    l1="$(printf '%s   %s   %s' "$(date -d "@$((now - 200))" '+%F %H:%M')" 'cave' 'everstone')"
+    l2="$(printf '%s   %s   %s%s' "$(date -d "@$((now - 100))" '+%F %H:%M')" 'cave' 'leftovers' '   (used)')"
+    [ "${lines[0]}" = "$l1" ]
+    [[ "${output}" == *"$l2"* ]]
+}
+
 @test "biomes lists all 36 biomes with labels and types" {
     run "$REPO_ROOT/pokidle" biomes
     [ "$status" -eq 0 ]
@@ -842,4 +896,33 @@ _ins_enc_moves() { # $1 sid  $2 species  $3 ts  $4 moves_json
     run "$REPO_ROOT/pokidle" biomes --bogus
     [ "$status" -eq 2 ]
     grep -qi "unknown flag" <<< "$output"
+}
+
+@test "log renders one formatted line per event, oldest first" {
+    _seed_schema
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO event_log(ts, kind, summary) VALUES
+            ($((now - 200)), 'encounter', 'zubat Lv.5 M [cave]'),
+            ($((now - 100)), 'item', 'found oran-berry [cave]');"
+    run "$REPO_ROOT/pokidle" log
+    [ "$status" -eq 0 ]
+    local l1 l2
+    l1="$(printf '%s   %-10s %s' "$(date -d "@$((now - 200))" '+%F %H:%M')" 'encounter' 'zubat Lv.5 M [cave]')"
+    l2="$(printf '%s   %-10s %s' "$(date -d "@$((now - 100))" '+%F %H:%M')" 'item' 'found oran-berry [cave]')"
+    [ "${lines[0]}" = "$l1" ]
+    [ "${lines[1]}" = "$l2" ]
+}
+
+@test "log --reverse renders newest first" {
+    _seed_schema
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO event_log(ts, kind, summary) VALUES
+            ($((now - 200)), 'encounter', 'older'),
+            ($((now - 100)), 'encounter', 'newer');"
+    run "$REPO_ROOT/pokidle" log --reverse
+    [ "$status" -eq 0 ]
+    [[ "${lines[0]}" == *"newer"* ]]
+    [[ "${lines[1]}" == *"older"* ]]
 }

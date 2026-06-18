@@ -63,3 +63,7 @@ pokeapi help
 
 See [docs/configuration.md](docs/configuration.md).
 
+## Adding a new generation
+
+See [docs/add-generation.md](docs/add-generation.md).
+

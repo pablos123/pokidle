@@ -625,7 +625,7 @@ function pokidle_tick {
 
             local sprite_path
             sprite_path="$(_pokidle_pokemon_sprite \
-                "$(jq -r '.species' <<<"${enc}")" "$(jq -r '.shiny' <<<"${enc}")")"
+                "$(_pokidle_sprite_name "${enc}")" "$(jq -r '.shiny' <<<"${enc}")")"
 
             local enc_with_meta
             enc_with_meta="$(jq -c \
@@ -1226,6 +1226,15 @@ function _pokidle_render_sprite {
     fi
 }
 
+# _pokidle_sprite_name <enc-json>
+# The Pokemon resource name whose sprite represents this encounter: the specific
+# form/variety if present, else the bare species. PokeAPI serves form-specific
+# sprites under the variety name (e.g. meowth-galar), so a regional-form
+# encounter must resolve its sprite against the variety, not the base species.
+function _pokidle_sprite_name {
+    jq -r '.variety // .species' <<<"$1"
+}
+
 # _pokidle_pokemon_sprite <name> <shiny>
 # Resolve a pokemon sprite via the pokeapi lib (cache-aware, rate-limited by
 # pokeapi_get on JSON cache misses). Prints a local path or nothing.
@@ -1494,40 +1503,23 @@ function pokidle_list {
     printf -v sep_line '%*s' 80 ''
     sep_line="${sep_line// /${sep_char}}"
 
-    local enc
+    # One jq pass extracts and formats every field (date via strflocaltime,
+    # matching date -d; the displayed name is the encountered form, falling back
+    # to the bare species for rows predating the variety column) into one
+    # US-delimited line per row; the bash loop only renders sprites and prints.
+    # Replaces the ~12 jq + 1 date forks per row that made long lists crawl. The
+    # unit separator (\x1f, non-whitespace) keeps read from collapsing empty
+    # fields such as a blank sprite path.
+    local US=$'\037'
+    local ts_fmt biome lvl form shiny nat abil gender sprite stats ivs evs moves
     local -i first=1
-    while IFS= read -r enc; do
-        if [[ -z "${enc}" ]]; then
-            continue
-        fi
+    while IFS="${US}" read -r ts_fmt biome lvl form shiny nat abil gender sprite stats ivs evs moves; do
         if ((first)); then
             first=0
         else
             printf -- '%s\n' "${sep_line}"
         fi
-        local sp
-        sp="$(jq -r '.species' <<<"${enc}")"
-        # The displayed name is the encountered form (e.g. meowth-galar); rows
-        # predating the variety column (NULL) fall back to the bare species.
-        local form
-        form="$(jq -r '.variety // .species' <<<"${enc}")"
-        local lvl
-        lvl="$(jq -r '.level' <<<"${enc}")"
-        local nat
-        nat="$(jq -r '.nature' <<<"${enc}")"
-        local abil
-        abil="$(jq -r '.ability' <<<"${enc}")"
-        local gender
-        gender="$(jq -r '.gender' <<<"${enc}")"
-        local shiny
-        shiny="$(jq -r '.shiny' <<<"${enc}")"
-        local biome
-        biome="$(jq -r '.biome_id' <<<"${enc}")"
-        local ts
-        ts="$(jq -r '.encountered_at' <<<"${enc}")"
         if ((!no_images)); then
-            local sprite
-            sprite="$(jq -r '.sprite_path // ""' <<<"${enc}")"
             if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
                 sprite="$(_pokidle_pokemon_sprite "${form}" "${shiny}")"
             fi
@@ -1537,20 +1529,19 @@ function pokidle_list {
         if [[ "${shiny}" == "1" ]]; then
             shiny_mark=" ✨"
         fi
-        printf '%s   %s   Lv.%s %s%s\n' \
-            "$(date -d "@${ts}" '+%F %H:%M')" "${biome}" "${lvl}" "${form}" "${shiny_mark}"
+        printf '%s   %s   Lv.%s %s%s\n' "${ts_fmt}" "${biome}" "${lvl}" "${form}" "${shiny_mark}"
         printf '   %s · %s · %s\n' "${nat}" "${abil}" "${gender}"
-        local ivs
-        ivs="$(jq -r '"\(.iv_hp)/\(.iv_atk)/\(.iv_def)/\(.iv_spa)/\(.iv_spd)/\(.iv_spe)"' <<<"${enc}")"
-        local evs
-        evs="$(jq -r '"\(.ev_hp)/\(.ev_atk)/\(.ev_def)/\(.ev_spa)/\(.ev_spd)/\(.ev_spe)"' <<<"${enc}")"
-        local stats
-        stats="$(jq -r '"\(.stat_hp)/\(.stat_atk)/\(.stat_def)/\(.stat_spa)/\(.stat_spd)/\(.stat_spe)"' <<<"${enc}")"
-        local moves
-        moves="$(jq -r '.moves_json | fromjson | join(", ")' <<<"${enc}")"
         printf '   Stats: %s\n   IVs:   %s\n   EVs:   %s\n   Moves: %s\n\n' \
             "${stats}" "${ivs}" "${evs}" "${moves}"
-    done < <(jq -c '.[]' <<<"${rows}")
+    done < <(jq -r '.[] | [
+        (.encountered_at | strflocaltime("%F %H:%M")),
+        .biome_id, .level, (.variety // .species), .shiny, .nature, .ability, .gender,
+        (.sprite_path // ""),
+        "\(.stat_hp)/\(.stat_atk)/\(.stat_def)/\(.stat_spa)/\(.stat_spd)/\(.stat_spe)",
+        "\(.iv_hp)/\(.iv_atk)/\(.iv_def)/\(.iv_spa)/\(.iv_spd)/\(.iv_spe)",
+        "\(.ev_hp)/\(.ev_atk)/\(.ev_def)/\(.ev_spa)/\(.ev_spd)/\(.ev_spe)",
+        (.moves_json | fromjson | join(", "))
+    ] | map(tostring) | join("")' <<<"${rows}")
 }
 # pokidle_items [filters...]
 # Pretty-print item drops (or raw JSON with --json; --all includes consumed
@@ -1591,39 +1582,35 @@ function pokidle_items {
     printf -v sep_line '%*s' 80 ''
     sep_line="${sep_line// /${sep_char}}"
 
-    local d
+    # One jq pass extracts and formats every field (date via strflocaltime,
+    # matching date -d) into one US-delimited line per row; the bash loop only
+    # renders sprites and prints. Replaces the per-row jq+date fork storm with a
+    # single jq call. The unit separator (\x1f, non-whitespace) is used instead
+    # of a tab so read preserves empty fields (e.g. a blank sprite path).
+    local US=$'\037'
+    local ts_fmt biome item sprite consumed
     local -i first=1
-    while IFS= read -r d; do
-        if [[ -z "${d}" ]]; then
-            continue
-        fi
+    while IFS="${US}" read -r ts_fmt biome item sprite consumed; do
         if ((first)); then
             first=0
         else
             printf -- '%s\n' "${sep_line}"
         fi
-        local ts
-        ts="$(jq -r '.encountered_at' <<<"${d}")"
-        local biome
-        biome="$(jq -r '.biome_id' <<<"${d}")"
-        local item
-        item="$(jq -r '.item' <<<"${d}")"
         if ((!no_images)); then
-            local sprite
-            sprite="$(jq -r '.sprite_path // ""' <<<"${d}")"
             if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
                 sprite="$(_pokidle_item_sprite "${item}")"
             fi
             _pokidle_render_sprite "${sprite}"
         fi
-        local consumed_at
-        consumed_at="$(jq -r '.consumed_at // ""' <<<"${d}")"
         local marker=""
-        if [[ -n "${consumed_at}" && "${consumed_at}" != "null" ]]; then
+        if [[ -n "${consumed}" ]]; then
             marker="   (used)"
         fi
-        printf '%s   %s   %s%s\n\n' "$(date -d "@${ts}" '+%F %H:%M')" "${biome}" "${item}" "${marker}"
-    done < <(jq -c '.[]' <<<"${rows}")
+        printf '%s   %s   %s%s\n\n' "${ts_fmt}" "${biome}" "${item}" "${marker}"
+    done < <(jq -r '.[] | [
+        (.encountered_at | strflocaltime("%F %H:%M")),
+        .biome_id, .item, (.sprite_path // ""), (.consumed_at // "")
+    ] | map(tostring) | join("")' <<<"${rows}")
 }
 
 # pokidle_log [filters...]
@@ -1656,19 +1643,11 @@ function pokidle_log {
         return
     fi
 
-    local row
-    while IFS= read -r row; do
-        if [[ -z "${row}" ]]; then
-            continue
-        fi
-        local ts
-        ts="$(jq -r '.ts' <<<"${row}")"
-        local kind
-        kind="$(jq -r '.kind' <<<"${row}")"
-        local summary
-        summary="$(jq -r '.summary' <<<"${row}")"
-        printf '%s   %-10s %s\n' "$(date -d "@${ts}" '+%F %H:%M')" "${kind}" "${summary}"
-    done < <(jq -c '.[]' <<<"${rows}")
+    # One jq pass formats the timestamp (strflocaltime honours $TZ, matching
+    # date -d) and emits TSV; one awk pass pads and prints. Avoids the
+    # per-row jq+date fork storm that made long logs crawl.
+    jq -r '.[] | [(.ts | strflocaltime("%F %H:%M")), .kind, .summary] | @tsv' <<<"${rows}" |
+        awk -F'\t' '{ printf "%s   %-10s %s\n", $1, $2, $3 }'
 }
 # pokidle_stats
 # Print aggregate stats: total encounters, shinies (with rate), per-biome

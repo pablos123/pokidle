@@ -25,19 +25,58 @@ function _sd_stat_label {
 function showdown_species_name {
     local slug="$1"
     case "${slug}" in
-        mr-mime) printf 'Mr. Mime'; return ;;
-        mr-rime) printf 'Mr. Rime'; return ;;
-        mime-jr) printf 'Mime Jr.'; return ;;
-        type-null) printf 'Type: Null'; return ;;
-        farfetchd) printf "Farfetch'd"; return ;;
-        sirfetchd) printf "Sirfetch'd"; return ;;
-        tapu-koko) printf 'Tapu Koko'; return ;;
-        tapu-lele) printf 'Tapu Lele'; return ;;
-        tapu-bulu) printf 'Tapu Bulu'; return ;;
-        tapu-fini) printf 'Tapu Fini'; return ;;
-        jangmo-o) printf 'Jangmo-o'; return ;;
-        hakamo-o) printf 'Hakamo-o'; return ;;
-        kommo-o) printf 'Kommo-o'; return ;;
+        mr-mime)
+            printf 'Mr. Mime'
+            return
+            ;;
+        mr-rime)
+            printf 'Mr. Rime'
+            return
+            ;;
+        mime-jr)
+            printf 'Mime Jr.'
+            return
+            ;;
+        type-null)
+            printf 'Type: Null'
+            return
+            ;;
+        farfetchd)
+            printf "Farfetch'd"
+            return
+            ;;
+        sirfetchd)
+            printf "Sirfetch'd"
+            return
+            ;;
+        tapu-koko)
+            printf 'Tapu Koko'
+            return
+            ;;
+        tapu-lele)
+            printf 'Tapu Lele'
+            return
+            ;;
+        tapu-bulu)
+            printf 'Tapu Bulu'
+            return
+            ;;
+        tapu-fini)
+            printf 'Tapu Fini'
+            return
+            ;;
+        jangmo-o)
+            printf 'Jangmo-o'
+            return
+            ;;
+        hakamo-o)
+            printf 'Hakamo-o'
+            return
+            ;;
+        kommo-o)
+            printf 'Kommo-o'
+            return
+            ;;
     esac
     local -a segs
     IFS='-' read -ra segs <<<"${slug}"
