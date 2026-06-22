@@ -92,20 +92,22 @@ function showdown_species_name {
 # Print a Pokémon Showdown set block for the encounter JSON.
 function showdown_format {
     local enc="$1"
-    local species
-    species="$(jq -r '.species' <<<"${enc}")"
-    local nature
-    nature="$(jq -r '.nature' <<<"${enc}")"
-    local ability
-    ability="$(jq -r '.ability' <<<"${enc}")"
-    local level
-    level="$(jq -r '.level' <<<"${enc}")"
-    local shiny
-    shiny="$(jq -r '.shiny' <<<"${enc}")"
-    local held
-    held="$(jq -r '.held_berry // ""' <<<"${enc}")"
-    local item
-    item="$(jq -r '.held_item // ""' <<<"${enc}")"
+    # One jq pass pulls every field (scalars, EV/IV arrays joined by space,
+    # moves joined by comma — move slugs never contain commas) into a
+    # US-delimited record. Replaces the ~20 jq forks per mon (7 scalars + 6 EVs
+    # + 6 IVs + 1 moves) that made `export` crawl. Titlecasing and stat labels
+    # stay in bash (pure, no exec). US (\x1f) is non-whitespace so read keeps
+    # empty fields (e.g. a blank held item).
+    local US=$'\037'
+    local species nature ability level shiny held item evs_raw ivs_raw moves_raw
+    IFS="${US}" read -r species nature ability level shiny held item \
+        evs_raw ivs_raw moves_raw < <(jq -r --arg US "${US}" '[
+            .species, .nature, .ability, (.level | tostring), (.shiny | tostring),
+            (.held_berry // ""), (.held_item // ""),
+            (.evs | map(tostring) | join(" ")),
+            (.ivs | map(tostring) | join(" ")),
+            (.moves | join(","))
+        ] | join($US)' <<<"${enc}")
 
     local sp_t
     sp_t="$(showdown_species_name "${species}")"
@@ -132,14 +134,16 @@ function showdown_format {
     fi
     printf '%s Nature\n' "${nat_t}"
 
+    local -a evs ivs
+    read -ra evs <<<"${evs_raw}"
+    read -ra ivs <<<"${ivs_raw}"
+
     local evs_line=""
     local sep=""
     local -i i
-    local v
     for i in {0..5}; do
-        v="$(jq -r ".evs[${i}]" <<<"${enc}")"
-        if [[ "${v}" != "0" ]]; then
-            evs_line+="${sep}${v} $(_sd_stat_label "${i}")"
+        if [[ "${evs[i]}" != "0" ]]; then
+            evs_line+="${sep}${evs[i]} $(_sd_stat_label "${i}")"
             sep=" / "
         fi
     done
@@ -150,17 +154,18 @@ function showdown_format {
     local ivs_line=""
     sep=""
     for i in {0..5}; do
-        v="$(jq -r ".ivs[${i}]" <<<"${enc}")"
-        ivs_line+="${sep}${v} $(_sd_stat_label "${i}")"
+        ivs_line+="${sep}${ivs[i]} $(_sd_stat_label "${i}")"
         sep=" / "
     done
     printf 'IVs: %s\n' "${ivs_line}"
 
+    local -a moves
+    IFS=',' read -ra moves <<<"${moves_raw}"
     local mv
-    while IFS= read -r mv; do
+    for mv in "${moves[@]}"; do
         if [[ -z "${mv}" ]]; then
             continue
         fi
         printf -- '- %s\n' "$(titlecase_words "${mv}")"
-    done < <(jq -r '.moves[]' <<<"${enc}")
+    done
 }

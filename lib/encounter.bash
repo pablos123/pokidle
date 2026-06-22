@@ -403,12 +403,18 @@ function encounter_compute_all_stats {
     read -ra evs <<<"${evs_str}"
     local -a mods
     read -ra mods <<<"${mods_str}"
+    # Pull all six base stats in one jq pass (a name->base map, emitted in
+    # ENCOUNTER_STATS order) instead of re-scanning .stats once per stat.
+    local -a bases
+    mapfile -t bases < <(jq -r '
+        (reduce .[] as $s ({}; .[$s.stat.name] = $s.base_stat)) as $m
+        | $m["hp"], $m["attack"], $m["defense"],
+          $m["special-attack"], $m["special-defense"], $m["speed"]' <<<"${base_json}")
     local -a out=()
     local -i i
     for i in {0..5}; do
         local stat="${ENCOUNTER_STATS[i]}"
-        local base
-        base="$(jq -r --arg s "${stat}" '.[] | select(.stat.name==$s) | .base_stat' <<<"${base_json}")"
+        local base="${bases[i]}"
         if [[ -z "${base}" || "${base}" == "null" ]]; then
             printf 'encounter_compute_all_stats: missing base for %s\n' "${stat}" >&2
             return 1
@@ -829,23 +835,23 @@ function encounter_build_pool {
         if ! spec="$(pokeapi_get "pokemon-species/${sp}" 2>/dev/null)"; then
             continue
         fi
-        local is_leg
-        is_leg="$(jq -r '.is_legendary // false' <<<"${spec}")"
-        local is_myth
-        is_myth="$(jq -r '.is_mythical // false' <<<"${spec}")"
+        # One read pulls the legendary/mythical flags, capture rate, and chain
+        # URL from the species JSON instead of four separate jq scans.
+        local US=$'\037'
+        local is_leg is_myth cr chain_url
+        IFS="${US}" read -r is_leg is_myth cr chain_url < <(jq -r --arg US "${US}" \
+            '[(.is_legendary // false), (.is_mythical // false),
+              (.capture_rate // 45), (.evolution_chain.url // "")
+             ] | map(tostring) | join($US)' <<<"${spec}")
         if [[ "${is_leg}" == "true" || "${is_myth}" == "true" ]]; then
             continue
         fi
 
-        local cr
-        cr="$(jq -r '.capture_rate // 45' <<<"${spec}")"
         local tier
         tier="$(encounter_tier_for_capture_rate "${cr}")"
 
         local emin="${POKIDLE_ENCOUNTER_LEVEL_MIN:-5}"
         local emax="${POKIDLE_ENCOUNTER_LEVEL_MAX:-15}"
-        local chain_url
-        chain_url="$(jq -r '.evolution_chain.url // empty' <<<"${spec}")"
         if [[ -n "${chain_url}" && "${chain_url}" != "null" ]]; then
             local chain_id="${chain_url%/}"
             chain_id="${chain_id##*/}"

@@ -66,8 +66,8 @@ Commands:
                             --json          Emit JSON to stdout
   encounters [filters]    Pretty list of pokemon encounters
                             --shiny           Only shinies
-                            --since DATE      Encounters at/after DATE
-                            --until DATE      Encounters at/before DATE
+                            --since DATE      Encounters at/after DATE (YYYY-MM-DD or any date(1) string)
+                            --until DATE      Encounters at/before DATE (YYYY-MM-DD or any date(1) string)
                             --biome ID        Filter by biome
                             --species NAME    Substring match on species
                             --nature NAME     Exact nature match
@@ -81,7 +81,8 @@ Commands:
                             --json            Emit raw JSON
   export [filters]        Random Pokémon Showdown team: up to 6 distinct
                           species from the current week (override window with
-                          --since/--until), each given a distinct, Showdown-
+                          --since/--until DATE; YYYY-MM-DD or any date(1)
+                          string), each given a distinct, Showdown-
                           legal held item from item drops in the same window.
                           Accepts the same filters as encounters (incl.
                           --min-level/--max-level). Each mon's moves are trimmed
@@ -89,8 +90,8 @@ Commands:
                           species (Paradox Pokémon) are never exported, as
                           Showdown rejects both on import.
   items [filters]         Pretty list of item drops
-                            --since DATE      Drops at/after DATE
-                            --until DATE      Drops at/before DATE
+                            --since DATE      Drops at/after DATE (YYYY-MM-DD or any date(1) string)
+                            --until DATE      Drops at/before DATE (YYYY-MM-DD or any date(1) string)
                             --biome ID        Filter by biome
                             --item NAME       Substring match on item
                             --limit N         Cap rows (default 50)
@@ -739,18 +740,14 @@ function pokidle_tick_level {
         notify_on=1
     fi
     local leveled='[]'
-    local -i n
-    n="$(jq 'length' <<<"${rows}")"
-    local -i i
-    for ((i = 0; i < n; i++)); do
-        local r
-        r="$(jq -c ".[${i}]" <<<"${rows}")"
-        local id
-        id="$(jq -r '.id' <<<"${r}")"
-        local species
-        species="$(jq -r '.species' <<<"${r}")"
-        local level
-        level="$(jq -r '.level' <<<"${r}")"
+    # One jq pass flattens every row into a US-delimited record (id, species,
+    # level, nature, and the IV/EV sextets as space-joined strings), read in a
+    # single loop. Replaces the per-row `.[i]` re-index (an O(n^2) rescan of the
+    # whole set) plus ~6 jq field forks per row.
+    local US=$'\037'
+    local -a leveled_objs=()
+    local id species level nature ivs evs
+    while IFS="${US}" read -r id species level nature ivs evs; do
         if ((level >= 100)); then
             continue
         fi
@@ -766,12 +763,6 @@ function pokidle_tick_level {
             continue
         fi
 
-        local nature
-        nature="$(jq -r '.nature' <<<"${r}")"
-        local ivs
-        ivs="$(jq -r '"\(.iv_hp) \(.iv_atk) \(.iv_def) \(.iv_spa) \(.iv_spd) \(.iv_spe)"' <<<"${r}")"
-        local evs
-        evs="$(jq -r '"\(.ev_hp) \(.ev_atk) \(.ev_def) \(.ev_spa) \(.ev_spd) \(.ev_spe)"' <<<"${r}")"
         local -i new_level=$((level + ${POKIDLE_LEVEL_GAIN:-1}))
         if ((new_level > 100)); then
             new_level=100
@@ -799,10 +790,18 @@ function pokidle_tick_level {
         if ((notify_on)); then
             notify_level "${species}" "${level}" "${new_level}"
         fi
-        leveled="$(jq -c --argjson id "${id}" --arg sp "${species}" \
+        leveled_objs+=("$(jq -n -c --argjson id "${id}" --arg sp "${species}" \
             --argjson from "${level}" --argjson to "${new_level}" \
-            '. + [{id:$id, species:$sp, from:$from, to:$to}]' <<<"${leveled}")"
-    done
+            '{id:$id, species:$sp, from:$from, to:$to}')")
+    done < <(jq -r --arg US "${US}" '.[] | [
+        .id, .species, (.level | tostring), .nature,
+        "\(.iv_hp) \(.iv_atk) \(.iv_def) \(.iv_spa) \(.iv_spd) \(.iv_spe)",
+        "\(.ev_hp) \(.ev_atk) \(.ev_def) \(.ev_spa) \(.ev_spd) \(.ev_spe)"
+    ] | join($US)' <<<"${rows}")
+
+    if ((${#leveled_objs[@]} > 0)); then
+        leveled="$(printf '%s\n' "${leveled_objs[@]}" | jq -s -c '.')"
+    fi
 
     if ((no_output)); then
         return 0
@@ -868,18 +867,13 @@ function pokidle_tick_friendship {
         notify_on=1
     fi
     local befriended='[]'
-    local -i n
-    n="$(jq 'length' <<<"${rows}")"
-    local -i i
-    for ((i = 0; i < n; i++)); do
-        local r
-        r="$(jq -c ".[${i}]" <<<"${rows}")"
-        local id
-        id="$(jq -r '.id' <<<"${r}")"
-        local species
-        species="$(jq -r '.species' <<<"${r}")"
-        local fr_old
-        fr_old="$(jq -r '.friendship' <<<"${r}")"
+    # One jq pass flattens each row to a US-delimited (id, species, friendship)
+    # record, read in a single loop — replacing the per-row `.[i]` rescan
+    # (O(n^2) over the whole set) and three jq field forks per row.
+    local US=$'\037'
+    local -a befriended_objs=()
+    local id species fr_old
+    while IFS="${US}" read -r id species fr_old; do
         if ((fr_old >= 255)); then
             continue
         fi
@@ -899,10 +893,15 @@ function pokidle_tick_friendship {
         if ((notify_on)); then
             notify_friendship "${species}" "${fr_old}" "${fr_new}"
         fi
-        befriended="$(jq -c --argjson id "${id}" --arg sp "${species}" \
+        befriended_objs+=("$(jq -n -c --argjson id "${id}" --arg sp "${species}" \
             --argjson from "${fr_old}" --argjson to "${fr_new}" \
-            '. + [{id:$id, species:$sp, from:$from, to:$to}]' <<<"${befriended}")"
-    done
+            '{id:$id, species:$sp, from:$from, to:$to}')")
+    done < <(jq -r --arg US "${US}" \
+        '.[] | [.id, .species, (.friendship | tostring)] | join($US)' <<<"${rows}")
+
+    if ((${#befriended_objs[@]} > 0)); then
+        befriended="$(printf '%s\n' "${befriended_objs[@]}" | jq -s -c '.')"
+    fi
 
     if ((no_output)); then
         return 0
@@ -976,25 +975,14 @@ function pokidle_tick_evolve {
     local rows
     rows="$(db_list_current_week_encounters)"
     local evolved='[]'
-    local -i n
-    n="$(jq 'length' <<<"${rows}")"
-    local -i i
-    for ((i = 0; i < n; i++)); do
-        local r
-        r="$(jq -c ".[${i}]" <<<"${rows}")"
-        local enc_id
-        enc_id="$(jq -r '.id' <<<"${r}")"
-        local species
-        species="$(jq -r '.species' <<<"${r}")"
-
-        # Build the encounter object the evolution checker expects.
-        local enc_obj
-        enc_obj="$(jq -c '{
-            gender, level, friendship,
-            stats: [.stat_hp, .stat_atk, .stat_def, .stat_spa, .stat_spd, .stat_spe],
-            moves: (.moves_json | fromjson)
-        }' <<<"${r}")"
-
+    # One jq pass flattens each row to a US-delimited record: id, species, and
+    # the encounter object the evolution checker expects (emitted as a JSON
+    # field via tojson). Replaces the per-row `.[i]` rescan (O(n^2) over the
+    # whole set) plus the id/species/enc_obj field forks.
+    local US=$'\037'
+    local -a evolved_objs=()
+    local enc_id species enc_obj
+    while IFS="${US}" read -r enc_id species enc_obj; do
         local spec
         if ! spec="$(pokeapi_get "pokemon-species/${species}" 2>/dev/null)"; then
             continue
@@ -1041,12 +1029,11 @@ function pokidle_tick_evolve {
         fi
 
         local -i idx=$((RANDOM % v_n))
-        local pick
-        pick="$(jq -c ".[${idx}]" <<<"${viable}")"
-        local new_species
-        new_species="$(jq -r '.species' <<<"${pick}")"
-        local kind
-        kind="$(jq -r '.kind' <<<"${pick}")"
+        # One read pulls the chosen path's species, kind, and the path object
+        # itself (as JSON) — instead of three jq forks on the same value.
+        local new_species kind pick
+        IFS="${US}" read -r new_species kind pick < <(jq -r --arg US "${US}" --argjson idx "${idx}" \
+            '.[$idx] | [.species, .kind, tojson] | join($US)' <<<"${viable}")
 
         if ((dry_run == 0)); then
             if ! evolution_apply "${enc_id}" "${pick}"; then
@@ -1066,10 +1053,19 @@ function pokidle_tick_evolve {
                 '{from:$from, to:$to, biome_label:$label, sprite_path:$sp, biome_id:$bid}')"
             notify_evolution "${notify_obj}"
         fi
-        evolved="$(jq -c \
+        evolved_objs+=("$(jq -n -c \
             --argjson id "${enc_id}" --arg from "${species}" --arg to "${new_species}" --arg kind "${kind}" \
-            '. + [{id:$id, from:$from, to:$to, kind:$kind}]' <<<"${evolved}")"
-    done
+            '{id:$id, from:$from, to:$to, kind:$kind}')")
+    done < <(jq -r --arg US "${US}" '.[] | [
+        (.id | tostring), .species,
+        ({gender, level, friendship,
+          stats: [.stat_hp, .stat_atk, .stat_def, .stat_spa, .stat_spd, .stat_spe],
+          moves: (.moves_json | fromjson)} | tojson)
+    ] | join($US)' <<<"${rows}")
+
+    if ((${#evolved_objs[@]} > 0)); then
+        evolved="$(printf '%s\n' "${evolved_objs[@]}" | jq -s -c '.')"
+    fi
 
     if ((no_output)); then
         return 0
@@ -1398,12 +1394,21 @@ function pokidle_export {
     local used="|"
     local sep=""
     local sp
+    local US=$'\037'
     for sp in "${species[@]}"; do
-        local -i cnt
-        cnt="$(jq --arg s "${sp}" '[.[] | select(.species==$s)] | length' <<<"${rows}")"
+        # Pick one random stored encounter for this species in a single jq pass:
+        # RANDOM seeds the index, jq mods it by the group size (no separate
+        # count fork).
         local enc
-        enc="$(jq -c --arg s "${sp}" --argjson i "$((RANDOM % cnt))" \
-            '[.[] | select(.species==$s)][$i]' <<<"${rows}")"
+        enc="$(jq -c --arg s "${sp}" --argjson rnd "${RANDOM}" \
+            '[.[] | select(.species==$s)] as $g | $g[$rnd % ($g | length)]' <<<"${rows}")"
+
+        # One jq read pulls the fields the loop needs: form name (for move
+        # legality), the stored moveset (.moves_json is already a JSON-array
+        # string, usable as-is via --argjson), and the held berry.
+        local variety moves_json berry
+        IFS="${US}" read -r variety moves_json berry < <(jq -r --arg US "${US}" \
+            '[(.variety // .species), (.moves_json // "[]"), (.held_berry // "")] | join($US)' <<<"${enc}")
 
         # Restrict the stored moveset to what Showdown's Gen 9 National Dex
         # validator accepts for this species/form (drops moves obtainable only
@@ -1412,17 +1417,13 @@ function pokidle_export {
         # the form is uncached it returns non-zero and the stored moves pass
         # through untouched. A mon left with no legal move can't form a valid
         # set, so it is dropped — the same way event-only species are.
-        local variety
-        variety="$(jq -r '.variety // .species' <<<"${enc}")"
-        local moves_json
-        moves_json="$(jq -c '.moves_json | fromjson' <<<"${enc}")"
         local legal
         if legal="$(encounter_legal_moves "${variety}")"; then
             local legal_json
             legal_json="$(jq -R -s -c 'split("\n") | map(select(length > 0))' <<<"${legal}")"
             moves_json="$(jq -c --argjson legal "${legal_json}" \
                 '[.[] | select(IN($legal[]))]' <<<"${moves_json}")"
-            if [[ "$(jq 'length' <<<"${moves_json}")" -eq 0 ]]; then
+            if [[ "${moves_json}" == "[]" ]]; then
                 continue
             fi
         fi
@@ -1436,8 +1437,6 @@ function pokidle_export {
             fi
             cands+=("${it}")
         done
-        local berry
-        berry="$(jq -r '.held_berry // ""' <<<"${enc}")"
         if [[ -n "${berry}" && "${berry}" != "null" ]]; then
             local berry_item="${berry}-berry"
             if [[ "${used}" != *"|${berry_item}|"* ]] &&
