@@ -765,7 +765,7 @@ function encounter_build_pool {
         source "${POKIDLE_REPO_ROOT}/lib/biome.bash"
     fi
 
-    # 1. Union pokemon-resource names across biome.types[].
+    # Union pokemon-resource names across biome.types[].
     local raw_names='[]'
     local types_list
     if ! types_list="$(biome_types_for "${biome_id}")"; then
@@ -784,16 +784,16 @@ function encounter_build_pool {
             '. + $e | unique' <<<"${raw_names}")"
     done <<<"${types_list}"
 
-    # 1b. /type/<t> returns variety-suffixed names (e.g. wormadam-plant,
-    #     shaymin-land, deoxys-attack) for forme-bearing species, alongside
-    #     bare names. Collapse each to its bare pokemon-species name (so the
-    #     /pokemon-species lookups below succeed), but remember which form(s)
-    #     reached the pool — that is the form actually present in this biome's
-    #     types (e.g. a steel biome holds meowth-galar, not bare meowth). The
-    #     bare name keys species-level data; the variety drives the encounter.
-    #     Battle-only/totem forms (mega, gmax, …) carry a biome type but are
-    #     never wild-encounterable, so they are dropped here; a species whose
-    #     only type-matching form is battle-only thus never enters the pool.
+    # /type/<t> returns variety-suffixed names (e.g. wormadam-plant,
+    # shaymin-land, deoxys-attack) for forme-bearing species, alongside
+    # bare names. Collapse each to its bare pokemon-species name (so the
+    # /pokemon-species lookups below succeed), but remember which form(s)
+    # reached the pool — that is the form actually present in this biome's
+    # types (e.g. a steel biome holds meowth-galar, not bare meowth). The
+    # bare name keys species-level data; the variety drives the encounter.
+    # Battle-only/totem forms (mega, gmax, …) carry a biome type but are
+    # never wild-encounterable, so they are dropped here; a species whose
+    # only type-matching form is battle-only thus never enters the pool.
     local species_to_varieties='{}'
     local raw_name
     while IFS= read -r raw_name; do
@@ -822,8 +822,8 @@ function encounter_build_pool {
     local species_union
     species_union="$(jq -c 'keys' <<<"${species_to_varieties}")"
 
-    # 2. Per species: filter legendary/mythical, tier by own capture_rate,
-    #    look up min/max via evolution chain (chain JSON cached by id).
+    # Per species: filter legendary/mythical, tier by own capture_rate,
+    # look up min/max via evolution chain (chain JSON cached by id).
     local -A chain_cache=()
     local flat='[]'
     local sp
@@ -891,7 +891,7 @@ function encounter_build_pool {
             '. + [{species:$sp, varieties:$vs, min:$mn, max:$mx, tier:$tier}]' <<<"${flat}")"
     done < <(jq -r '.[]' <<<"${species_union}")
 
-    # 3. Bucket into tier arrays.
+    # Bucket into tier arrays.
     local tiered
     tiered="$(jq -c --argjson tiers '["common","uncommon","rare","very_rare"]' '
         ($tiers | map({(.) : []}) | add) as $empty
@@ -900,7 +900,7 @@ function encounter_build_pool {
           )
     ' <<<"${flat}")"
 
-    # 4. Derive berries by natural_gift_type intersection with biome.types.
+    # Derive berries by natural_gift_type intersection with biome.types.
     local berries_json='[]'
     local berry_list
     if ! berry_list="$(pokeapi_get "berry?limit=100")"; then

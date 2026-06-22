@@ -2077,8 +2077,8 @@ function pokidle_setup {
         esac
     done
 
-    # 0. Dependency check. systemctl is required: the whole app runs as a
-    #    systemd user service.
+    # Dependency check. systemctl is required: the whole app runs as a
+    # systemd user service.
     local -a missing_req=()
     local req
     for req in jq curl sqlite3 notify-send awk systemctl; do
@@ -2098,13 +2098,13 @@ function pokidle_setup {
         printf 'setup: optional dep missing: chafa (sprite preview in list/items will be skipped)\n'
     fi
 
-    # 1. Config dir (biome catalog is hardcoded in lib/biome.bash — no file).
+    # Config dir (biome catalog is hardcoded in lib/biome.bash — no file).
     mkdir -p -- "${POKIDLE_CONFIG_DIR}"
 
-    # 2. Data + cache dirs
+    # Data + cache dirs
     mkdir -p -- "${POKIDLE_DATA_DIR}" "${POKIDLE_CACHE_DIR}"
 
-    # 2b. Asset symlinks (icons + sounds) into data dir
+    # Asset symlinks (icons + sounds) into data dir
     local asset
     for asset in biomes notify sounds; do
         local src="${POKIDLE_REPO_ROOT}/share/${asset}"
@@ -2117,13 +2117,13 @@ function pokidle_setup {
         printf 'symlinked %s -> %s\n' "${dst}" "${src}"
     done
 
-    # 2c. Seed encounter pools from share/pools so first run skips the
-    #     ~2 hour cold rebuild. Copies (not symlinks) so later
-    #     `pokidle rebuild-pool` writes to the cache, not the repo. A shipped
-    #     pool that is newer than the cached copy (e.g. after `git pull`)
-    #     overwrites it, so form/pool upgrades land on the next setup without a
-    #     manual rebuild. A cached pool the user rebuilt themselves is newer
-    #     than the shipped file, so it is kept.
+    # Seed encounter pools from share/pools so first run skips the
+    # ~2 hour cold rebuild. Copies (not symlinks) so later
+    # `pokidle rebuild-pool` writes to the cache, not the repo. A shipped
+    # pool that is newer than the cached copy (e.g. after `git pull`)
+    # overwrites it, so form/pool upgrades land on the next setup without a
+    # manual rebuild. A cached pool the user rebuilt themselves is newer
+    # than the shipped file, so it is kept.
     local ship_pools="${POKIDLE_REPO_ROOT}/share/pools"
     local cache_pools="${POKIDLE_CACHE_DIR}/pools"
     if [[ -d "${ship_pools}" ]] && compgen -G "${ship_pools}/*.json" >/dev/null; then
@@ -2149,7 +2149,7 @@ function pokidle_setup {
         fi
     fi
 
-    # 3. Symlink pokidle into ~/.local/bin
+    # Symlink pokidle into ~/.local/bin
     local bindir="${HOME}/.local/bin"
     mkdir -p -- "${bindir}"
     ln -sf -- "${POKIDLE_REPO_ROOT}/pokidle" "${bindir}/pokidle"
@@ -2161,9 +2161,9 @@ function pokidle_setup {
         *) printf 'warning: %s is not in PATH — add it to your shell rc\n' "${bindir}" >&2 ;;
     esac
 
-    # 3b. Bash completion. The bash-completion package lazy-loads a file named
-    #     after the command from the per-user dir below (no root needed). One
-    #     completion file registers both CLIs, so symlink it under each name.
+    # Bash completion. The bash-completion package lazy-loads a file named
+    # after the command from the per-user dir below (no root needed). One
+    # completion file registers both CLIs, so symlink it under each name.
     local comp_src="${POKIDLE_REPO_ROOT}/share/completions/pokidle.bash"
     local comp_dir="${XDG_DATA_HOME:-${HOME}/.local/share}/bash-completion/completions"
     if [[ -f "${comp_src}" ]]; then
@@ -2175,15 +2175,15 @@ function pokidle_setup {
         done
     fi
 
-    # 4. Systemd unit. The unit is app-owned (generated from the repo copy), so
-    #    always refresh it — a stale ExecStart from an older install would crash
-    #    the service. daemon-reload below picks up the new content.
+    # Systemd unit. The unit is app-owned (generated from the repo copy), so
+    # always refresh it — a stale ExecStart from an older install would crash
+    # the service. daemon-reload below picks up the new content.
     local sd_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
     mkdir -p -- "${sd_dir}"
     cp -- "${POKIDLE_REPO_ROOT}/systemd/pokidle.service" "${sd_dir}/pokidle.service"
     printf 'wrote %s\n' "${sd_dir}/pokidle.service"
 
-    # 5. Reload systemd user units
+    # Reload systemd user units
     if ! systemctl --user daemon-reload; then
         printf 'warning: systemctl --user daemon-reload failed (no logind?)\n' >&2
     fi
