@@ -218,7 +218,7 @@ function legendary_build_encounter {
     local ivs
     ivs="$(encounter_roll_ivs)"
     local evs
-    evs="$(encounter_ev_split "$((RANDOM % 511))")"
+    evs="$(encounter_roll_evs)"
 
     local -a natures
     mapfile -t natures < <(encounter_natures_list)
@@ -230,7 +230,7 @@ function legendary_build_encounter {
     fi
 
     local ability_obj
-    if ! ability_obj="$(encounter_roll_ability "${variety}")"; then
+    if ! ability_obj="$(encounter_roll_ability_legal "${variety}")"; then
         return 1
     fi
     local ability
@@ -239,7 +239,7 @@ function legendary_build_encounter {
     is_hidden="$(jq -r 'if .is_hidden then 1 else 0 end' <<<"${ability_obj}")"
 
     local moves_json
-    if ! moves_json="$(encounter_roll_moves "${variety}" "${level}" "${sp}")"; then
+    if ! moves_json="$(encounter_roll_moves_legal "${variety}" "${level}" "${sp}")"; then
         return 1
     fi
     local gender
@@ -274,13 +274,13 @@ function legendary_build_encounter {
     stats_json="$(_json_int_array "${stats}")"
 
     jq -n \
-        --arg sp "${sp}" --argjson dex "${dex_id}" --argjson lvl "${level}" \
+        --arg sp "${sp}" --arg variety "${variety}" --argjson dex "${dex_id}" --argjson lvl "${level}" \
         --arg nature "${nature}" --arg ability "${ability}" --argjson hidden "${is_hidden}" \
         --arg gender "${gender}" --argjson shiny "${shiny}" \
         --argjson friendship "${friendship}" \
         --argjson ivs "${ivs_json}" --argjson evs "${evs_json}" --argjson stats "${stats_json}" \
         --argjson moves "${moves_json}" --arg sprite "${final_sprite}" '{
-            species: $sp, dex_id: $dex, level: $lvl,
+            species: $sp, variety: $variety, dex_id: $dex, level: $lvl,
             nature: $nature, ability: $ability, is_hidden_ability: $hidden,
             gender: $gender, shiny: $shiny, held_berry: null,
             friendship: $friendship,

@@ -21,6 +21,8 @@ source "${POKIDLE_REPO_ROOT}/lib/helpers.bash"
 source "${POKIDLE_REPO_ROOT}/lib/cache.bash"
 # shellcheck source=lib/http.bash
 source "${POKIDLE_REPO_ROOT}/lib/http.bash"
+# shellcheck source=lib/psdata.bash
+source "${POKIDLE_REPO_ROOT}/lib/psdata.bash"
 # shellcheck source=lib/api.bash
 source "${POKIDLE_REPO_ROOT}/lib/api.bash"
 # shellcheck source=lib/db.bash
@@ -1294,14 +1296,12 @@ function _pokidle_shuffle {
 # pokidle_export [filters...]
 # Print a random Pokémon Showdown team built from stored encounters.
 # Picks up to 6 distinct species within a window (default: current ISO week,
-# overridable via --since/--until), one random encounter per species. Held
-# items are drawn from item_drops in the same window — distinct across the
-# team — with each mon's own berry as one additional candidate. Only items
-# Showdown accepts are assigned, and each mon's stored moveset is trimmed to its
-# Gen 9 National Dex legal moves (see encounter_legal_moves) — dropping moves
-# only obtainable from non-transferable origins (Legends Arceus, Let's Go, gen
-# 1-2 Virtual Console), and the mon entirely if none remain legal — so every team
-# imports cleanly. Other list filters
+# overridable via --since/--until), one random encounter per species. Encounters
+# are born legal (abilities, moves, IVs, EVs rolled at capture time), so no
+# move-trimming or event-only filtering is needed here. Held items are drawn from
+# item_drops in the same window — distinct across the team — with each mon's own
+# berry as one additional candidate. Only items Showdown accepts are assigned (the
+# one legality filter applied at export). Other list filters
 # (--shiny/--species/--biome/--nature/--min-iv-total) constrain the encounter
 # pool.
 function pokidle_export {
@@ -1351,18 +1351,6 @@ function pokidle_export {
 
     local -a species=()
     mapfile -t species < <(jq -r '[.[].species] | unique | .[]' <<<"${rows}")
-    # Drop event-only species (Gen IX Paradox mons, …): Showdown's validator
-    # rejects a team holding one, so they must never reach an exported set even
-    # though they can be encountered and stored.
-    local -a wild_species=()
-    local cand_sp
-    for cand_sp in "${species[@]}"; do
-        if encounter_species_is_event_only "${cand_sp}"; then
-            continue
-        fi
-        wild_species+=("${cand_sp}")
-    done
-    species=("${wild_species[@]}")
     if ((${#species[@]} == 0)); then
         return 0
     fi
@@ -1403,30 +1391,13 @@ function pokidle_export {
         enc="$(jq -c --arg s "${sp}" --argjson rnd "${RANDOM}" \
             '[.[] | select(.species==$s)] as $g | $g[$rnd % ($g | length)]' <<<"${rows}")"
 
-        # One jq read pulls the fields the loop needs: form name (for move
-        # legality), the stored moveset (.moves_json is already a JSON-array
-        # string, usable as-is via --argjson), and the held berry.
+        # One jq read pulls the fields the loop needs: form name, the stored
+        # moveset (.moves_json is already a JSON-array string, usable as-is via
+        # --argjson), and the held berry. Moves are born legal (rolled at capture
+        # time), so they are used as-is without any trimming.
         local variety moves_json berry
         IFS="${US}" read -r variety moves_json berry < <(jq -r --arg US "${US}" \
             '[(.variety // .species), (.moves_json // "[]"), (.held_berry // "")] | join($US)' <<<"${enc}")
-
-        # Restrict the stored moveset to what Showdown's Gen 9 National Dex
-        # validator accepts for this species/form (drops moves obtainable only
-        # from non-transferable origins — Legends Arceus, Let's Go, gen 1-2
-        # Virtual Console). encounter_legal_moves reads only the warm cache; if
-        # the form is uncached it returns non-zero and the stored moves pass
-        # through untouched. A mon left with no legal move can't form a valid
-        # set, so it is dropped — the same way event-only species are.
-        local legal
-        if legal="$(encounter_legal_moves "${variety}")"; then
-            local legal_json
-            legal_json="$(jq -R -s -c 'split("\n") | map(select(length > 0))' <<<"${legal}")"
-            moves_json="$(jq -c --argjson legal "${legal_json}" \
-                '[.[] | select(IN($legal[]))]' <<<"${moves_json}")"
-            if [[ "${moves_json}" == "[]" ]]; then
-                continue
-            fi
-        fi
 
         # Candidate item pool: unused window items + this mon's own berry
         # (bare berry slug normalized to "<name>-berry").

@@ -390,27 +390,6 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "encounter_species_is_event_only: Paradox mons true, ordinary species false" {
-    # Gen IX Paradox Pokémon are event-locked; Showdown's validator rejects a
-    # team holding one ("… is only obtainable from an event"). They are not
-    # flagged legendary/mythical in PokeAPI, so the export gates them by name.
-    run encounter_species_is_event_only sandy-shocks
-    [ "$status" -eq 0 ]
-    run encounter_species_is_event_only iron-boulder
-    [ "$status" -eq 0 ]
-    run encounter_species_is_event_only iron-valiant
-    [ "$status" -eq 0 ]
-    run encounter_species_is_event_only walking-wake
-    [ "$status" -eq 0 ]
-    run encounter_species_is_event_only iron-leaves
-    [ "$status" -eq 0 ]
-    # Ordinary wild species export fine.
-    run encounter_species_is_event_only froslass
-    [ "$status" -ne 0 ]
-    run encounter_species_is_event_only pikachu
-    [ "$status" -ne 0 ]
-}
-
 @test "encounter_item_is_showdown_legal: useless EV-reducer berries excluded" {
     # Showdown groups these under "Useless items" (grepa + kelpsy live in the
     # main "Items" group and stay legal).

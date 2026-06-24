@@ -6,7 +6,9 @@ setup() {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_REPO_ROOT
     load_lib encounter
+    load_lib psdata
     stub_pokeapi
+    seed_psdata
 }
 
 @test "encounter_natures_list returns 25 names" {
@@ -46,75 +48,35 @@ setup() {
     [ "$status" -ne 0 ]
 }
 
-@test "encounter_roll_ivs returns 6 ints in [0,31]" {
+@test "encounter_roll_ivs: exactly three perfect 31s, rest in range" {
     run encounter_roll_ivs
     [ "$status" -eq 0 ]
-    local ivs=($output)
+    read -ra ivs <<<"$output"
     [ "${#ivs[@]}" -eq 6 ]
-    local i
-    for i in "${ivs[@]}"; do
-        [ "$i" -ge 0 ] && [ "$i" -le 31 ]
+    local perfect=0 v
+    for v in "${ivs[@]}"; do
+        [ "$v" -ge 0 ] && [ "$v" -le 31 ]
+        if [ "$v" -eq 31 ]; then perfect=$((perfect + 1)); fi
     done
+    [ "$perfect" -ge 3 ]
 }
 
-@test "encounter_ev_split: total exact, each ≤ 252" {
-    local i
-    for i in {1..50}; do
-        local want=$((RANDOM % 511))
-        local out
-        out="$(encounter_ev_split "$want")"
-        local arr=($out)
-        [ "${#arr[@]}" -eq 6 ]
-        local total=0 v
-        for v in "${arr[@]}"; do
-            [ "$v" -le 252 ]
-            [ "$v" -ge 0 ]
-            total=$((total + v))
-        done
-        [ "$total" -eq "$want" ]
+@test "encounter_roll_evs: 252/252/4 across three distinct stats" {
+    run encounter_roll_evs
+    [ "$status" -eq 0 ]
+    read -ra evs <<<"$output"
+    [ "${#evs[@]}" -eq 6 ]
+    local sum=0 c252=0 c4=0 c0=0 v
+    for v in "${evs[@]}"; do
+        sum=$((sum + v))
+        if [ "$v" -eq 252 ]; then c252=$((c252 + 1)); fi
+        if [ "$v" -eq 4 ]; then c4=$((c4 + 1)); fi
+        if [ "$v" -eq 0 ]; then c0=$((c0 + 1)); fi
     done
-}
-
-@test "encounter_ev_split(0) = all zeros" {
-    run encounter_ev_split 0
-    [ "$output" = "0 0 0 0 0 0" ]
-}
-
-@test "encounter_ev_split: deltas multiples of 4 (at most one stat carries the total%4 leftover)" {
-    local i
-    for i in {1..50}; do
-        local want=$((RANDOM % 511))
-        local rem=$((want % 4))
-        local out
-        out="$(encounter_ev_split "$want")"
-        local arr=($out)
-        local nonmult4=0 v
-        for v in "${arr[@]}"; do
-            (( v % 4 != 0 )) && nonmult4=$((nonmult4 + 1))
-        done
-        if (( rem == 0 )); then
-            [ "$nonmult4" -eq 0 ]
-        else
-            [ "$nonmult4" -le 1 ]
-        fi
-    done
-}
-
-@test "encounter_ev_split(510): total preserved, chunks-of-4 invariant holds" {
-    local i
-    for i in {1..20}; do
-        local out
-        out="$(encounter_ev_split 510)"
-        local arr=($out)
-        local total=0 nonmult4=0 v
-        for v in "${arr[@]}"; do
-            [ "$v" -le 252 ]
-            total=$((total + v))
-            (( v % 4 != 0 )) && nonmult4=$((nonmult4 + 1))
-        done
-        [ "$total" -eq 510 ]
-        [ "$nonmult4" -le 1 ]
-    done
+    [ "$sum" -eq 508 ]
+    [ "$c252" -eq 2 ]
+    [ "$c4" -eq 1 ]
+    [ "$c0" -eq 3 ]
 }
 
 @test "encounter_roll_level: uniform within [min,max] inclusive" {
@@ -428,68 +390,26 @@ EOF
     [ "$output" = "[]" ]
 }
 
-# encounter_legal_moves reads only the warm pokeapi cache; seed a crafted
-# /pokemon body so the test is deterministic and never touches the network.
-_seed_legal_moves_fixture() { # $1 species  $2 raw moves[] json
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    load_lib cache
-    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
-    printf '{"moves":%s}' "$2" > "$POKEAPI_CACHE_DIR/pokemon/$1.json"
-}
-
-@test "encounter_legal_moves: keeps an older-gen move that transfers up to National Dex" {
-    # A move learnable only in a normal Gen 3 game still transfers to Gen 9
-    # National Dex, so it must survive even though no later gen relearns it.
-    _seed_legal_moves_fixture mon '[
-        {"move":{"name":"ancient-power"},"version_group_details":[
-            {"version_group":{"name":"emerald"},"move_learn_method":{"name":"tutor"},"level_learned_at":0}]},
-        {"move":{"name":"thunderbolt"},"version_group_details":[
-            {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]}
-    ]'
-    run encounter_legal_moves mon
+@test "encounter_roll_ability_legal: hidden-rate 0 never picks the hidden ability" {
+    POKIDLE_HIDDEN_ABILITY_RATE=0 run encounter_roll_ability_legal "corviknight"
     [ "$status" -eq 0 ]
-    [[ "$output" == *ancient-power* ]]
-    [[ "$output" == *thunderbolt* ]]
+    local name; name="$(echo "$output" | jq -r '.name')"
+    [ "$name" = "pressure" ] || [ "$name" = "unnerve" ]
+    echo "$output" | jq -e '.is_hidden == false'
 }
 
-@test "encounter_legal_moves: drops gen 1-2 (Virtual Console) only moves" {
-    # Curse here is learnable only in gen 2; reaching Gen 9 would need a VC
-    # transfer with 3 perfect IVs we don't roll, so it is dropped.
-    _seed_legal_moves_fixture mon '[
-        {"move":{"name":"curse"},"version_group_details":[
-            {"version_group":{"name":"gold-silver"},"move_learn_method":{"name":"machine"},"level_learned_at":0},
-            {"version_group":{"name":"crystal"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]},
-        {"move":{"name":"peck"},"version_group_details":[
-            {"version_group":{"name":"scarlet-violet"},"move_learn_method":{"name":"level-up"},"level_learned_at":1}]}
-    ]'
-    run encounter_legal_moves mon
+@test "encounter_roll_ability_legal: hidden-rate 100 picks the hidden ability" {
+    POKIDLE_HIDDEN_ABILITY_RATE=100 run encounter_roll_ability_legal "corviknight"
     [ "$status" -eq 0 ]
-    [[ "$output" == *peck* ]]
-    [[ "$output" != *curse* ]]
+    echo "$output" | jq -e '.name == "mirror-armor" and .is_hidden == true'
 }
 
-@test "encounter_legal_moves: drops isolated side-game (Legends Arceus) moves" {
-    # poison-powder is learnable only in legends-arceus, whose movepool never
-    # transfers to National Dex.
-    _seed_legal_moves_fixture mon '[
-        {"move":{"name":"poison-powder"},"version_group_details":[
-            {"version_group":{"name":"legends-arceus"},"move_learn_method":{"name":"level-up"},"level_learned_at":11}]},
-        {"move":{"name":"giga-drain"},"version_group_details":[
-            {"version_group":{"name":"sword-shield"},"move_learn_method":{"name":"machine"},"level_learned_at":0}]}
-    ]'
-    run encounter_legal_moves mon
+@test "encounter_roll_moves_legal: returns up to 4 legal move slugs" {
+    run encounter_roll_moves_legal "corviknight" 50
     [ "$status" -eq 0 ]
-    [[ "$output" == *giga-drain* ]]
-    [[ "$output" != *poison-powder* ]]
-}
-
-@test "encounter_legal_moves: returns non-zero for an uncached species" {
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    load_lib cache
-    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
-    run encounter_legal_moves never-cached
-    [ "$status" -ne 0 ]
-    [ -z "$output" ]
+    local n; n="$(echo "$output" | jq 'length')"
+    [ "$n" -ge 1 ] && [ "$n" -le 4 ]
+    echo "$output" | jq -e 'all(.[]; . | test("^[a-z0-9-]+$"))'
+    # every chosen move is within the legal pool
+    echo "$output" | jq -e 'all(.[]; IN("brave-bird","double-edge","fury-attack","peck"))'
 }

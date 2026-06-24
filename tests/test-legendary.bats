@@ -137,6 +137,33 @@ setup() {
     [ "$lvl" -ge 50 ] && [ "$lvl" -le 70 ]
 }
 
+@test "legendary_build_encounter stores the variety field" {
+    POKIDLE_LEGENDARY_LEVEL_MIN=50
+    POKIDLE_LEGENDARY_LEVEL_MAX=70
+    export POKIDLE_LEGENDARY_LEVEL_MIN POKIDLE_LEGENDARY_LEVEL_MAX
+    load_lib encounter
+    load_lib psdata
+    stub_pokeapi
+    seed_psdata
+    run legendary_build_encounter articuno forest
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e 'has("variety") and (.variety | length > 0)'
+}
+
+@test "legendary_build_encounter: 3 perfect IVs and 252/252/4 EVs" {
+    POKIDLE_LEGENDARY_LEVEL_MIN=50
+    POKIDLE_LEGENDARY_LEVEL_MAX=70
+    export POKIDLE_LEGENDARY_LEVEL_MIN POKIDLE_LEGENDARY_LEVEL_MAX
+    load_lib encounter
+    load_lib psdata
+    stub_pokeapi
+    seed_psdata
+    run legendary_build_encounter articuno forest
+    [ "$status" -eq 0 ]
+    echo "$output" | jq -e '([.ivs[] | select(. == 31)] | length) >= 3'
+    echo "$output" | jq -e '(.evs | add) == 508 and ([.evs[]|select(.==252)]|length)==2'
+}
+
 @test "tick legendary --dry-run: rolls but does not insert" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_LEGENDARY_CHANCE=100

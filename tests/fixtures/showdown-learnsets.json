@@ -1,0 +1,6 @@
+{
+  "thundurus": {"learnset": {"thunderbolt": ["9M"], "nastyplot": ["9M"]}},
+  "corviknight": {"learnset": {"bravebird": ["9M"], "doubleedge": ["9M"]}},
+  "corvisquire": {"learnset": {"fury attack": ["9L1"]}},
+  "rookidee": {"learnset": {"peck": ["9L1"]}}
+}

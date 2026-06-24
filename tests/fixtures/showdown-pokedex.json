@@ -1,0 +1,7 @@
+{
+  "thundurus": {"abilities": {"0": "Prankster", "H": "Defiant"}},
+  "thundurustherian": {"abilities": {"0": "Volt Absorb"}, "baseSpecies": "Thundurus", "forme": "Therian"},
+  "corviknight": {"abilities": {"0": "Pressure", "1": "Unnerve", "H": "Mirror Armor"}, "prevo": "Corvisquire"},
+  "corvisquire": {"abilities": {"0": "Keen Eye"}, "prevo": "Rookidee"},
+  "rookidee": {"abilities": {"0": "Keen Eye"}}
+}

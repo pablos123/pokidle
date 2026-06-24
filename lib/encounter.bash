@@ -203,33 +203,6 @@ function encounter_item_is_showdown_legal {
     [[ -n "${ENCOUNTER_SHOWDOWN_ITEMS[$1]:-}" ]]
 }
 
-# Bare pokemon-species slugs Pokémon Showdown's team validator treats as
-# event-only: a team holding one is bounced ("… is only obtainable from an
-# event — it needs to match its event"). Seeded with the Gen IX Paradox
-# Pokémon, which are NOT flagged is_legendary/is_mythical in PokeAPI, so the
-# pool builder's legendary/mythical filter lets them through and they reach the
-# export. The export gates every species on this so a team always imports. Add
-# other event-locked species here as they surface.
-if [[ -z "${ENCOUNTER_EVENT_ONLY_SPECIES[*]:-}" ]]; then
-    declare -grA ENCOUNTER_EVENT_ONLY_SPECIES=(
-        # Ancient Paradox (Scarlet)
-        ["great-tusk"]=1 ["scream-tail"]=1 ["brute-bonnet"]=1 ["flutter-mane"]=1
-        ["slither-wing"]=1 ["sandy-shocks"]=1 ["roaring-moon"]=1 ["walking-wake"]=1
-        ["gouging-fire"]=1 ["raging-bolt"]=1
-        # Future Paradox (Violet)
-        ["iron-treads"]=1 ["iron-bundle"]=1 ["iron-hands"]=1 ["iron-jugulis"]=1
-        ["iron-moth"]=1 ["iron-thorns"]=1 ["iron-valiant"]=1 ["iron-boulder"]=1
-        ["iron-crown"]=1 ["iron-leaves"]=1
-    )
-fi
-
-# encounter_species_is_event_only <species>
-# True (exit 0) if <species> (a bare pokemon-species slug) is an event-only
-# Pokémon that Pokémon Showdown rejects on import.
-function encounter_species_is_event_only {
-    [[ -n "${ENCOUNTER_EVENT_ONLY_SPECIES[$1]:-}" ]]
-}
-
 # encounter_tier_for_capture_rate <capture_rate>
 # capture_rate: PokeAPI value 0..255. Higher = easier to catch = more common.
 # Thresholds 150/75/25 bucket into common/uncommon/rare/very_rare.
@@ -284,70 +257,42 @@ function encounter_nature_mods {
 }
 
 # encounter_roll_ivs
-# Print 6 space-separated IVs, each rolled uniformly in 0..31.
+# Print 6 space-separated IVs; exactly 3 random distinct positions are a
+# perfect 31, the other 3 are random 0..31.
 function encounter_roll_ivs {
     local -a out=()
     local -i i
     for i in {0..5}; do
         out+=("$((RANDOM % 32))")
     done
+    # Force three random distinct positions to a perfect 31.
+    local -a pos=(0 1 2 3 4 5)
+    local -i j tmp r
+    for ((j = 5; j > 0; j--)); do
+        r=$((RANDOM % (j + 1)))
+        tmp=${pos[j]}; pos[j]=${pos[r]}; pos[r]=$tmp
+    done
+    out[${pos[0]}]=31
+    out[${pos[1]}]=31
+    out[${pos[2]}]=31
     printf '%s' "${out[*]}"
 }
 
-# encounter_ev_split <total>
-# Distribute <total> EVs across 6 stats (cap 252 each, chunks of 4) and print
-# the 6 space-separated values.
-function encounter_ev_split {
-    local -i total="$1"
-    local -a evs=(0 0 0 0 0 0)
-    local -i remaining="${total}"
-    local -i guard=0
-    # Allocate in chunks of 4 (one chunk = +1 effective stat point).
-    while ((remaining >= 4)); do
-        if ((guard++ > 10000)); then
-            break
-        fi
-        local -i i=$((RANDOM % 6))
-        local -i headroom=$((252 - evs[i]))
-        if ((headroom < 4)); then
-            local -i all=1
-            local j
-            for j in "${evs[@]}"; do
-                if ((j < 252)); then
-                    all=0
-                    break
-                fi
-            done
-            if ((all)); then
-                break
-            fi
-            continue
-        fi
-        local -i cap_chunks=$((headroom / 4))
-        local -i rem_chunks=$((remaining / 4))
-        if ((cap_chunks > rem_chunks)); then
-            cap_chunks=${rem_chunks}
-        fi
-        local -i delta_chunks=$(((RANDOM % cap_chunks) + 1))
-        local -i delta=$((delta_chunks * 4))
-        evs[i]=$((evs[i] + delta))
-        remaining=$((remaining - delta))
+# encounter_roll_evs
+# Competitive spread: two random distinct stats at 252, one more at 4 (508
+# total). Prints 6 space-separated EVs (hp atk def spa spd spe).
+function encounter_roll_evs {
+    local -a out=(0 0 0 0 0 0)
+    local -a pos=(0 1 2 3 4 5)
+    local -i j tmp r
+    for ((j = 5; j > 0; j--)); do
+        r=$((RANDOM % (j + 1)))
+        tmp=${pos[j]}; pos[j]=${pos[r]}; pos[r]=$tmp
     done
-    # 510 is not a multiple of 4: drop the 1-3 leftover on a stat with room
-    # (matches in-game behavior — last bits are wasted but the total is preserved).
-    if ((remaining > 0)); then
-        local -i tries=0
-        local -i i
-        while ((tries < 100)); do
-            i=$((RANDOM % 6))
-            if ((evs[i] + remaining <= 252)); then
-                evs[i]=$((evs[i] + remaining))
-                break
-            fi
-            ((tries++))
-        done
-    fi
-    printf '%s' "${evs[*]}"
+    out[${pos[0]}]=252
+    out[${pos[1]}]=252
+    out[${pos[2]}]=4
+    printf '%s' "${out[*]}"
 }
 
 # encounter_roll_level <lo> <hi>
@@ -526,63 +471,82 @@ function encounter_roll_moves {
     printf ']'
 }
 
-# encounter_legal_moves <species>
-# Print, one per line, every move <species> can learn that is legal in Pokémon
-# Showdown's Gen 9 (National Dex) formats — the target for exports. National Dex
-# accepts moves from ANY past generation that can transfer up the Pokémon
-# HOME/Bank chain, so almost every learnset entry stays legal; only moves whose
-# EVERY learn-entry sits in a non-transferable origin are excluded:
-#   - isolated side-games whose movepools never transfer: Legends Arceus and
-#     Let's Go (e.g. Machoke's and Roselia's Tackle / Poison Powder), and
-#   - gen 1-2 only, which would require a Virtual-Console transfer with ≥3
-#     perfect IVs we don't roll (e.g. Doduo's Curse).
-# A move learnable in any normal Gen 3-9 game (Colosseum/XD included — they trade
-# into the Gen 3 chain) is kept even when later gens dropped it from the
-# learnset. Reads ONLY the warm pokeapi cache, never the network: every exported
-# mon's /pokemon body is already cached from when its moves were rolled, so this
-# is free. Returns 1 (printing nothing) when the species is uncached or has no
-# transferable moves, so callers fall back to keeping the stored moves unfiltered
-# rather than dropping a mon on missing data.
-function encounter_legal_moves {
-    local species="$1"
-    local poke
-    if ! poke="$(cache_get "pokemon/${species}")"; then
-        return 1
+# encounter_roll_ability_legal <variety> [level]
+# Roll an ability from the variety's Showdown-legal set, honoring
+# POKIDLE_HIDDEN_ABILITY_RATE. Prints {"name","is_hidden"} with name as a slug.
+# Falls back to the PokeAPI roller when Showdown data is unavailable.
+function encounter_roll_ability_legal {
+    local variety="$1"
+    local lines
+    if ! lines="$(psdata_legal_abilities "${variety}")"; then
+        encounter_roll_ability "${variety}"
+        return
     fi
-    # A move survives if at least one of its learn-entries is a standard method
-    # in a TRANSFERABLE version group. The set below is every mainline Gen 3-9
-    # game plus the Gen 3 GameCube titles; gen 1-2 (Virtual Console), Legends
-    # Arceus, Let's Go, and Japan-only Gen 1 dumps are deliberately absent, so
-    # moves available only there are dropped.
-    #
-    # MAINTENANCE: this is an allowlist that fails closed. Add new mainline gens
-    # here when they release (e.g. when Gen 10 lands, add its version-group
-    # name(s) as reported by PokeAPI) — until you do, moves exclusive to that
-    # new gen will be wrongly stripped from exports. Leave isolated side-games
-    # (Let's Go / Legends-Arceus-style) out: their movepools don't transfer.
-    local out
-    out="$(jq -r '
-        def transferable: {
-            "ruby-sapphire":1,"emerald":1,"firered-leafgreen":1,"colosseum":1,"xd":1,
-            "diamond-pearl":1,"platinum":1,"heartgold-soulsilver":1,
-            "black-white":1,"black-2-white-2":1,
-            "x-y":1,"omega-ruby-alpha-sapphire":1,
-            "sun-moon":1,"ultra-sun-ultra-moon":1,
-            "sword-shield":1,"brilliant-diamond-shining-pearl":1,
-            "scarlet-violet":1
-        };
-        [ .moves[]
-          | .move.name as $name
-          | select(any(.version_group_details[];
-              (transferable[.version_group.name] // false) and
-              (.move_learn_method.name | IN("level-up","machine","egg","tutor"))))
-          | $name ]
-        | unique | .[]
-    ' <<<"${poke}")"
-    if [[ -z "${out}" ]]; then
-        return 1
+    local -a normal=() hidden=()
+    local slug hid
+    while IFS=$'\t' read -r slug hid; do
+        [[ -z "${slug}" ]] && continue
+        if [[ "${hid}" == "1" ]]; then
+            hidden+=("${slug}")
+        else
+            normal+=("${slug}")
+        fi
+    done <<<"${lines}"
+
+    local -i rate="${POKIDLE_HIDDEN_ABILITY_RATE:-5}"
+    local -i roll=$((RANDOM % 100))
+    local name="" is_hidden="false"
+    if ((roll < rate)) && ((${#hidden[@]} > 0)); then
+        name="${hidden[$((RANDOM % ${#hidden[@]}))]}"
+        is_hidden="true"
+    elif ((${#normal[@]} > 0)); then
+        name="${normal[$((RANDOM % ${#normal[@]}))]}"
+    elif ((${#hidden[@]} > 0)); then
+        name="${hidden[$((RANDOM % ${#hidden[@]}))]}"
+        is_hidden="true"
+    else
+        encounter_roll_ability "${variety}"
+        return
     fi
-    printf '%s\n' "${out}"
+    jq -nc --arg n "${name}" --argjson h "${is_hidden}" '{name: $n, is_hidden: $h}'
+}
+
+# encounter_roll_moves_legal <variety> <level> [fallback]
+# Roll up to 4 moves from the variety's Showdown-legal pool. Prints a JSON
+# array of slugs. Falls back to the PokeAPI roller when Showdown data is
+# unavailable. <level> is accepted for signature parity; the Showdown pool is
+# not level-gated.
+function encounter_roll_moves_legal {
+    local variety="$1"
+    local level="$2"
+    local fallback="${3:-}"
+    local pool
+    if ! pool="$(psdata_legal_moves "${variety}")"; then
+        encounter_roll_moves "${variety}" "${level}" "${fallback}"
+        return
+    fi
+    local -a arr=()
+    local m
+    while IFS= read -r m; do
+        [[ -n "${m}" ]] && arr+=("${m}")
+    done <<<"${pool}"
+    if ((${#arr[@]} == 0)); then
+        encounter_roll_moves "${variety}" "${level}" "${fallback}"
+        return
+    fi
+    local -a picked=()
+    while ((${#picked[@]} < 4 && ${#arr[@]} > 0)); do
+        local -i idx=$((RANDOM % ${#arr[@]}))
+        picked+=("${arr[idx]}")
+        arr=("${arr[@]:0:idx}" "${arr[@]:idx+1}")
+    done
+    printf '['
+    local sep="" i
+    for i in "${picked[@]}"; do
+        printf '%s"%s"' "${sep}" "${i}"
+        sep=","
+    done
+    printf ']'
 }
 
 # encounter_roll_gender <species>
@@ -1046,7 +1010,7 @@ function encounter_roll_pokemon {
     local ivs
     ivs="$(encounter_roll_ivs)"
     local evs
-    evs="$(encounter_ev_split "$((RANDOM % 511))")"
+    evs="$(encounter_roll_evs)"
 
     local -a natures
     mapfile -t natures < <(encounter_natures_list)
@@ -1058,7 +1022,7 @@ function encounter_roll_pokemon {
     fi
 
     local ability_obj
-    if ! ability_obj="$(encounter_roll_ability "${variety}")"; then
+    if ! ability_obj="$(encounter_roll_ability_legal "${variety}")"; then
         return 1
     fi
     local ability
@@ -1067,7 +1031,7 @@ function encounter_roll_pokemon {
     is_hidden="$(jq -r 'if .is_hidden then 1 else 0 end' <<<"${ability_obj}")"
 
     local moves_json
-    if ! moves_json="$(encounter_roll_moves "${variety}" "${level}" "${sp}")"; then
+    if ! moves_json="$(encounter_roll_moves_legal "${variety}" "${level}" "${sp}")"; then
         return 1
     fi
 
