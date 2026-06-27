@@ -38,6 +38,7 @@ printf 'copying %s/pools/*.json -> %s/\n' "${CACHE_DIR}" "${SHIP_DIR}"
 cp -- "${CACHE_DIR}"/pools/*.json "${SHIP_DIR}/"
 
 printf 'copying items-holdable.tsv -> %s/\n' "${REPO_ROOT}/share"
+mkdir -p -- "${REPO_ROOT}/share"
 cp -- "${CACHE_DIR}/showdown/items-holdable.tsv" "${REPO_ROOT}/share/items-holdable.tsv"
 
 shipped=("${SHIP_DIR}"/*.json)

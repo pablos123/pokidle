@@ -1794,9 +1794,9 @@ function _pokidle_current_summary {
         poss_enc="$(jq '[.tiers[] | length] | add // 0' <<<"${pool}")"
     fi
     # Item pool counts: berries and non-berry items reported separately so
-    # the two figures don't double-count.
-    local pool_json
-    pool_json="$(encounter_pool_load "${biome}" 2>/dev/null || echo '{}')"
+    # the two figures don't double-count. Reuse the pool loaded above.
+    local pool_json="${pool}"
+    [[ -z "${pool_json}" ]] && pool_json='{}'
     local -i poss_item poss_berry
     poss_item="$(jq -r '(.items // []) | length' <<<"${pool_json}")"
     poss_berry="$(jq -r '(.berries // []) | length' <<<"${pool_json}")"

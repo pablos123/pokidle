@@ -973,7 +973,7 @@ function _encounter_typed_items_for_biome {
 function encounter_roll_pickup {
     if ! command -v showdown_typeless_holdable_items >/dev/null; then
         # shellcheck disable=SC1091
-        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash" 2>/dev/null || true
+        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash" 2>/dev/null || return 1
     fi
     local -i evo_rate="${POKIDLE_EVOLUTION_ITEM_RATE:-15}"
     local -a pool=()

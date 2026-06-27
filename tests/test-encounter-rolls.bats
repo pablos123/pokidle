@@ -420,14 +420,16 @@ EOF
 }
 
 @test "encounter_roll_pickup: rate 0 picks a typeless holdable item" {
-    POKIDLE_EVOLUTION_ITEM_RATE=0 out="$(encounter_roll_pickup)"
-    name="$(jq -r '.item' <<<"$out")"
+    POKIDLE_EVOLUTION_ITEM_RATE=0 run encounter_roll_pickup
+    [ "$status" -eq 0 ]
+    name="$(jq -r '.item' <<<"$output")"
     echo "$name" | grep -qxE "leftovers|choice-band|life-orb"
 }
 
 @test "encounter_roll_pickup: rate 100 picks an evolution item" {
-    POKIDLE_EVOLUTION_ITEM_RATE=100 out="$(encounter_roll_pickup)"
-    name="$(jq -r '.item' <<<"$out")"
+    POKIDLE_EVOLUTION_ITEM_RATE=100 run encounter_roll_pickup
+    [ "$status" -eq 0 ]
+    name="$(jq -r '.item' <<<"$output")"
     echo "$name" | grep -qxE "fire-stone|water-stone"
 }
 
