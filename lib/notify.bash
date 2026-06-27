@@ -219,6 +219,30 @@ function notify_item {
     _play_sound item
 }
 
+# notify_pickup <item_json>
+# Notify about a pickup item drop (biome-agnostic) and play the item sound.
+function notify_pickup {
+    local item_json="$1"
+    local name
+    name="$(jq -r '.item' <<<"${item_json}")"
+    # Defense in depth: never emit a "Pickup: " notification for a missing item.
+    if [[ -z "${name}" || "${name}" == "null" ]]; then
+        printf 'notify_pickup: empty item name, skipping notification\n' >&2
+        return 1
+    fi
+    local icon
+    icon="$(jq -r '.sprite_path // ""' <<<"${item_json}")"
+    if [[ -z "${icon}" || ! -f "${icon}" ]]; then
+        icon="$(_notify_icon_path item)"
+    fi
+    local name_t
+    name_t="$(titlecase_words "${name}")"
+    local title="Pickup: ${name_t}"
+    local body=""
+    _emit "${title}" "${body}" "low" "${icon}"
+    _play_sound item
+}
+
 # notify_evolution <evo_json>
 # Notify about an evolution and play the encounter sound.
 function notify_evolution {

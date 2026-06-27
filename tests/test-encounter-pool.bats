@@ -324,138 +324,16 @@ EOF
     [ "$has_cheri" = "false" ]
 }
 
-@test "encounter_item_is_evolution: stones true, held items false" {
-    run encounter_item_is_evolution ice-stone
+@test "_encounter_typed_items_for_biome: volcano yields charcoal (fire) and not leftovers (typeless)" {
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_REPO_ROOT
+    load_lib biome
+    load_lib showdown
+    load_lib encounter
+    seed_showdown
+    run _encounter_typed_items_for_biome volcano
     [ "$status" -eq 0 ]
-    run encounter_item_is_evolution sun-stone
-    [ "$status" -eq 0 ]
-    run encounter_item_is_evolution leftovers
-    [ "$status" -ne 0 ]
-    run encounter_item_is_evolution kings-rock
-    [ "$status" -ne 0 ]
+    grep -qx charcoal <<< "$output"
+    ! grep -qx leftovers <<< "$output"
 }
 
-@test "encounter_item_is_showdown_legal: held items/berries true, junk/evo false" {
-    run encounter_item_is_showdown_legal leftovers
-    [ "$status" -eq 0 ]
-    run encounter_item_is_showdown_legal occa-berry
-    [ "$status" -eq 0 ]
-    # Junk the export must never assign.
-    run encounter_item_is_showdown_legal exp-share
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal soothe-bell
-    [ "$status" -ne 0 ]
-    # Evolution + trade-evo items are excluded.
-    run encounter_item_is_showdown_legal ice-stone
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal magmarizer
-    [ "$status" -ne 0 ]
-    # Non-battle berry is excluded.
-    run encounter_item_is_showdown_legal razz-berry
-    [ "$status" -ne 0 ]
-}
-
-@test "encounter_item_is_showdown_legal: form/species-locked & gen-locked items excluded" {
-    # The export assigns items at random across the team, so an item is only
-    # legal here if EVERY species can hold it. Mega Stones, Z-crystals, Silvally
-    # Memories, Genesect Drives, and Pokémon-specific signature items are tied to
-    # a species/form (Salamencite only on Salamence) or a generation that no
-    # longer carries them, so Showdown rejects them on the wrong mon.
-    run encounter_item_is_showdown_legal charizardite-x
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal mewtwonite-y
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal salamencite
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal firium-z
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal pikanium-z
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal fire-memory
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal burn-drive
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal soul-dew
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal light-ball
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal thick-club
-    [ "$status" -ne 0 ]
-    # Generic items every species can hold stay legal.
-    run encounter_item_is_showdown_legal sea-incense
-    [ "$status" -eq 0 ]
-    run encounter_item_is_showdown_legal berry-juice
-    [ "$status" -eq 0 ]
-    run encounter_item_is_showdown_legal leftovers
-    [ "$status" -eq 0 ]
-}
-
-@test "encounter_item_is_showdown_legal: useless EV-reducer berries excluded" {
-    # Showdown groups these under "Useless items" (grepa + kelpsy live in the
-    # main "Items" group and stay legal).
-    run encounter_item_is_showdown_legal hondew-berry
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal pomeg-berry
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal qualot-berry
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal tamato-berry
-    [ "$status" -ne 0 ]
-    run encounter_item_is_showdown_legal grepa-berry
-    [ "$status" -eq 0 ]
-    run encounter_item_is_showdown_legal kelpsy-berry
-    [ "$status" -eq 0 ]
-}
-
-@test "_encounter_item_pool: glacier pool includes its showdown and evo items" {
-    run _encounter_item_pool glacier
-    [ "$status" -eq 0 ]
-    # glacier's bucket: ice-resist berry + ice held items + ice-stone evo
-    grep -qx ice-stone        <<< "$output"
-    grep -qx never-melt-ice   <<< "$output"
-    grep -qx yache-berry      <<< "$output"
-    # Items now live in exactly one biome, so cross-biome items must be absent.
-    ! grep -qx fire-stone     <<< "$output"
-    ! grep -qx moon-stone     <<< "$output"  # moon-stone moved to cathedral
-}
-
-@test "_encounter_item_pool: volcano pool includes its showdown and evo items" {
-    run _encounter_item_pool volcano
-    [ "$status" -eq 0 ]
-    grep -qx fire-stone       <<< "$output"
-    grep -qx charcoal         <<< "$output"
-    grep -qx occa-berry       <<< "$output"
-    grep -qx charizardite-x   <<< "$output"
-    ! grep -qx ice-stone      <<< "$output"
-    ! grep -qx mystic-water   <<< "$output"  # ocean's slot
-}
-
-@test "_encounter_item_pool: every export-legal item drops in exactly one biome" {
-    # Coverage guarantee for the biome-keyed pool: every export-legal item
-    # (ENCOUNTER_SHOWDOWN_ITEMS) is obtainable as a drop in exactly one biome.
-    # Biome buckets ALSO carry collectible-but-not-exportable items (Mega Stones,
-    # Z-crystals, Silvally Memories, Genesect Drives, signature items): those
-    # drop in-game and show in the item list, but the export gates them out so a
-    # team is always importable. They are still subject to the no-duplicate rule.
-    declare -A assigned=()
-    local b it dup_count=0
-    for b in "${!ENCOUNTER_ITEMS_BY_BIOME[@]}"; do
-        for it in ${ENCOUNTER_ITEMS_BY_BIOME[$b]}; do
-            if [[ -n "${assigned[$it]:-}" ]]; then
-                echo "duplicate drop across biomes: $it"
-                dup_count=$((dup_count+1))
-            fi
-            assigned[$it]=$b
-        done
-    done
-    [ "$dup_count" -eq 0 ]
-    # Every export-legal item is reachable as a drop.
-    local missing=0 wl
-    for wl in "${!ENCOUNTER_SHOWDOWN_ITEMS[@]}"; do
-        if [[ -z "${assigned[$wl]:-}" ]]; then
-            echo "export-legal item never drops: $wl"
-            missing=$((missing+1))
-        fi
-    done
-    [ "$missing" -eq 0 ]
-}

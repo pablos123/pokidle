@@ -47,7 +47,7 @@ run start stop restart status logs enable disable" -- "${cur}")
             fi
             ;;
         tick)
-            local kinds="encounter item level friendship evolve legendary"
+            local kinds="encounter item pickup level friendship evolve legendary"
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "--no-dry-run --no-notify --no-images --no-output --json" -- "${cur}")
             else
@@ -90,7 +90,7 @@ run start stop restart status logs enable disable" -- "${cur}")
             ;;
         switch-biome | rebuild-pool)
             if [[ "${cmd}" == rebuild-pool && "${cur}" == -* ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "--yes" -- "${cur}")
+                mapfile -t COMPREPLY < <(compgen -W "--items --no-items --yes" -- "${cur}")
             else
                 local biomes
                 biomes="$(_pokidle_biome_ids)"

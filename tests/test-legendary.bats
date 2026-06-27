@@ -142,9 +142,9 @@ setup() {
     POKIDLE_LEGENDARY_LEVEL_MAX=70
     export POKIDLE_LEGENDARY_LEVEL_MIN POKIDLE_LEGENDARY_LEVEL_MAX
     load_lib encounter
-    load_lib psdata
+    load_lib showdown
     stub_pokeapi
-    seed_psdata
+    seed_showdown
     run legendary_build_encounter articuno forest
     [ "$status" -eq 0 ]
     echo "$output" | jq -e 'has("variety") and (.variety | length > 0)'
@@ -155,9 +155,9 @@ setup() {
     POKIDLE_LEGENDARY_LEVEL_MAX=70
     export POKIDLE_LEGENDARY_LEVEL_MIN POKIDLE_LEGENDARY_LEVEL_MAX
     load_lib encounter
-    load_lib psdata
+    load_lib showdown
     stub_pokeapi
-    seed_psdata
+    seed_showdown
     run legendary_build_encounter articuno forest
     [ "$status" -eq 0 ]
     echo "$output" | jq -e '([.ivs[] | select(. == 31)] | length) >= 3'

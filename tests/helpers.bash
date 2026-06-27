@@ -43,13 +43,15 @@ stub_pokeapi() {
 }
 
 # Seed the Showdown data cache from fixtures and block network fetches.
-# Call after load_lib so psdata functions exist.
-seed_psdata() {
+# Call after load_lib so showdown functions exist.
+seed_showdown() {
     POKIDLE_SHOWDOWN_CACHE_DIR="$(mktemp -d "${BATS_TMPDIR}/sd.XXXXXX")"
     export POKIDLE_SHOWDOWN_CACHE_DIR
-    cp "${FIXTURE_DIR}/showdown-pokedex.json"   "${POKIDLE_SHOWDOWN_CACHE_DIR}/pokedex.json"
-    cp "${FIXTURE_DIR}/showdown-learnsets.json" "${POKIDLE_SHOWDOWN_CACHE_DIR}/learnsets.json"
-    cp "${FIXTURE_DIR}/showdown-moves.json"     "${POKIDLE_SHOWDOWN_CACHE_DIR}/moves.json"
-    _psdata_fetch() { return 1; }
-    export -f _psdata_fetch
+    cp "${FIXTURE_DIR}/showdown-pokedex.json"        "${POKIDLE_SHOWDOWN_CACHE_DIR}/pokedex.json"
+    cp "${FIXTURE_DIR}/showdown-learnsets.json"      "${POKIDLE_SHOWDOWN_CACHE_DIR}/learnsets.json"
+    cp "${FIXTURE_DIR}/showdown-moves.json"          "${POKIDLE_SHOWDOWN_CACHE_DIR}/moves.json"
+    cp "${FIXTURE_DIR}/showdown-items-holdable.tsv"  "${POKIDLE_SHOWDOWN_CACHE_DIR}/items-holdable.tsv"
+    _showdown_fetch() { return 1; }
+    _showdown_fetch_items() { return 1; }
+    export -f _showdown_fetch _showdown_fetch_items
 }

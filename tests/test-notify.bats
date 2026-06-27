@@ -197,6 +197,20 @@ setup() {
     [[ "$output" != *"Found"* ]]
 }
 
+@test "notify_pickup: dry-run renders Pickup title" {
+    local item='{"item":"leftovers","sprite_path":"/tmp/leftovers.png"}'
+    run notify_pickup "$item"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pickup:"* ]]
+    [[ "$output" == *"Leftovers"* ]]
+}
+
+@test "notify_pickup: empty item name is rejected, no notification" {
+    run notify_pickup '{"item":"","sprite_path":""}'
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"Pickup:"* ]]
+}
+
 @test "notify_pokemon: empty species is rejected, no notification" {
     run notify_pokemon '{"species":"","level":5,"nature":"jolly","ability":"static","shiny":0,"held_berry":null,"moves":["tackle"],"biome_label":"Plain"}'
     [ "$status" -ne 0 ]

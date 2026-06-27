@@ -15,11 +15,14 @@ setup() {
     mkdir -p "$POKEAPI_CACHE_DIR"
     export POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR POKIDLE_DATA_DIR POKEAPI_CACHE_DIR
     export POKIDLE_NO_NOTIFY=1 POKIDLE_SOUND_DIR="$BATS_TMPDIR/nosound.$$"
+    # Seed the Showdown holdable-items cache so export's showdown_item_is_holdable
+    # gate works without network access. Must come after env vars are exported.
+    seed_showdown
 }
 
 teardown() {
     rm -f  "$POKIDLE_DB_PATH"
-    rm -rf "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR" "$POKIDLE_DATA_DIR" "$POKEAPI_CACHE_DIR"
+    rm -rf "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR" "$POKIDLE_DATA_DIR" "$POKEAPI_CACHE_DIR" "$POKIDLE_SHOWDOWN_CACHE_DIR"
 }
 
 _seed_schema() { sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"; }
@@ -241,6 +244,7 @@ _ins_item() { # $1 sid  $2 item  $3 ts
  "tiers":{"common":[{"species":"zubat","min":5,"max":10}],
           "uncommon":[{"species":"machop","min":8,"max":15}],
           "rare":[],"very_rare":[]},
+ "items":["rock-incense","bright-powder","covert-cloak","houndoominite"],
  "berries":[]}
 EOF
     run "$REPO_ROOT/pokidle" current
@@ -259,6 +263,13 @@ EOF
 @test "pokidle current items lists biome item drop pool alphabetically, berries excluded" {
     _seed_schema
     _mk_session glacier > /dev/null
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/glacier.json" <<'EOF'
+{"biome":"glacier","built_at":"2026-05-28T00:00:00Z",
+ "tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},
+ "items":["never-melt-ice","icicle-plate","icy-rock","icium-z","glalitite","ice-stone"],
+ "berries":["yache-berry","aspear-berry"]}
+EOF
     run "$REPO_ROOT/pokidle" current items
     [ "$status" -eq 0 ]
     # glacier bucket: showdown items + ice-stone (evo).
@@ -282,6 +293,13 @@ EOF
 @test "pokidle current berries lists only the biome's berry drops alphabetically" {
     _seed_schema
     _mk_session glacier > /dev/null
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/glacier.json" <<'EOF'
+{"biome":"glacier","built_at":"2026-05-28T00:00:00Z",
+ "tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},
+ "items":["never-melt-ice","icicle-plate","icy-rock","icium-z","glalitite","ice-stone"],
+ "berries":["yache-berry","aspear-berry"]}
+EOF
     run "$REPO_ROOT/pokidle" current berries
     [ "$status" -eq 0 ]
     # glacier berries: aspear-berry, yache-berry.
@@ -301,6 +319,13 @@ EOF
 @test "pokidle current berries on a berry-less biome prints nothing" {
     _seed_schema
     _mk_session cave > /dev/null
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/cave.json" <<'EOF'
+{"biome":"cave","built_at":"2026-05-28T00:00:00Z",
+ "tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},
+ "items":["rock-incense","bright-powder","covert-cloak","houndoominite"],
+ "berries":[]}
+EOF
     run "$REPO_ROOT/pokidle" current berries
     [ "$status" -eq 0 ]
     [ -z "$output" ]
@@ -644,6 +669,43 @@ _seed_pokeapi_cache() {
     [[ "$output" == *"Usage:"* ]]
 }
 
+@test "pokidle tick pickup --dry-run: emits item json with item and sprite_url" {
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
+
+    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+
+    run "$REPO_ROOT/pokidle" tick pickup --dry-run --no-notify --json
+    [ "$status" -eq 0 ]
+    local item
+    item="$(jq -r '.item' <<< "$output")"
+    [ -n "$item" ]
+    [ "$item" != "null" ]
+    # No db write in dry-run
+    local n
+    n="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops;")"
+    [ "$n" = "0" ]
+}
+
+@test "pokidle tick pickup --no-dry-run: writes to item_drops" {
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
+
+    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+
+    run "$REPO_ROOT/pokidle" tick pickup --no-dry-run --no-notify --no-output
+    [ "$status" -eq 0 ]
+    local n
+    n="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM item_drops;")"
+    [ "$n" = "1" ]
+}
+
 @test "export omits evolution-stone drops as held items" {
     _seed_schema
     sqlite3 "$POKIDLE_DB_PATH" "
@@ -815,4 +877,75 @@ _seed_pokeapi_cache() {
     [ "$status" -eq 0 ]
     [[ "${lines[0]}" == *"newer"* ]]
     [[ "${lines[1]}" == *"older"* ]]
+}
+
+@test "rebuild-pool --items writes items-holdable.tsv and no pool files" {
+    # Stubs: make _showdown_build_holdable_meta produce a minimal TSV without network.
+    local sd_dir
+    sd_dir="$(mktemp -d "${BATS_TMPDIR}/sd_items.XXXXXX")"
+
+    run env \
+        POKIDLE_TEST_SOURCE_ONLY=1 \
+        POKIDLE_SHOWDOWN_CACHE_DIR="${sd_dir}" \
+        POKIDLE_CACHE_DIR="${POKIDLE_CACHE_DIR}" \
+        bash -c '
+            source "'"${REPO_ROOT}"'/pokidle"
+            # Override _showdown_build_holdable_meta with a stub.
+            _showdown_build_holdable_meta() {
+                printf "leftovers\t\t0\nchoice-band\t\t0\n" > "'"${sd_dir}"'/items-holdable.tsv"
+            }
+            pokidle_rebuild_pool --items
+        '
+    [ "$status" -eq 0 ]
+    [ -f "${sd_dir}/items-holdable.tsv" ]
+    # No pool files should have been written.
+    local n
+    n="$(find "${POKIDLE_CACHE_DIR}/pools" -name '*.json' 2>/dev/null | wc -l)"
+    [ "$n" -eq 0 ]
+    rm -rf "${sd_dir}"
+}
+
+@test "rebuild-pool --no-items <biome> writes pool, leaves .tsv untouched" {
+    local sd_dir
+    sd_dir="$(mktemp -d "${BATS_TMPDIR}/sd_noitems.XXXXXX")"
+
+    run env \
+        POKIDLE_TEST_SOURCE_ONLY=1 \
+        POKIDLE_SHOWDOWN_CACHE_DIR="${sd_dir}" \
+        POKIDLE_CACHE_DIR="${POKIDLE_CACHE_DIR}" \
+        bash -c '
+            source "'"${REPO_ROOT}"'/pokidle"
+            # Stub encounter_build_pool to produce a minimal pool JSON.
+            encounter_build_pool() {
+                printf "{\"biome\":\"%s\",\"built_at\":\"2026-01-01T00:00:00Z\",\"tiers\":{\"common\":[],\"uncommon\":[],\"rare\":[],\"very_rare\":[]},\"items\":[],\"berries\":[]}" "$1"
+            }
+            encounter_pool_save() {
+                local b="$1" pool="$2"
+                mkdir -p "'"${POKIDLE_CACHE_DIR}"'/pools"
+                printf '"'"'%s'"'"' "${pool}" > "'"${POKIDLE_CACHE_DIR}"'/pools/${b}.json"
+            }
+            pokidle_rebuild_pool --no-items cave --yes
+        '
+    [ "$status" -eq 0 ]
+    [ -f "${POKIDLE_CACHE_DIR}/pools/cave.json" ]
+    # .tsv should NOT have been created by this call.
+    [ ! -f "${sd_dir}/items-holdable.tsv" ]
+    rm -rf "${sd_dir}"
+}
+
+@test "export gates non-holdable items: abomasite never assigned, leftovers passes" {
+    # Verifies showdown_item_is_holdable is the live gate in pokidle_export.
+    # seed_showdown (called in setup) seeds items-holdable.txt with leftovers
+    # but NOT abomasite (a Mega Stone, species-locked). The export must keep
+    # leftovers and silently drop abomasite.
+    _seed_schema
+    local sid; sid="$(_mk_session tundra)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" snorlax "$now"
+    _ins_item "$sid" leftovers "$now"
+    _ins_item "$sid" abomasite "$now"
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"@ Leftovers"* ]]
+    ! grep -qi 'abomasite' <<<"$output"
 }

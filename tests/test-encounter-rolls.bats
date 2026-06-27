@@ -6,9 +6,9 @@ setup() {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_REPO_ROOT
     load_lib encounter
-    load_lib psdata
+    load_lib showdown
     stub_pokeapi
-    seed_psdata
+    seed_showdown
 }
 
 @test "encounter_natures_list returns 25 names" {
@@ -265,27 +265,15 @@ EOF
     [ "$(jq -r '.variety' <<< "$output")" = "treecko" ]
 }
 
-@test "encounter_roll_item: forest biome rolls a grass/bug held or evolution item" {
-    POKIDLE_REPO_ROOT="$REPO_ROOT"
-    export POKIDLE_REPO_ROOT
-    load_lib biome
-    load_lib encounter
-    pokeapi_get() {
-        printf '{"sprites":{"default":""}}'
-    }
-    export -f pokeapi_get
-    local out item
-    out="$(encounter_roll_item forest)"
-    item="$(jq -r '.item' <<< "$out")"
-    # Roll must produce one of forest's bucketed items (held + evo).
-    local found=0 it
-    for it in ${ENCOUNTER_ITEMS_BY_BIOME[forest]} ${ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME[forest]:-}; do
-        if [[ "$item" == "$it" ]]; then found=1; break; fi
-    done
-    if ((!found)); then
-        printf 'unexpected item for forest biome: %s\n' "$item" >&2
-        return 1
-    fi
+@test "encounter_roll_item: rolls a member of the pool's items+berries" {
+    POKIDLE_CACHE_DIR="$(mktemp -d "${BATS_TMPDIR}/cache.XXXXXX")"
+    export POKIDLE_CACHE_DIR
+    mkdir -p "${POKIDLE_CACHE_DIR}/pools"
+    printf '%s' '{"biome":"volcano","tiers":{},"berries":["rawst-berry"],"items":["charcoal"]}' \
+        > "${POKIDLE_CACHE_DIR}/pools/volcano.json"
+    out="$(encounter_roll_item volcano)"
+    name="$(jq -r '.item' <<<"$out")"
+    [ "$name" = "charcoal" ] || [ "$name" = "rawst-berry" ]
 }
 
 @test "_encounter_variety_is_non_wild: flags battle/totem/event/cosmetic forms, allows base/regional" {
@@ -412,4 +400,42 @@ EOF
     echo "$output" | jq -e 'all(.[]; . | test("^[a-z0-9-]+$"))'
     # every chosen move is within the legal pool
     echo "$output" | jq -e 'all(.[]; IN("brave-bird","double-edge","fury-attack","peck"))'
+}
+
+@test "encounter_evolution_items: lists the PokeAPI evolution category" {
+    run encounter_evolution_items
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx "fire-stone"
+}
+
+@test "encounter_roll_pickup: returns item with item and sprite_url keys" {
+    run encounter_roll_pickup
+    [ "$status" -eq 0 ]
+    local item sprite
+    item="$(jq -r '.item' <<< "$output")"
+    sprite="$(jq -r '.sprite_url' <<< "$output")"
+    [ -n "$item" ]
+    [ "$item" != "null" ]
+    [ -n "$sprite" ]
+}
+
+@test "encounter_roll_pickup: rate 0 picks a typeless holdable item" {
+    POKIDLE_EVOLUTION_ITEM_RATE=0 out="$(encounter_roll_pickup)"
+    name="$(jq -r '.item' <<<"$out")"
+    echo "$name" | grep -qxE "leftovers|choice-band|life-orb"
+}
+
+@test "encounter_roll_pickup: rate 100 picks an evolution item" {
+    POKIDLE_EVOLUTION_ITEM_RATE=100 out="$(encounter_roll_pickup)"
+    name="$(jq -r '.item' <<<"$out")"
+    echo "$name" | grep -qxE "fire-stone|water-stone"
+}
+
+@test "encounter_roll_pickup: fails gracefully when no data available" {
+    # Override both sources to return nothing; should return non-zero.
+    showdown_typeless_holdable_items() { return 1; }
+    encounter_evolution_items() { return 1; }
+    export -f showdown_typeless_holdable_items encounter_evolution_items
+    run encounter_roll_pickup
+    [ "$status" -ne 0 ]
 }

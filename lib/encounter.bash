@@ -15,154 +15,6 @@ if [[ -z "${ENCOUNTER_TIERS:-}" ]]; then
     declare -gra ENCOUNTER_TIER_ROLL_WEIGHT=(60 25 12 3)
 fi
 
-# Held items the encounter pool can drop, keyed by biome. Every entry is a
-# Pokémon Showdown National Dex AG legal slug — i.e. a subset of
-# ENCOUNTER_SHOWDOWN_ITEMS — so any drop is automatically valid for export.
-# Items are partitioned thematically with each slug assigned to exactly one
-# biome. _encounter_item_pool reads this directly (no type-derived
-# indirection); see also ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME for the parallel
-# evolution-trigger pool that drops alongside but never reaches export.
-if [[ -z "${ENCOUNTER_ITEMS_BY_BIOME[*]:-}" ]]; then
-    declare -grA ENCOUNTER_ITEMS_BY_BIOME=(
-        [forest]="meadow-plate miracle-seed rindo-berry grassium-z grassy-seed rose-incense big-root sceptilite venusaurite decidium-z chesto-berry"
-        [jungle]="jaboca-berry rowap-berry micle-berry custap-berry beedrillite sticky-barb binding-band grip-claw"
-        [meadow]="aguav-berry iapapa-berry mago-berry figy-berry wiki-berry mental-herb power-herb destiny-knot audinite lopunnite eevium-z"
-        [orchard]="silk-scarf chilan-berry normal-gem normalium-z leftovers berry-juice oran-berry sitrus-berry leppa-berry lum-berry snorlium-z"
-        [mountain]="stone-plate hard-stone charti-berry rockium-z rocky-helmet cornerstone-mask aerodactylite tyranitarite garchompite"
-        [cave]="rock-incense bright-powder covert-cloak houndoominite"
-        ["crystal-cavern"]="ability-shield clear-amulet mirror-herb diancite deep-sea-scale deep-sea-tooth"
-        [cliffside]="pretty-feather wide-lens zoom-lens throat-spray pidgeotite lax-incense lycanium-z"
-        [desert]="soft-sand earth-plate shuca-berry razor-fang groundium-z smooth-rock terrain-extender cameruptite safety-goggles"
-        [badlands]="focus-band iron-ball ring-target loaded-dice"
-        [savanna]="thick-club power-anklet power-band power-belt power-bracer power-lens power-weight kangaskhanite"
-        [volcano]="charcoal flame-plate heat-rock occa-berry firium-z flame-orb rawst-berry charizardite-x charizardite-y red-orb"
-        [forge]="metal-coat iron-plate steelium-z rusted-shield rusted-sword metronome aggronite scizorite steelixite hearthflame-mask babiri-berry"
-        [wildfire]="blazikenite adrenaline-orb incinium-z macho-brace"
-        [ocean]="mystic-water splash-plate wacan-berry waterium-z shell-bell blue-orb blastoisinite gyaradosite absorb-bulb primarium-z wellspring-mask passho-berry"
-        [reef]="wave-incense lustrous-globe lustrous-orb kings-rock"
-        [marsh]="poison-barb toxic-plate black-sludge kebia-berry poisonium-z toxic-orb damp-rock pecha-berry swampertite luminous-moss lagging-tail slowbronite"
-        ["tide-pool"]="silver-powder insect-plate tanga-berry buginium-z shed-shell utility-umbrella sea-incense heracronite pinsirite"
-        [tundra]="snowball abomasite altarianite float-stone"
-        [glacier]="never-melt-ice icicle-plate icy-rock yache-berry icium-z aspear-berry glalitite"
-        ["frozen-crypt"]="banettite"
-        [sky]="sharp-beak sky-plate coba-berry flyinium-z latiasite latiosite soul-dew"
-        ["storm-coast"]="manectite air-balloon light-clay"
-        ["dragons-nest"]="dragon-fang draco-plate haban-berry dragonium-z adamant-crystal adamant-orb salamencite kommonium-z"
-        ["power-plant"]="magnet zap-plate cell-battery electrium-z electric-seed cheri-berry ampharosite booster-energy"
-        ["cyber-lab"]="alakazite mewtwonite-x mewtwonite-y metagrossite mewnium-z metal-powder quick-powder wise-glasses blunder-policy bug-memory dark-memory dragon-memory electric-memory fairy-memory fighting-memory fire-memory flying-memory ghost-memory grass-memory ground-memory ice-memory poison-memory psychic-memory rock-memory steel-memory water-memory burn-drive chill-drive douse-drive shock-drive"
-        ["live-wire"]="light-ball aloraichium-z pikanium-z pikashunium-z"
-        [ruins]="odd-incense full-incense salac-berry ganlon-berry lansat-berry liechi-berry petaya-berry apicot-berry starf-berry enigma-berry persim-berry griseous-core griseous-orb lunalium-z solganium-z tapunium-z ultranecrozium-z"
-        ["mind-temple"]="twisted-spoon mind-plate payapa-berry psychium-z psychic-seed focus-sash kee-berry maranga-berry room-service medichamite gardevoirite galladite lucarionite"
-        [graveyard]="spooky-plate kasib-berry ghostium-z spell-tag absolite marshadium-z"
-        ["haunted-manor"]="gengarite sablenite mimikium-z"
-        [wasteland]="black-glasses dread-plate colbur-berry darkinium-z razor-claw scope-lens weakness-policy sharpedonite"
-        [dojo]="black-belt fist-plate chople-berry fightinium-z punching-glove muscle-band protective-pads assault-vest quick-claw expert-belt"
-        [farm]="leek stick grepa-berry kelpsy-berry lucky-punch"
-        [urban]="choice-band choice-scarf choice-specs life-orb heavy-duty-boots eject-button eject-pack red-card"
-        [cathedral]="pixie-plate roseli-berry fairy-feather fairium-z misty-seed mawilite white-herb"
-    )
-fi
-
-# Evolution-trigger items the pool can drop, keyed by biome. These are
-# consumed by lib/evolution.bash when an eligible mon evolves, so they live
-# beside the held-item pool but stay out of ENCOUNTER_SHOWDOWN_ITEMS — export
-# never assigns them. Distribution mirrors where each stone's evolution lines
-# would naturally show up.
-if [[ -z "${ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME[*]:-}" ]]; then
-    declare -grA ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME=(
-        [forest]="leaf-stone"
-        [meadow]="sun-stone"
-        [orchard]="oval-stone"
-        [mountain]="protector"
-        [volcano]="fire-stone magmarizer"
-        [ocean]="water-stone"
-        [reef]="dragon-scale prism-scale"
-        [glacier]="ice-stone"
-        ["frozen-crypt"]="dusk-stone"
-        ["power-plant"]="thunder-stone electirizer"
-        ["cyber-lab"]="up-grade dubious-disc"
-        [ruins]="dawn-stone"
-        [graveyard]="reaper-cloth"
-        [cathedral]="moon-stone shiny-stone"
-    )
-fi
-
-# Held items / berries the export may put on ANY Pokémon, as a slug->1 set for
-# O(1) membership. The export assigns items at random across the team, so the
-# invariant here is universal holdability: an item belongs only if every species
-# can legally hold it in a standard format. The export gates each candidate on
-# it (see encounter_item_is_showdown_legal) so a team always imports cleanly.
-# Excludes Showdown's "Useless items" group (Poké Balls, evolution stones,
-# sweets, bottle caps, trade-evo items, TRs, fossils, and the EV-reducer berries
-# hondew/pomeg/qualot/tamato — grepa and kelpsy are in the "Items" group and
-# legal) AND species/form/generation-locked items (Mega Stones, Z-crystals,
-# Silvally Memories, Genesect Drives, signature orbs/masks/etc.) that Showdown
-# rejects when held by the wrong mon. Update when Showdown's legal list changes.
-if [[ -z "${ENCOUNTER_SHOWDOWN_ITEMS[*]:-}" ]]; then
-    # Keys are quoted so shfmt does not parse the hyphens as arithmetic
-    # subtraction in an indexed-array subscript and rewrite e.g. [zap-plate] to
-    # [zap - plate], which bash then stores literally as the key "zap - plate".
-    declare -grA ENCOUNTER_SHOWDOWN_ITEMS=(
-        # Top-of-list general battle items (Showdown's "Items" header section)
-        ["air-balloon"]=1 ["assault-vest"]=1 ["choice-band"]=1 ["choice-scarf"]=1
-        ["choice-specs"]=1 ["expert-belt"]=1 ["focus-sash"]=1 ["heavy-duty-boots"]=1
-        ["leftovers"]=1 ["life-orb"]=1 ["loaded-dice"]=1 ["mental-herb"]=1
-        ["power-herb"]=1 ["rocky-helmet"]=1 ["salac-berry"]=1
-        # General held items (alphabetical: ability-shield .. zoom-lens)
-        ["ability-shield"]=1 ["absorb-bulb"]=1 ["adrenaline-orb"]=1
-        ["aguav-berry"]=1 ["apicot-berry"]=1 ["babiri-berry"]=1 ["berry-juice"]=1
-        ["black-belt"]=1 ["black-glasses"]=1 ["black-sludge"]=1
-        ["blunder-policy"]=1 ["booster-energy"]=1 ["bright-powder"]=1
-        ["cell-battery"]=1 ["charcoal"]=1 ["charti-berry"]=1 ["chesto-berry"]=1
-        ["chilan-berry"]=1 ["chople-berry"]=1 ["clear-amulet"]=1 ["coba-berry"]=1
-        ["colbur-berry"]=1 ["covert-cloak"]=1 ["custap-berry"]=1 ["damp-rock"]=1
-        ["draco-plate"]=1 ["dragon-fang"]=1 ["dread-plate"]=1 ["earth-plate"]=1
-        ["eject-button"]=1 ["eject-pack"]=1 ["electric-seed"]=1
-        ["fairy-feather"]=1 ["figy-berry"]=1 ["fist-plate"]=1 ["flame-orb"]=1
-        ["flame-plate"]=1 ["full-incense"]=1 ["ganlon-berry"]=1 ["grassy-seed"]=1
-        ["grepa-berry"]=1 ["grip-claw"]=1 ["haban-berry"]=1 ["hard-stone"]=1
-        ["heat-rock"]=1 ["iapapa-berry"]=1 ["icicle-plate"]=1 ["icy-rock"]=1
-        ["insect-plate"]=1 ["iron-plate"]=1 ["kasib-berry"]=1 ["kebia-berry"]=1
-        ["kee-berry"]=1 ["kelpsy-berry"]=1 ["kings-rock"]=1 ["lagging-tail"]=1
-        ["lansat-berry"]=1 ["lax-incense"]=1 ["leppa-berry"]=1 ["liechi-berry"]=1
-        ["light-clay"]=1 ["lum-berry"]=1 ["luminous-moss"]=1 ["magnet"]=1
-        ["mago-berry"]=1 ["maranga-berry"]=1 ["meadow-plate"]=1 ["metal-coat"]=1
-        ["metronome"]=1 ["micle-berry"]=1 ["mind-plate"]=1 ["miracle-seed"]=1
-        ["mirror-herb"]=1 ["misty-seed"]=1 ["muscle-band"]=1 ["mystic-water"]=1
-        ["never-melt-ice"]=1 ["normal-gem"]=1 ["occa-berry"]=1 ["odd-incense"]=1
-        ["passho-berry"]=1 ["payapa-berry"]=1 ["petaya-berry"]=1 ["pixie-plate"]=1
-        ["poison-barb"]=1 ["pretty-feather"]=1 ["protective-pads"]=1
-        ["psychic-seed"]=1 ["punching-glove"]=1 ["quick-claw"]=1 ["razor-claw"]=1
-        ["razor-fang"]=1 ["red-card"]=1 ["rindo-berry"]=1 ["rock-incense"]=1
-        ["room-service"]=1 ["rose-incense"]=1 ["roseli-berry"]=1
-        ["safety-goggles"]=1 ["scope-lens"]=1 ["sea-incense"]=1 ["sharp-beak"]=1
-        ["shed-shell"]=1 ["shell-bell"]=1 ["shuca-berry"]=1 ["silk-scarf"]=1
-        ["silver-powder"]=1 ["sitrus-berry"]=1 ["sky-plate"]=1 ["smooth-rock"]=1
-        ["snowball"]=1 ["soft-sand"]=1 ["spell-tag"]=1 ["splash-plate"]=1
-        ["spooky-plate"]=1 ["starf-berry"]=1 ["sticky-barb"]=1 ["stone-plate"]=1
-        ["tanga-berry"]=1 ["terrain-extender"]=1 ["throat-spray"]=1
-        ["toxic-orb"]=1 ["toxic-plate"]=1 ["twisted-spoon"]=1
-        ["utility-umbrella"]=1 ["wacan-berry"]=1 ["wave-incense"]=1
-        ["weakness-policy"]=1 ["white-herb"]=1 ["wide-lens"]=1 ["wiki-berry"]=1
-        ["wise-glasses"]=1 ["yache-berry"]=1 ["zap-plate"]=1 ["zoom-lens"]=1
-        # NOTE: Mega Stones, Z-crystals, Silvally Memories, Genesect Drives, and
-        # Pokémon-specific signature items (orbs, masks, rusted gear, soul-dew,
-        # light-ball, thick-club, …) are deliberately EXCLUDED. The export
-        # assigns items at random across the team, so a species/form-locked item
-        # lands on the wrong mon (e.g. Iron Boulder @ Salamencite) and Showdown's
-        # validator rejects the whole team. Only items every species can legally
-        # hold belong here.
-        # Usually useless but Showdown-legal (status berries, training braces,
-        # gimmick items)
-        ["aspear-berry"]=1 ["big-root"]=1 ["binding-band"]=1 ["cheri-berry"]=1
-        ["destiny-knot"]=1 ["enigma-berry"]=1 ["float-stone"]=1 ["focus-band"]=1
-        ["iron-ball"]=1 ["jaboca-berry"]=1 ["macho-brace"]=1 ["oran-berry"]=1
-        ["pecha-berry"]=1 ["persim-berry"]=1 ["power-anklet"]=1 ["power-band"]=1
-        ["power-belt"]=1 ["power-bracer"]=1 ["power-lens"]=1 ["power-weight"]=1
-        ["rawst-berry"]=1 ["ring-target"]=1 ["rowap-berry"]=1
-    )
-fi
-
 # _json_int_array <space-separated-ints>
 # Print a JSON array literal from space-separated integers.
 function _json_int_array {
@@ -172,35 +24,15 @@ function _json_int_array {
     printf '[%s]' "${parts[*]}"
 }
 
-# encounter_item_is_evolution <name>
-# True (exit 0) if <name> is an evolution-trigger item (consumed on use).
-# Walks every biome bucket in ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME; cheap because
-# the table has ~20 items total.
-function encounter_item_is_evolution {
-    local name="$1"
-    local b
-    for b in "${!ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME[@]}"; do
-        local -a items
-        read -ra items <<<"${ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME[${b}]}"
-        local it
-        for it in "${items[@]}"; do
-            if [[ "${it}" == "${name}" ]]; then
-                return 0
-            fi
-        done
-    done
-    return 1
-}
-
-# encounter_item_is_showdown_legal <name>
-# True (exit 0) if <name> is a held item/berry that Pokémon Showdown accepts on
-# a set. The export command gates every candidate on this so a team is always
-# importable, regardless of what historical drops are stored. The set is the
-# union of every holdable item and battle berry in Showdown's item dex (the
-# "Useless items" group — Poké Balls, evolution stones, sweets, bottle caps,
-# trade-evo items — is intentionally excluded).
-function encounter_item_is_showdown_legal {
-    [[ -n "${ENCOUNTER_SHOWDOWN_ITEMS[$1]:-}" ]]
+# encounter_evolution_items
+# Print one PokeAPI evolution-item slug per line (item-category/evolution).
+# Cached by the pokeapi cache; empty on fetch failure (fail-open).
+function encounter_evolution_items {
+    local body
+    if ! body="$(pokeapi_get "item-category/evolution")"; then
+        return 0
+    fi
+    jq -r '.items[].name' <<<"${body}"
 }
 
 # encounter_tier_for_capture_rate <capture_rate>
@@ -478,7 +310,7 @@ function encounter_roll_moves {
 function encounter_roll_ability_legal {
     local variety="$1"
     local lines
-    if ! lines="$(psdata_legal_abilities "${variety}")"; then
+    if ! lines="$(showdown_legal_abilities "${variety}")"; then
         encounter_roll_ability "${variety}"
         return
     fi
@@ -521,7 +353,7 @@ function encounter_roll_moves_legal {
     local level="$2"
     local fallback="${3:-}"
     local pool
-    if ! pool="$(psdata_legal_moves "${variety}")"; then
+    if ! pool="$(showdown_legal_moves "${variety}")"; then
         encounter_roll_moves "${variety}" "${level}" "${fallback}"
         return
     fi
@@ -892,8 +724,12 @@ function encounter_build_pool {
         fi
     done <<<"${berry_list}"
 
+    local items_json
+    items_json="$(_encounter_typed_items_for_biome "${biome_id}" | jq -R . | jq -s -c .)"
+
     jq -c -n --argjson tiers "${tiered}" --argjson berries "${berries_json}" \
-        '{tiers: $tiers, berries: $berries}'
+        --argjson items "${items_json}" \
+        '{tiers: $tiers, berries: $berries, items: $items}'
 }
 
 # encounter_pool_path <biome>
@@ -919,7 +755,8 @@ function encounter_pool_save {
         biome: $b,
         built_at: $ts,
         tiers: $p.tiers,
-        berries: ($p.berries // [])
+        berries: ($p.berries // []),
+        items: ($p.items // [])
     }')"
     printf '%s' "${body}" >"${p}"
 }
@@ -1109,36 +946,78 @@ function encounter_roll_friendship {
     printf '%s' "${val}"
 }
 
-# _encounter_item_pool <biome_id>
-# Print the biome's full item drop pool (one slug per line): the union of its
-# Showdown-legal held items and its evolution-trigger items, both biome-keyed
-# directly. No PokeAPI-type indirection — each item lives in exactly one biome.
-function _encounter_item_pool {
+# _encounter_typed_items_for_biome <biome_id>
+# Print the holdable typed-item slugs whose Showdown type is one of the biome's
+# types (the biome's themeable item drops). Empty on missing data (fail-open).
+function _encounter_typed_items_for_biome {
     local biome_id="$1"
-    local -a items
-    read -ra items <<<"${ENCOUNTER_ITEMS_BY_BIOME[${biome_id}]:-} ${ENCOUNTER_EVOLUTION_ITEMS_BY_BIOME[${biome_id}]:-}"
-    local item
-    for item in "${items[@]}"; do
-        if [[ -z "${item}" ]]; then
-            continue
-        fi
-        printf '%s\n' "${item}"
-    done
+    if ! command -v showdown_typed_holdable_items >/dev/null; then
+        # shellcheck disable=SC1091
+        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash" 2>/dev/null || return 0
+    fi
+    local types_csv
+    types_csv="$(biome_types_for "${biome_id}" 2>/dev/null | paste -sd'|' -)"
+    if [[ -z "${types_csv}" ]]; then
+        return 0
+    fi
+    showdown_typed_holdable_items 2>/dev/null \
+        | awk -F'\t' -v re="^(${types_csv})$" '$2 ~ re {print $1}'
 }
 
-# encounter_roll_item <biome_id>
-# Print {"item": "<name>", "sprite_url": "<url|empty>"}. Returns 1 on an empty
-# pool or fetch failure.
-function encounter_roll_item {
-    local biome_id="$1"
+# encounter_roll_pickup
+# Roll a biome-agnostic pickup drop using rate-gated selection:
+# with probability POKIDLE_EVOLUTION_ITEM_RATE% (default 15) pick from
+# encounter_evolution_items; otherwise pick from showdown_typeless_holdable_items
+# (falling back to evolution items if typeless holdable yields nothing).
+# Prints {"item","sprite_url"}; returns 1 on an empty pool or fetch failure.
+function encounter_roll_pickup {
+    if ! command -v showdown_typeless_holdable_items >/dev/null; then
+        # shellcheck disable=SC1091
+        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash" 2>/dev/null || true
+    fi
+    local -i evo_rate="${POKIDLE_EVOLUTION_ITEM_RATE:-15}"
     local -a pool=()
-    mapfile -t pool < <(_encounter_item_pool "${biome_id}")
+    if ((RANDOM % 100 < evo_rate)); then
+        mapfile -t pool < <(encounter_evolution_items)
+    fi
+    if ((${#pool[@]} == 0)); then
+        mapfile -t pool < <(showdown_typeless_holdable_items)
+    fi
+    if ((${#pool[@]} == 0)); then
+        mapfile -t pool < <(encounter_evolution_items)
+    fi
     local -i n="${#pool[@]}"
     if ((n == 0)); then
-        printf 'encounter_roll_item: empty pool for biome %s\n' "${biome_id}" >&2
+        printf 'encounter_roll_pickup: no item sources available\n' >&2
         return 1
     fi
     local name="${pool[$((RANDOM % n))]}"
+    local item_json
+    if ! item_json="$(pokeapi_get "item/${name}")"; then
+        return 1
+    fi
+    local sprite
+    sprite="$(jq -r '.sprites.default // ""' <<<"${item_json}")"
+    jq -n --arg item "${name}" --arg sprite "${sprite}" '{item: $item, sprite_url: $sprite}'
+}
+
+# encounter_roll_item <biome_id>
+# Roll a biome item drop from the pool file's typed items + berries. Prints
+# {"item","sprite_url"}; returns 1 on an empty pool or fetch failure.
+function encounter_roll_item {
+    local biome_id="$1"
+    local pool
+    if ! pool="$(encounter_pool_load "${biome_id}" 2>/dev/null)"; then
+        return 1
+    fi
+    local -a candidates=()
+    mapfile -t candidates < <(jq -r '(.items // [])[], (.berries // [])[]' <<<"${pool}")
+    local -i n="${#candidates[@]}"
+    if ((n == 0)); then
+        printf 'encounter_roll_item: empty item pool for biome %s\n' "${biome_id}" >&2
+        return 1
+    fi
+    local name="${candidates[$((RANDOM % n))]}"
     local item_json
     if ! item_json="$(pokeapi_get "item/${name}")"; then
         return 1

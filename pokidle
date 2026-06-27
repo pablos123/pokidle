@@ -21,8 +21,8 @@ source "${POKIDLE_REPO_ROOT}/lib/helpers.bash"
 source "${POKIDLE_REPO_ROOT}/lib/cache.bash"
 # shellcheck source=lib/http.bash
 source "${POKIDLE_REPO_ROOT}/lib/http.bash"
-# shellcheck source=lib/psdata.bash
-source "${POKIDLE_REPO_ROOT}/lib/psdata.bash"
+# shellcheck source=lib/showdown.bash
+source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
 # shellcheck source=lib/api.bash
 source "${POKIDLE_REPO_ROOT}/lib/api.bash"
 # shellcheck source=lib/db.bash
@@ -37,8 +37,8 @@ source "${POKIDLE_REPO_ROOT}/lib/evolution.bash"
 source "${POKIDLE_REPO_ROOT}/lib/legendary.bash"
 # shellcheck source=lib/notify.bash
 source "${POKIDLE_REPO_ROOT}/lib/notify.bash"
-# shellcheck source=lib/showdown.bash
-source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+# shellcheck source=lib/export.bash
+source "${POKIDLE_REPO_ROOT}/lib/export.bash"
 
 # usage
 # Print the CLI help text.
@@ -60,7 +60,7 @@ Commands:
                             enable    Start on login
                             disable   Don't start on login
   tick <kind> [flags]     Run a single roll now (default: dry-run, no DB write)
-                            kind: encounter | item | level | friendship | evolve | legendary
+                            kind: encounter | item | pickup | level | friendship | evolve | legendary
                             --no-dry-run    Persist DB writes
                             --no-notify     Skip notify-send
                             --no-images     Skip the inline sprite preview
@@ -115,8 +115,10 @@ Commands:
                           berries     Candidate berry drops for the biome.
                           encounters  Candidate species, grouped by tier.
                           --no-images Skip the biome image (summary only).
-  rebuild-pool [biome] [--yes]
+  rebuild-pool [biome] [--items] [--no-items] [--yes]
                           Force pool rebuild (one or all; type-derived).
+                          --items builds ONLY the holdable item artifact.
+                          --no-items skips the artifact on a full rebuild.
                           --yes skips the all-mode confirm prompt.
   switch-biome <biome>    Close active session, open new session in <biome>
   biomes [--json]         List all 36 biomes (label + types) in catalog order
@@ -257,6 +259,12 @@ function _pokidle_daemon_run {
         next_item="$(_pokidle_next_tick_target "${now}" "${POKIDLE_ITEM_INTERVAL:-3600}")"
         _pokidle_persist_target last_item_tick_target "${next_item}"
     fi
+    local next_pickup
+    next_pickup="$(db_state_get last_pickup_tick_target)"
+    if ((${next_pickup:-0} <= now)); then
+        next_pickup="$(_pokidle_next_tick_target "${now}" "${POKIDLE_PICKUP_INTERVAL:-3600}")"
+        _pokidle_persist_target last_pickup_tick_target "${next_pickup}"
+    fi
     local next_level
     next_level="$(db_state_get last_level_tick_target)"
     if ((${next_level:-0} <= now)); then
@@ -314,6 +322,15 @@ function _pokidle_daemon_run {
             next_item="$(_pokidle_next_tick_target "${now}" "${POKIDLE_ITEM_INTERVAL:-3600}")"
             _pokidle_persist_target last_item_tick_target "${next_item}"
         fi
+        if ((now >= next_pickup)); then
+            if _pokidle_should_fire "${now}" "${next_pickup}" "${POKIDLE_PICKUP_ENABLED:-1}" "${POKIDLE_PICKUP_INTERVAL:-3600}"; then
+                if ! pokidle_tick pickup --no-dry-run; then
+                    printf 'daemon: pickup tick failed (continuing)\n' >&2
+                fi
+            fi
+            next_pickup="$(_pokidle_next_tick_target "${now}" "${POKIDLE_PICKUP_INTERVAL:-3600}")"
+            _pokidle_persist_target last_pickup_tick_target "${next_pickup}"
+        fi
         if ((now >= next_level)); then
             if _pokidle_should_fire "${now}" "${next_level}" "${POKIDLE_LEVEL_ENABLED:-1}" "${POKIDLE_LEVEL_INTERVAL:-3600}"; then
                 if ! pokidle_tick level --no-dry-run --json >/dev/null; then
@@ -357,6 +374,9 @@ function _pokidle_daemon_run {
         local -i next_event=${next_pokemon}
         if ((next_item < next_event)); then
             next_event=${next_item}
+        fi
+        if ((next_pickup < next_event)); then
+            next_event=${next_pickup}
         fi
         if ((next_level < next_event)); then
             next_event=${next_level}
@@ -541,7 +561,7 @@ function pokidle_tick {
             pokidle_tick_legendary "$@"
             return
             ;;
-        encounter | item) ;;
+        encounter | item | pickup) ;;
         '')
             printf 'tick: a kind is required\n' >&2
             usage >&2
@@ -688,6 +708,38 @@ function pokidle_tick {
                     printf '%s\n' "${item_with_meta}"
                 else
                     jq -r '"item: \(.item) [\(.biome_label)]"' <<<"${item_with_meta}"
+                fi
+            fi
+            ;;
+        pickup)
+            local item_json
+            if ! item_json="$(encounter_roll_pickup)"; then
+                printf 'tick: pickup roll failed\n' >&2
+                return 1
+            fi
+            local item_name
+            item_name="$(jq -r '.item' <<<"${item_json}")"
+            local sprite_path
+            sprite_path="$(_pokidle_item_sprite "${item_name}")"
+            local item_with_meta
+            item_with_meta="$(jq -c --arg l "${label}" --arg sp "${sprite_path}" --arg bid "${biome}" '
+                . + {biome_label: $l, sprite_path: $sp, biome_id: $bid}
+            ' <<<"${item_json}")"
+            if ((dry_run == 0)); then
+                db_insert_item_drop "${sid}" "$(date +%s)" "${item_name}" "${sprite_path}"
+                db_log_event pickup "${item_name}"
+            fi
+            if ((no_notify == 0)) && [[ "${POKIDLE_NOTIFY_PICKUP:-1}" == "1" ]]; then
+                notify_pickup "${item_with_meta}"
+            fi
+            if ((no_output == 0)); then
+                if ((!no_images)); then
+                    _pokidle_render_sprite "${sprite_path}"
+                fi
+                if ((emit_json)); then
+                    printf '%s\n' "${item_with_meta}"
+                else
+                    jq -r '"pickup: \(.item)"' <<<"${item_with_meta}"
                 fi
             fi
             ;;
@@ -1372,7 +1424,7 @@ function pokidle_export {
         # Positive gate: only items Showdown accepts on a set survive, so the
         # team is always importable even when the window holds legacy junk drops
         # (items since removed from the pool) or trade-evo items.
-        if ! encounter_item_is_showdown_legal "${it}"; then
+        if ! showdown_item_is_holdable "${it}"; then
             continue
         fi
         items+=("${it}")
@@ -1411,7 +1463,7 @@ function pokidle_export {
         if [[ -n "${berry}" && "${berry}" != "null" ]]; then
             local berry_item="${berry}-berry"
             if [[ "${used}" != *"|${berry_item}|"* ]] &&
-                encounter_item_is_showdown_legal "${berry_item}"; then
+                showdown_item_is_holdable "${berry_item}"; then
                 cands+=("${berry_item}")
             fi
         fi
@@ -1430,7 +1482,7 @@ function pokidle_export {
             moves: $moves
         }' <<<"${enc}")"
         printf '%s' "${sep}"
-        showdown_format "${norm}"
+        export_format "${norm}"
         sep=$'\n'
     done
 }
@@ -1741,13 +1793,13 @@ function _pokidle_current_summary {
     if pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
         poss_enc="$(jq '[.tiers[] | length] | add // 0' <<<"${pool}")"
     fi
-    # Item pool counts: berries (slugs ending in -berry) are reported separately
-    # and excluded from the item total so the two figures don't double-count.
-    local item_pool
-    item_pool="$(_encounter_item_pool "${biome}")"
+    # Item pool counts: berries and non-berry items reported separately so
+    # the two figures don't double-count.
+    local pool_json
+    pool_json="$(encounter_pool_load "${biome}" 2>/dev/null || echo '{}')"
     local -i poss_item poss_berry
-    poss_berry="$(awk 'NF && /-berry$/' <<<"${item_pool}" | wc -l)"
-    poss_item="$(awk 'NF && !/-berry$/' <<<"${item_pool}" | wc -l)"
+    poss_item="$(jq -r '(.items // []) | length' <<<"${pool_json}")"
+    poss_berry="$(jq -r '(.berries // []) | length' <<<"${pool_json}")"
     local enc_count
     enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=${id};")"
     local item_count
@@ -1786,7 +1838,7 @@ function _pokidle_current_summary {
 # _pokidle_current_berries), alphabetical, one slug per line.
 function _pokidle_current_items {
     local biome="$1"
-    _encounter_item_pool "${biome}" | awk 'NF && !/-berry$/' | LC_ALL=C sort -u
+    encounter_pool_load "${biome}" 2>/dev/null | jq -r '(.items // [])[]' | LC_ALL=C sort -u
 }
 
 # _pokidle_current_berries <biome>
@@ -1794,7 +1846,7 @@ function _pokidle_current_items {
 # alphabetical, one slug per line.
 function _pokidle_current_berries {
     local biome="$1"
-    _encounter_item_pool "${biome}" | awk 'NF && /-berry$/' | LC_ALL=C sort -u
+    encounter_pool_load "${biome}" 2>/dev/null | jq -r '(.berries // [])[]' | LC_ALL=C sort -u
 }
 
 # _pokidle_current_encounters <biome>
@@ -1894,16 +1946,29 @@ function pokidle_clean {
     esac
 }
 
-# pokidle_rebuild_pool [biome] [--yes]
+# pokidle_rebuild_pool [biome] [--items] [--no-items] [--yes]
 # Rebuild one biome's pool, or all of them (wiping the pool cache first; --yes
 # skips the all-mode confirm). Pools are type-derived from the live PokeAPI.
+# --items: build ONLY the holdable item artifact, then return (no biome loop).
+# --no-items: skip the item artifact even on a full rebuild.
+# Default full rebuild (no biome target) builds the artifact first, then pools.
 function pokidle_rebuild_pool {
     local -i force=0
+    local -i items_only=0
+    local -i do_items=1
     local target=""
     while (($# > 0)); do
         case "$1" in
             --yes | -y)
                 force=1
+                shift
+                ;;
+            --items)
+                items_only=1
+                shift
+                ;;
+            --no-items)
+                do_items=0
                 shift
                 ;;
             -*)
@@ -1916,6 +1981,22 @@ function pokidle_rebuild_pool {
                 ;;
         esac
     done
+
+    # full=1 when no biome target is given (i.e. a full rebuild of all pools).
+    local -i full=0
+    [[ -z "${target}" ]] && full=1
+
+    # Build the holdable item artifact when: --items flag, or full rebuild without --no-items.
+    if ((items_only || (do_items && full))); then
+        if _showdown_build_holdable_meta >/dev/null; then
+            printf 'rebuilt items artifact: %s\n' "${POKIDLE_SHOWDOWN_CACHE_DIR}/items-holdable.tsv"
+        else
+            printf 'rebuild-pool: item artifact build failed\n' >&2
+        fi
+    fi
+    if ((items_only)); then
+        return 0
+    fi
 
     local biomes
     if [[ -n "${target}" ]]; then
@@ -2117,6 +2198,21 @@ function pokidle_setup {
         fi
         if ((skipped > 0)); then
             printf 'kept %d up-to-date pool(s)\n' "${skipped}"
+        fi
+    fi
+
+    # Seed the holdable item artifact from share/items-holdable.tsv so first run
+    # skips the network fetch. Newer-wins: a user-rebuilt cache file is kept;
+    # a shipped file newer than the cache (e.g. after git pull) overwrites it.
+    local ship_tsv="${POKIDLE_REPO_ROOT}/share/items-holdable.tsv"
+    local cache_tsv="${POKIDLE_SHOWDOWN_CACHE_DIR}/items-holdable.tsv"
+    if [[ -f "${ship_tsv}" ]]; then
+        mkdir -p -- "${cache_tsv%/*}"
+        if [[ -f "${cache_tsv}" && ! "${ship_tsv}" -nt "${cache_tsv}" ]]; then
+            printf 'kept up-to-date items artifact\n'
+        else
+            cp -- "${ship_tsv}" "${cache_tsv}"
+            printf 'seeded items artifact into %s\n' "${cache_tsv%/*}"
         fi
     fi
 

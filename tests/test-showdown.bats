@@ -3,125 +3,116 @@
 load helpers
 
 setup() {
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_REPO_ROOT
+    load_lib helpers
     load_lib showdown
+    seed_showdown
+    export -f _showdown_items_meta_transform
 }
 
-@test "showdown_format: full encounter renders correctly" {
-    local enc='{
-        "species":"sceptile","level":42,"nature":"adamant","ability":"overgrow",
-        "is_hidden_ability":0,"gender":"M","shiny":1,"held_berry":"sitrus",
-        "ivs":[31,28,19,31,24,30],
-        "evs":[252,0,0,6,0,252],
-        "moves":["leaf-blade","dragon-claw","earthquake","x-scissor"]
-    }'
-    run showdown_format "$enc"
+@test "showdown_id strips punctuation and lowercases" {
+    run showdown_id "thundurus-therian"
+    [ "$output" = "thundurustherian" ]
+    run showdown_id "Ho-Oh"
+    [ "$output" = "hooh" ]
+}
+
+@test "showdown_get serves a fresh cached file without fetching" {
+    _showdown_fetch() { touch "${BATS_TEST_TMPDIR}/fetch_called"; return 1; }
+    export -f _showdown_fetch
+    run showdown_get pokedex
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Sceptile @ Sitrus Berry"* ]]
-    [[ "$output" == *"Ability: Overgrow"* ]]
-    [[ "$output" == *"Level: 42"* ]]
-    [[ "$output" == *"Shiny: Yes"* ]]
-    [[ "$output" == *"Adamant Nature"* ]]
-    [[ "$output" == *"EVs: 252 HP / 6 SpA / 252 Spe"* ]]
-    [[ "$output" == *"IVs: 31 HP / 28 Atk / 19 Def / 31 SpA / 24 SpD / 30 Spe"* ]]
-    [[ "$output" == *"- Leaf Blade"* ]]
-    [[ "$output" == *"- Dragon Claw"* ]]
+    [ ! -f "${BATS_TEST_TMPDIR}/fetch_called" ]
+    echo "$output" | jq -e '.thundurustherian.baseSpecies == "Thundurus"'
 }
 
-@test "showdown_format: held_item renders titlecased with no Berry suffix" {
-    local enc='{
-        "species":"snorlax","level":50,"nature":"adamant","ability":"thick-fat",
-        "is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"held_item":"leftovers",
-        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["body-slam"]
-    }'
-    run showdown_format "$enc"
+@test "showdown_get returns 1 when no cache and fetch fails" {
+    rm -f "${POKIDLE_SHOWDOWN_CACHE_DIR}/pokedex.json"
+    run showdown_get pokedex
+    [ "$status" -ne 0 ]
+}
+
+@test "showdown_get falls back to stale cache when fetch fails" {
+    # Make the cache look stale; fetch is stubbed to fail.
+    touch -d "30 days ago" "${POKIDLE_SHOWDOWN_CACHE_DIR}/pokedex.json"
+    run showdown_get pokedex
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Snorlax @ Leftovers"* ]]
-    [[ "$output" != *"Leftovers Berry"* ]]
+    echo "$output" | jq -e '.corviknight.prevo == "Corvisquire"'
 }
 
-@test "showdown_format: held_item hyphen slug titlecased" {
-    local enc='{
-        "species":"kingdra","level":50,"nature":"modest","ability":"swift-swim",
-        "is_hidden_ability":0,"gender":"F","shiny":0,"held_berry":null,"held_item":"choice-band",
-        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["surf"]
-    }'
-    run showdown_format "$enc"
+@test "showdown_legal_abilities: forme-specific abilities with hidden flag" {
+    run showdown_legal_abilities "thundurus-therian"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Kingdra @ Choice Band"* ]]
+    [ "$output" = $'volt-absorb\t0' ]
 }
 
-@test "showdown_format: held_item -berry slug gets single Berry word" {
-    local enc='{
-        "species":"garchomp","level":50,"nature":"jolly","ability":"rough-skin",
-        "is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"held_item":"occa-berry",
-        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["earthquake"]
-    }'
-    run showdown_format "$enc"
+@test "showdown_legal_abilities: marks the hidden ability" {
+    run showdown_legal_abilities "corviknight"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Garchomp @ Occa Berry"* ]]
-    [[ "$output" != *"Berry Berry"* ]]
+    echo "$output" | grep -qx $'mirror-armor\t1'
+    echo "$output" | grep -qx $'pressure\t0'
 }
 
-@test "showdown_format: held_item takes precedence over held_berry" {
-    local enc='{
-        "species":"gengar","level":50,"nature":"timid","ability":"levitate",
-        "is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":"sitrus","held_item":"life-orb",
-        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["shadow-ball"]
-    }'
-    run showdown_format "$enc"
+@test "showdown_legal_abilities: returns 1 for unknown id" {
+    run showdown_legal_abilities "missingno"
+    [ "$status" -ne 0 ]
+}
+
+@test "showdown_legal_moves: forme resolves to base species learnset" {
+    run showdown_legal_moves "thundurus-therian"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Gengar @ Life Orb"* ]]
-    [[ "$output" != *"Sitrus"* ]]
+    echo "$output" | grep -qx "thunderbolt"
+    echo "$output" | grep -qx "nasty-plot"
 }
 
-@test "showdown_format: no berry, not shiny, no item line, no Shiny line" {
-    local enc='{
-        "species":"zubat","level":7,"nature":"timid","ability":"inner-focus",
-        "is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,
-        "ivs":[10,20,30,15,5,25],
-        "evs":[0,0,0,0,0,0],
-        "moves":["leech-life","supersonic"]
-    }'
-    run showdown_format "$enc"
+@test "showdown_legal_moves: unions the prevo chain and slugifies names" {
+    run showdown_legal_moves "corviknight"
     [ "$status" -eq 0 ]
-    [[ "$output" != *"@ "* ]]
-    [[ "$output" != *"Shiny:"* ]]
-    [[ "$output" == *"Zubat"* ]]
+    echo "$output" | grep -qx "double-edge"   # corviknight, slugified
+    echo "$output" | grep -qx "peck"          # rookidee (grandparent)
 }
 
-@test "showdown_species_name: regional form keeps its hyphen, titlecased per segment" {
-    [ "$(showdown_species_name meowth-galar)" = "Meowth-Galar" ]
-    [ "$(showdown_species_name raichu-alola)" = "Raichu-Alola" ]
-    [ "$(showdown_species_name wormadam-trash)" = "Wormadam-Trash" ]
-    [ "$(showdown_species_name lycanroc-midnight)" = "Lycanroc-Midnight" ]
-}
-
-@test "showdown_species_name: plain species are titlecased" {
-    [ "$(showdown_species_name snorlax)" = "Snorlax" ]
-    [ "$(showdown_species_name nidoran-f)" = "Nidoran-F" ]
-}
-
-@test "showdown_species_name: hyphenated base species render with hyphen" {
-    [ "$(showdown_species_name ho-oh)" = "Ho-Oh" ]
-    [ "$(showdown_species_name porygon-z)" = "Porygon-Z" ]
-}
-
-@test "showdown_species_name: irregular Showdown names mapped directly" {
-    [ "$(showdown_species_name mr-mime)" = "Mr. Mime" ]
-    [ "$(showdown_species_name mime-jr)" = "Mime Jr." ]
-    [ "$(showdown_species_name type-null)" = "Type: Null" ]
-    [ "$(showdown_species_name tapu-koko)" = "Tapu Koko" ]
-    [ "$(showdown_species_name jangmo-o)" = "Jangmo-o" ]
-}
-
-@test "showdown_format: renders the encountered form name" {
-    local enc='{
-        "species":"meowth-galar","level":12,"nature":"adamant","ability":"pickup",
-        "is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,
-        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["fake-out"]
-    }'
-    run showdown_format "$enc"
+@test "_showdown_items_meta_transform: TSV with type and isberry, holdable only" {
+    # plates via onPlate, gems via isGem+name, enhancers via desc pattern,
+    # berries via type field; air-balloon is a false-positive guard (must stay typeless).
+    local js='exports.BattleItems = {leftovers:{name:"Leftovers",num:234,gen:2},flameplate:{name:"Flame Plate",onPlate:"Fire",num:298,gen:4},firegem:{name:"Fire Gem",isGem:true,num:548,gen:5},charcoal:{name:"Charcoal",num:249,gen:2,desc:"Fire-type attacks have 1.2x power."},sitrusberry:{name:"Sitrus Berry",isBerry:true,type:"Psychic",num:158,gen:3},airballoon:{name:"Air Balloon",num:541,gen:5,desc:"Holder is immune to Ground-type attacks."},abomasite:{name:"Abomasite",itemUser:["Abomasnow"],num:674,gen:6},pokeball:{name:"Poke Ball",isPokeball:true,num:4,gen:1},capberry:{name:"Cap Berry",isNonstandard:"CAP",num:-1,gen:9},quickclaw:{isNonstandard:"Past",name:"Quick Claw",desc:"After moving holder moves first.",num:217,gen:3}};'
+    run bash -c "printf '%s' '$js' | _showdown_items_meta_transform | sort"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Meowth-Galar"* ]]
-    [[ "$output" != *"Meowth Galar"* ]]
+    [ "$output" = "$(printf 'air-balloon\t\t0\ncharcoal\tfire\t0\nfire-gem\tfire\t0\nflame-plate\tfire\t0\nleftovers\t\t0\nquick-claw\t\t0\nsitrus-berry\tpsychic\t1')" ]
+}
+
+@test "showdown_typed_holdable_items: only typed non-berry rows as slug<TAB>type" {
+    run showdown_typed_holdable_items
+    [ "$status" -eq 0 ]
+    [ "$output" = "$(printf 'charcoal\tfire')" ]
+    # berries must be excluded even if they carry a type
+    run bash -c "printf '%s\n' \"$output\" | grep -qx sitrus-berry"
+    [ "$status" -ne 0 ]
+}
+
+@test "showdown_typeless_holdable_items: typeless non-berry slugs only" {
+    run showdown_typeless_holdable_items
+    [ "$status" -eq 0 ]
+    local out="$output"
+    run bash -c "printf '%s\n' \"$out\" | grep -qx leftovers";    [ "$status" -eq 0 ]
+    run bash -c "printf '%s\n' \"$out\" | grep -qx choice-band";  [ "$status" -eq 0 ]
+    run bash -c "printf '%s\n' \"$out\" | grep -qx sitrus-berry"; [ "$status" -ne 0 ]
+    run bash -c "printf '%s\n' \"$out\" | grep -qx charcoal";     [ "$status" -ne 0 ]
+}
+
+@test "showdown_holdable_items: field-1 slugs incl typed and berries" {
+    run showdown_holdable_items
+    [ "$status" -eq 0 ]
+    local out="$output"
+    run bash -c "printf '%s\n' \"$out\" | grep -qx leftovers";    [ "$status" -eq 0 ]
+    run bash -c "printf '%s\n' \"$out\" | grep -qx charcoal";     [ "$status" -eq 0 ]
+    run bash -c "printf '%s\n' \"$out\" | grep -qx sitrus-berry"; [ "$status" -eq 0 ]
+}
+
+@test "showdown_item_is_holdable: listed slug holdable, unlisted not" {
+    run showdown_item_is_holdable leftovers
+    [ "$status" -eq 0 ]
+    run showdown_item_is_holdable abomasite
+    [ "$status" -ne 0 ]
 }

@@ -185,6 +185,48 @@ EOF
     grep -q 'enable --now' "$HOME/systemctl.log"
 }
 
+@test "pokidle setup seeds share/items-holdable.tsv into showdown cache" {
+    # Create a fixture share/items-holdable.tsv (cleaned up after).
+    local fixture_tsv="${REPO_ROOT}/share/items-holdable.tsv"
+    local already_exists=0
+    [[ -f "${fixture_tsv}" ]] && already_exists=1
+    if ((!already_exists)); then
+        printf 'leftovers\t\t0\nchoice-band\t\t0\n' > "${fixture_tsv}"
+    fi
+    # Empty showdown cache: no pre-existing .tsv.
+    local sd_cache="${XDG_CACHE_HOME}/pokidle/showdown"
+    rm -f "${sd_cache}/items-holdable.tsv"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    local status_ok=$status
+    if ((!already_exists)); then rm -f "${fixture_tsv}"; fi
+    [ "$status_ok" -eq 0 ]
+    [ -f "${sd_cache}/items-holdable.tsv" ]
+}
+
+@test "pokidle setup keeps a newer cached items-holdable.tsv" {
+    local fixture_tsv="${REPO_ROOT}/share/items-holdable.tsv"
+    local already_exists=0
+    [[ -f "${fixture_tsv}" ]] && already_exists=1
+    if ((!already_exists)); then
+        printf 'leftovers\t\t0\n' > "${fixture_tsv}"
+    fi
+    local sd_cache="${XDG_CACHE_HOME}/pokidle/showdown"
+    mkdir -p "${sd_cache}"
+    local cached_tsv="${sd_cache}/items-holdable.tsv"
+    printf 'choice-band\t\t0\n' > "${cached_tsv}"
+    # Make the cached copy newer than the shipped one.
+    touch -d '2020-01-01' "${fixture_tsv}"
+    touch -d '2030-01-01' "${cached_tsv}"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    local status_ok=$status
+    if ((!already_exists)); then rm -f "${fixture_tsv}"; fi
+    # Restore shipped file's mtime so it doesn't affect other tests.
+    touch "${fixture_tsv}" 2>/dev/null || true
+    [ "$status_ok" -eq 0 ]
+    # The cached (newer) file must be kept: still has choice-band, not leftovers.
+    grep -q 'choice-band' "${cached_tsv}"
+}
+
 @test "pokidle setup propagates systemctl enable failure" {
     cat > "$BATS_TMPDIR/bin.$$/systemctl" <<'EOF'
 #!/bin/bash
