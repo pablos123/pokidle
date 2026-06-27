@@ -324,6 +324,35 @@ EOF
     [ "$has_cheri" = "false" ]
 }
 
+@test "build_pool: legendaries collected into .legendaries, not .tiers" {
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib biome
+    load_lib encounter
+    stub_pokeapi
+    run encounter_build_pool forest
+    [ "$status" -eq 0 ]
+    # shaymin is grass + is_legendary: must land in .legendaries with its formes.
+    local leg
+    leg="$(jq -c '.legendaries[] | select(.species=="shaymin")' <<< "$output")"
+    [ -n "$leg" ]
+    [ "$(jq -c '.varieties | sort' <<< "$leg")" = '["shaymin-land","shaymin-sky"]' ]
+    # ...and never leaks into the encounterable tiers.
+    [ "$(jq '[.tiers[][].species] | index("shaymin")' <<< "$output")" = "null" ]
+}
+
+@test "encounter_pool_save persists the legendaries array" {
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_CACHE_DIR
+    load_lib encounter
+    local pool='{"tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[],"items":[],"legendaries":[{"species":"articuno","varieties":["articuno"]}]}'
+    encounter_pool_save cave "$pool"
+    local saved
+    saved="$(cat "$BATS_TMPDIR/cache.$$/pools/cave.json")"
+    [ "$(jq -c '.legendaries' <<< "$saved")" = '[{"species":"articuno","varieties":["articuno"]}]' ]
+}
+
 @test "_encounter_typed_items_for_biome: volcano yields charcoal (fire) and not leftovers (typeless)" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     export POKIDLE_REPO_ROOT

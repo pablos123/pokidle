@@ -1,5 +1,32 @@
-{ "name": "grass", "pokemon": [
-    { "pokemon": { "name": "treecko" } },
-    { "pokemon": { "name": "grovyle" } },
-    { "pokemon": { "name": "sceptile" } }
-] }
+{
+  "name": "grass",
+  "pokemon": [
+    {
+      "pokemon": {
+        "name": "treecko"
+      }
+    },
+    {
+      "pokemon": {
+        "name": "grovyle"
+      }
+    },
+    {
+      "pokemon": {
+        "name": "sceptile"
+      }
+    },
+    {
+      "pokemon": {
+        "name": "shaymin-land",
+        "url": "https://pokeapi.co/api/v2/pokemon/492/"
+      }
+    },
+    {
+      "pokemon": {
+        "name": "shaymin-sky",
+        "url": "https://pokeapi.co/api/v2/pokemon/10006/"
+      }
+    }
+  ]
+}

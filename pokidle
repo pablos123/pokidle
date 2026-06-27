@@ -1203,14 +1203,17 @@ function pokidle_tick_legendary {
         return 0
     fi
 
-    local species
-    if ! species="$(legendary_roll_species_for_biome "${biome}")"; then
+    local entry
+    if ! entry="$(legendary_roll_species_for_biome "${biome}")"; then
+        printf 'legendary: no legendary available for biome %s\n' "${biome}" >&2
         return 1
     fi
     local enc
-    if ! enc="$(legendary_build_encounter "${species}" "${biome}")"; then
+    if ! enc="$(legendary_build_encounter "${entry}" "${biome}")"; then
         return 1
     fi
+    local species
+    species="$(jq -r '.species' <<<"${entry}")"
     local sprite_url
     sprite_url="$(jq -r '.sprite_url // ""' <<<"${enc}")"
     local sprite_path=""

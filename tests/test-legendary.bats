@@ -10,87 +10,43 @@ setup() {
     load_lib legendary
 }
 
-@test "LEGENDARY_TYPES: contains canonical gen-1 legendaries with correct types" {
-    [ "${LEGENDARY_TYPES[articuno]}" = "ice flying" ]
-    [ "${LEGENDARY_TYPES[zapdos]}" = "electric flying" ]
-    [ "${LEGENDARY_TYPES[moltres]}" = "fire flying" ]
-    [ "${LEGENDARY_TYPES[mewtwo]}" = "psychic" ]
-    [ "${LEGENDARY_TYPES[mew]}" = "psychic" ]
+@test "legendary_roll_species_for_biome: returns an entry from the biome pool's .legendaries" {
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib encounter
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/forest.json" <<'EOF'
+{"biome":"forest","tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[],"items":[],
+ "legendaries":[{"species":"celebi","varieties":["celebi"]},{"species":"virizion","varieties":["virizion"]}]}
+EOF
+    run legendary_roll_species_for_biome forest
+    [ "$status" -eq 0 ]
+    local sp
+    sp="$(jq -r '.species' <<< "$output")"
+    [[ "$sp" == "celebi" || "$sp" == "virizion" ]]
+    echo "$output" | jq -e '.varieties | length > 0'
 }
 
-@test "LEGENDARY_TYPES: contains gen-7+ entries" {
-    [ -n "${LEGENDARY_TYPES[tapu-koko]:-}" ]
-    [ -n "${LEGENDARY_TYPES[zacian]:-}" ]
+@test "legendary_roll_species_for_biome: empty .legendaries returns 1" {
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib encounter
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/forest.json" <<'EOF'
+{"biome":"forest","tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[],"items":[],"legendaries":[]}
+EOF
+    run legendary_roll_species_for_biome forest
+    [ "$status" -ne 0 ]
 }
 
-@test "LEGENDARY_TYPES: contains gen-9 legendaries and mythical with correct types" {
-    [ "${LEGENDARY_TYPES[koraidon]}" = "fighting dragon" ]
-    [ "${LEGENDARY_TYPES[miraidon]}" = "electric dragon" ]
-    [ "${LEGENDARY_TYPES[wo-chien]}" = "dark grass" ]
-    [ "${LEGENDARY_TYPES[chien-pao]}" = "dark ice" ]
-    [ "${LEGENDARY_TYPES[ting-lu]}" = "dark ground" ]
-    [ "${LEGENDARY_TYPES[chi-yu]}" = "dark fire" ]
-    [ "${LEGENDARY_TYPES[okidogi]}" = "poison fighting" ]
-    [ "${LEGENDARY_TYPES[munkidori]}" = "poison psychic" ]
-    [ "${LEGENDARY_TYPES[fezandipiti]}" = "poison fairy" ]
-    [ "${LEGENDARY_TYPES[ogerpon]}" = "grass" ]
-    [ "${LEGENDARY_TYPES[terapagos]}" = "normal" ]
-    [ "${LEGENDARY_TYPES[pecharunt]}" = "poison ghost" ]
-}
-
-@test "LEGENDARY_TYPES: every PokeAPI primary type has at least one legendary" {
-    local types=(
-        normal fighting flying poison ground rock bug ghost steel
-        fire water grass electric psychic ice dragon dark fairy
-    )
-    local t sp found
-    for t in "${types[@]}"; do
-        found=0
-        for sp in "${!LEGENDARY_TYPES[@]}"; do
-            if [[ " ${LEGENDARY_TYPES[$sp]} " == *" $t "* ]]; then
-                found=1
-                break
-            fi
-        done
-        if (( ! found )); then
-            printf 'no legendary for type %s\n' "$t" >&2
-            return 1
-        fi
-    done
-}
-
-@test "legendary_roll_species_for_biome: returns a legendary whose types match biome" {
-    load_lib biome
-    local sp types t btypes match
-    sp="$(legendary_roll_species_for_biome forest)"
-    [ -n "${LEGENDARY_TYPES[$sp]:-}" ]
-    types="${LEGENDARY_TYPES[$sp]}"
-    btypes="$(biome_types_for forest)"
-    match=0
-    for t in $types; do
-        while IFS= read -r b; do
-            [[ "$t" == "$b" ]] && match=1 && break
-        done <<< "$btypes"
-        (( match )) && break
-    done
-    [ "$match" = "1" ]
-}
-
-@test "legendary_roll_species_for_biome: ice biome rolls only ice/flying-typed legendaries (sample)" {
-    load_lib biome
-    # ocean = water + ice
-    local i sp types ok=1
-    for i in {1..20}; do
-        sp="$(legendary_roll_species_for_biome ocean)"
-        types="${LEGENDARY_TYPES[$sp]:-}"
-        # at least one type must be water or ice
-        if [[ "$types" != *water* && "$types" != *ice* ]]; then
-            ok=0
-            printf 'roll %s has types "%s" but biome ocean is water+ice\n' "$sp" "$types" >&2
-            break
-        fi
-    done
-    [ "$ok" = "1" ]
+@test "legendary_roll_species_for_biome: missing pool file returns 1" {
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib encounter
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    # No pool file written for this biome.
+    run legendary_roll_species_for_biome forest
+    [ "$status" -ne 0 ]
 }
 
 @test "legendary_build_encounter: returns encounter JSON with all required fields" {
@@ -100,7 +56,7 @@ setup() {
     load_lib encounter
     stub_pokeapi
     local enc
-    enc="$(legendary_build_encounter articuno forest)"
+    enc="$(legendary_build_encounter '{"species":"articuno","varieties":["articuno"]}' forest)"
     [ -n "$enc" ]
     local sp lvl shiny is_leg
     sp="$(jq -r '.species' <<< "$enc")"
@@ -126,7 +82,7 @@ setup() {
     # No pokemon-shaymin.json fixture is provided on purpose — fix must read
     # /pokemon-species/shaymin → varieties[] and pick one (land OR sky).
     local enc
-    enc="$(legendary_build_encounter shaymin forest)"
+    enc="$(legendary_build_encounter '{"species":"shaymin","varieties":["shaymin-land","shaymin-sky"]}' forest)"
     [ -n "$enc" ]
     [ "$(jq -r '.species' <<< "$enc")" = "shaymin" ]
     [ "$(jq -r '.is_legendary' <<< "$enc")" = "true" ]
@@ -145,7 +101,7 @@ setup() {
     load_lib showdown
     stub_pokeapi
     seed_showdown
-    run legendary_build_encounter articuno forest
+    run legendary_build_encounter '{"species":"articuno","varieties":["articuno"]}' forest
     [ "$status" -eq 0 ]
     echo "$output" | jq -e 'has("variety") and (.variety | length > 0)'
 }
@@ -158,7 +114,7 @@ setup() {
     load_lib showdown
     stub_pokeapi
     seed_showdown
-    run legendary_build_encounter articuno forest
+    run legendary_build_encounter '{"species":"articuno","varieties":["articuno"]}' forest
     [ "$status" -eq 0 ]
     echo "$output" | jq -e '([.ivs[] | select(. == 31)] | length) >= 3'
     echo "$output" | jq -e '(.evs | add) == 508 and ([.evs[]|select(.==252)]|length)==2'
@@ -173,6 +129,15 @@ setup() {
     db_init
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('forest', 1700000000);"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_CACHE_DIR
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/forest.json" <<'EOF'
+{"biome":"forest","tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[],"items":[],
+ "legendaries":[{"species":"articuno","varieties":["articuno"]}]}
+EOF
+    stub_pokeapi
+    seed_showdown
     run "$REPO_ROOT/pokidle" tick legendary --dry-run
     [ "$status" -eq 0 ]
     local count
@@ -189,13 +154,22 @@ setup() {
     db_init
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('forest', 1700000000);"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_CACHE_DIR
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/forest.json" <<'EOF'
+{"biome":"forest","tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[],"items":[],
+ "legendaries":[{"species":"articuno","varieties":["articuno"]}]}
+EOF
+    stub_pokeapi
+    seed_showdown
     run "$REPO_ROOT/pokidle" tick legendary --no-dry-run --json
     [ "$status" -eq 0 ]
     local count sp
     count="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM encounters;")"
     [ "$count" = "1" ]
     sp="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT species FROM encounters LIMIT 1;")"
-    [ -n "${LEGENDARY_TYPES[$sp]:-}" ]
+    [ "$sp" = "articuno" ]
 }
 
 @test "tick legendary: no spawn when chance is 0" {
@@ -207,6 +181,15 @@ setup() {
     db_init
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('forest', 1700000000);"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_CACHE_DIR
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/forest.json" <<'EOF'
+{"biome":"forest","tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[],"items":[],
+ "legendaries":[{"species":"articuno","varieties":["articuno"]}]}
+EOF
+    stub_pokeapi
+    seed_showdown
     run "$REPO_ROOT/pokidle" tick legendary --no-dry-run
     [ "$status" -eq 0 ]
     [[ "$output" == *"no spawn"* ]]

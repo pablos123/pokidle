@@ -622,6 +622,7 @@ function encounter_build_pool {
     # look up min/max via evolution chain (chain JSON cached by id).
     local -A chain_cache=()
     local flat='[]'
+    local legendaries='[]'
     local sp
     while IFS= read -r sp; do
         if [[ -z "${sp}" ]]; then
@@ -640,6 +641,10 @@ function encounter_build_pool {
               (.capture_rate // 45), (.evolution_chain.url // "")
              ] | map(tostring) | join($US)' <<<"${spec}")
         if [[ "${is_leg}" == "true" || "${is_myth}" == "true" ]]; then
+            local leg_varieties
+            leg_varieties="$(jq -c --arg sp "${sp}" '.[$sp] // [$sp]' <<<"${species_to_varieties}")"
+            legendaries="$(jq -c --arg sp "${sp}" --argjson vs "${leg_varieties}" \
+                '. + [{species:$sp, varieties:$vs}]' <<<"${legendaries}")"
             continue
         fi
 
@@ -728,8 +733,8 @@ function encounter_build_pool {
     items_json="$(_encounter_typed_items_for_biome "${biome_id}" | jq -R . | jq -s -c .)"
 
     jq -c -n --argjson tiers "${tiered}" --argjson berries "${berries_json}" \
-        --argjson items "${items_json}" \
-        '{tiers: $tiers, berries: $berries, items: $items}'
+        --argjson items "${items_json}" --argjson legendaries "${legendaries}" \
+        '{tiers: $tiers, berries: $berries, items: $items, legendaries: $legendaries}'
 }
 
 # encounter_pool_path <biome>
@@ -756,7 +761,8 @@ function encounter_pool_save {
         built_at: $ts,
         tiers: $p.tiers,
         berries: ($p.berries // []),
-        items: ($p.items // [])
+        items: ($p.items // []),
+        legendaries: ($p.legendaries // [])
     }')"
     printf '%s' "${body}" >"${p}"
 }

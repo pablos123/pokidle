@@ -1,205 +1,54 @@
 #!/usr/bin/env bash
-# Static legendary roster + roll helper.
-
-# species -> space-separated PokeAPI types (1 or 2). Guarded so the readonly
-# global survives the repeated re-sourcing the test harness does.
-if [[ -z "${LEGENDARY_TYPES[*]:-}" ]]; then
-    declare -grA LEGENDARY_TYPES=(
-        # Gen 1
-        [articuno]="ice flying"
-        [zapdos]="electric flying"
-        [moltres]="fire flying"
-        [mewtwo]="psychic"
-        [mew]="psychic"
-        # Gen 2
-        [raikou]="electric"
-        [entei]="fire"
-        [suicune]="water"
-        [lugia]="psychic flying"
-        ["ho-oh"]="fire flying"
-        [celebi]="psychic grass"
-        # Gen 3
-        [regirock]="rock"
-        [regice]="ice"
-        [registeel]="steel"
-        [latias]="dragon psychic"
-        [latios]="dragon psychic"
-        [kyogre]="water"
-        [groudon]="ground"
-        [rayquaza]="dragon flying"
-        [jirachi]="steel psychic"
-        [deoxys]="psychic"
-        # Gen 4
-        [uxie]="psychic"
-        [mesprit]="psychic"
-        [azelf]="psychic"
-        [dialga]="steel dragon"
-        [palkia]="water dragon"
-        [heatran]="fire steel"
-        [regigigas]="normal"
-        [giratina]="ghost dragon"
-        [cresselia]="psychic"
-        [phione]="water"
-        [manaphy]="water"
-        [darkrai]="dark"
-        [shaymin]="grass"
-        [arceus]="normal"
-        # Gen 5
-        [victini]="psychic fire"
-        [cobalion]="steel fighting"
-        [terrakion]="rock fighting"
-        [virizion]="grass fighting"
-        [tornadus]="flying"
-        [thundurus]="electric flying"
-        [reshiram]="dragon fire"
-        [zekrom]="dragon electric"
-        [landorus]="ground flying"
-        [kyurem]="dragon ice"
-        [keldeo]="water fighting"
-        [meloetta]="normal psychic"
-        [genesect]="bug steel"
-        # Gen 6
-        [xerneas]="fairy"
-        [yveltal]="dark flying"
-        [zygarde]="dragon ground"
-        [diancie]="rock fairy"
-        [hoopa]="psychic ghost"
-        [volcanion]="fire water"
-        # Gen 7
-        ["type-null"]="normal"
-        [silvally]="normal"
-        ["tapu-koko"]="electric fairy"
-        ["tapu-lele"]="psychic fairy"
-        ["tapu-bulu"]="grass fairy"
-        ["tapu-fini"]="water fairy"
-        [cosmog]="psychic"
-        [cosmoem]="psychic"
-        [solgaleo]="psychic steel"
-        [lunala]="psychic ghost"
-        [nihilego]="rock poison"
-        [buzzwole]="bug fighting"
-        [pheromosa]="bug fighting"
-        [xurkitree]="electric"
-        [celesteela]="steel flying"
-        [kartana]="grass steel"
-        [guzzlord]="dark dragon"
-        [necrozma]="psychic"
-        [magearna]="steel fairy"
-        [marshadow]="fighting ghost"
-        [poipole]="poison"
-        [naganadel]="poison dragon"
-        [stakataka]="rock steel"
-        [blacephalon]="fire ghost"
-        [zeraora]="electric"
-        [meltan]="steel"
-        [melmetal]="steel"
-        # Gen 8
-        [zacian]="fairy"
-        [zamazenta]="fighting"
-        [eternatus]="poison dragon"
-        [kubfu]="fighting"
-        [urshifu]="fighting dark"
-        [zarude]="dark grass"
-        [regieleki]="electric"
-        [regidrago]="dragon"
-        [glastrier]="ice"
-        [spectrier]="ghost"
-        [calyrex]="psychic grass"
-        # Gen 9
-        [koraidon]="fighting dragon"
-        [miraidon]="electric dragon"
-        ["wo-chien"]="dark grass"
-        ["chien-pao"]="dark ice"
-        ["ting-lu"]="dark ground"
-        ["chi-yu"]="dark fire"
-        [okidogi]="poison fighting"
-        [munkidori]="poison psychic"
-        [fezandipiti]="poison fairy"
-        [ogerpon]="grass"
-        [terapagos]="normal"
-        [pecharunt]="poison ghost"
-    )
-fi
-
-# _json_int_array <space-separated-ints>
-# Print a JSON array literal from space-separated integers.
-function _json_int_array {
-    local -a parts
-    read -ra parts <<<"$1"
-    local IFS=,
-    printf '[%s]' "${parts[*]}"
-}
+# Roll legendaries from the active biome's pool. The roster is built dynamically
+# by encounter_build_pool and shipped inside each pool file's .legendaries[];
+# there is no static species list here.
 
 # legendary_roll_species_for_biome <biome_id>
-# Print a random legendary whose types intersect the biome's types. Falls back
-# to any legendary if none intersect (defensive — should never trigger given
-# the current roster covers all 18 types). Returns 1 if the biome is unknown.
+# Print a random {species, varieties} entry from the biome pool's .legendaries.
+# Returns 1 if the biome has no pool or no legendaries.
 function legendary_roll_species_for_biome {
     local biome="$1"
-    if ! command -v biome_types_for >/dev/null; then
+    if ! command -v encounter_pool_load >/dev/null; then
         # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/biome.bash"
+        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
     fi
-
-    local btypes
-    if ! btypes="$(biome_types_for "${biome}")"; then
+    local pool
+    if ! pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
+        printf 'legendary_roll_species_for_biome: no pool for biome %s\n' "${biome}" >&2
         return 1
     fi
-
-    local -a candidates=()
-    local sp
-    for sp in "${!LEGENDARY_TYPES[@]}"; do
-        local -a type_list
-        read -ra type_list <<<"${LEGENDARY_TYPES[${sp}]}"
-        local -i match=0
-        local t
-        for t in "${type_list[@]}"; do
-            local bt
-            while IFS= read -r bt; do
-                if [[ -z "${bt}" ]]; then
-                    continue
-                fi
-                if [[ "${t}" == "${bt}" ]]; then
-                    match=1
-                    break
-                fi
-            done <<<"${btypes}"
-            if ((match)); then
-                break
-            fi
-        done
-        if ((match)); then
-            candidates+=("${sp}")
-        fi
-    done
-
-    local -i n="${#candidates[@]}"
+    local -i n
+    n="$(jq '(.legendaries // []) | length' <<<"${pool}" 2>/dev/null)"
     if ((n == 0)); then
-        printf 'legendary_roll_species_for_biome: no legendary matches biome %s types\n' "${biome}" >&2
+        printf 'legendary_roll_species_for_biome: no legendaries in biome %s pool\n' "${biome}" >&2
         return 1
     fi
-    printf '%s' "${candidates[$((RANDOM % n))]}"
+    jq -c --argjson i "$((RANDOM % n))" '.legendaries[$i]' <<<"${pool}"
 }
 
-# legendary_build_encounter <species> <biome_id>
+# legendary_build_encounter <entry_json> <biome_id>
 # Print a JSON encounter object ready for db_insert_encounter (after adding
 # session_id, encountered_at, sprite_path). Always sets .is_legendary=true and
-# .held_berry=null. Returns 1 if any roll step fails.
+# .held_berry=null. <entry_json> is a {species, varieties} object from
+# legendary_roll_species_for_biome. Returns 1 if any roll step fails.
 function legendary_build_encounter {
-    local sp="$1"
+    local entry="$1"
     local biome="$2"
     if ! command -v encounter_natures_list >/dev/null; then
         # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
         source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
     fi
-    # Forme-bearing legendaries (shaymin, deoxys, giratina, landorus, …) have
-    # no /pokemon/<species-name> resource — only /pokemon/<variety>. Roll a
-    # random variety per encounter; falls back to bare species name.
-    local variety
-    variety="$(encounter_pick_variety "${sp}")"
-    if [[ -z "${variety}" || "${variety}" == "null" ]]; then
-        variety="${sp}"
+    local sp
+    sp="$(jq -r '.species' <<<"${entry}")"
+    # Pick the encountered form from the entry's biome-type-coherent, wild-legal
+    # varieties[] (mirrors encounter_roll_pokemon). The encounter's species field
+    # stays bare; /pokemon and ability/move fetches use the variety.
+    local -a vlist=()
+    mapfile -t vlist < <(jq -r '.varieties[]' <<<"${entry}")
+    if ((${#vlist[@]} == 0)); then
+        vlist=("${sp}")
     fi
+    local variety="${vlist[$((RANDOM % ${#vlist[@]}))]}"
     local poke
     if ! poke="$(pokeapi_get "pokemon/${variety}")"; then
         return 1
