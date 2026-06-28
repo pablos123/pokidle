@@ -191,6 +191,20 @@ setup() {
     [[ "$out" != *"LEGENDARY"* ]]
 }
 
+@test "notify_pokemon: title shows the encountered variety, not the bare species" {
+    local enc out
+    enc='{"species":"meowth","variety":"meowth-galar","level":12,"nature":"jolly","ability":"pickup","gender":"M","shiny":0,"held_berry":null,"biome_label":"City","stats":[20,18,16,12,14,22],"moves":["scratch"],"sprite_path":""}'
+    out="$(notify_pokemon "$enc")"
+    [[ "$out" == *"Meowth Galar"* ]]
+}
+
+@test "notify_pokemon: falls back to species when variety absent" {
+    local enc out
+    enc='{"species":"pidgey","level":3,"nature":"jolly","ability":"keen-eye","gender":"M","shiny":0,"held_berry":null,"biome_label":"Plain","stats":[20,18,16,12,14,22],"moves":["tackle"],"sprite_path":""}'
+    out="$(notify_pokemon "$enc")"
+    [[ "$out" == *"Pidgey"* ]]
+}
+
 @test "notify_item: empty item name is rejected, no notification" {
     run notify_item '{"item":"","sprite_path":""}'
     [ "$status" -ne 0 ]

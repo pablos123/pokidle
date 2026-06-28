@@ -51,6 +51,55 @@ _seed_rattata_in_current_week() {
                 17, 13, 11, 9, 10, 14);"
 }
 
+_seed_meowth_galar_in_current_week() {
+    sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
+    local mon_ts dow
+    dow="$(date +%u)"
+    mon_ts="$(date -d "$(( dow - 1 )) days ago $(date +%F) 00:00:00" +%s 2>/dev/null \
+              || date -v-$(( dow - 1 ))d -v0H -v0M -v0S +%s)"
+    local now=$((mon_ts + 86400))
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('city', $mon_ts);
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json,
+            friendship, iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
+            ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe,
+            stat_hp, stat_atk, stat_def, stat_spa, stat_spd, stat_spe)
+            VALUES (1, $now, 'meowth', 'meowth-galar', 52, 5, 'hardy', 'pickup', 0, 'M', 0, '[]', 70,
+                10,10,10,10,10,10, 0,0,0,0,0,0,
+                17, 13, 11, 9, 10, 14);"
+    # Base stats for the Galar form (distinct from Kanto Meowth).
+    cat > "$POKEAPI_CACHE_DIR/pokemon/meowth-galar.json" <<'EOF'
+{"id":10161,"sprites":{"front_default":"","front_shiny":""},
+ "stats":[
+   {"base_stat":50,"stat":{"name":"hp"}},
+   {"base_stat":65,"stat":{"name":"attack"}},
+   {"base_stat":55,"stat":{"name":"defense"}},
+   {"base_stat":40,"stat":{"name":"special-attack"}},
+   {"base_stat":40,"stat":{"name":"special-defense"}},
+   {"base_stat":40,"stat":{"name":"speed"}}]}
+EOF
+}
+
+@test "pokidle tick level: leveled candidate reports its variety, recomputes from variety stats" {
+    _seed_meowth_galar_in_current_week
+    local i hit=0 out
+    for i in {1..60}; do
+        out="$("$REPO_ROOT/pokidle" tick level --no-dry-run --no-notify --json 2>/dev/null)"
+        [ -n "$out" ] || continue
+        local n
+        n="$(jq '.leveled | length' <<< "$out")"
+        if (( n > 0 )); then
+            hit=1
+            local sp
+            sp="$(jq -r '.leveled[0].species' <<< "$out")"
+            [ "$sp" = "meowth-galar" ]
+            break
+        fi
+    done
+    [ "$hit" = "1" ]
+}
+
 @test "pokidle tick level --json bumps eligible low-level candidate" {
     _seed_rattata_in_current_week
     local i hit=0 out

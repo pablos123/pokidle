@@ -949,3 +949,13 @@ _seed_pokeapi_cache() {
     [[ "$output" == *"@ Leftovers"* ]]
     ! grep -qi 'abomasite' <<<"$output"
 }
+
+@test "_pokidle_print_encounter: shows the encountered variety, not bare species" {
+    run env POKIDLE_TEST_SOURCE_ONLY=1 bash -c '
+        source "'"${REPO_ROOT}"'/pokidle"
+        enc='"'"'{"species":"meowth","variety":"meowth-galar","level":12,"nature":"jolly","ability":"pickup","gender":"M","shiny":0,"held_berry":null,"biome_label":"City","ivs":[1,2,3,4,5,6],"evs":[0,0,0,0,0,0],"moves":["scratch"]}'"'"'
+        _pokidle_print_encounter encounter "$enc"
+    '
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"meowth-galar"* ]]
+}

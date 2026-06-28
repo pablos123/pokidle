@@ -379,5 +379,11 @@ function evolution_apply {
         fi
     fi
 
-    db_update_encounter_evolved "${enc_id}" "${species}" "${dex_id}" "${sprite_local}" "${stats}" "${variety}"
+    if ! db_update_encounter_evolved "${enc_id}" "${species}" "${dex_id}" "${sprite_local}" "${stats}" "${variety}"; then
+        return 1
+    fi
+    # Echo the resolved result form so the caller can show it (e.g. the evolution
+    # notification's "→ <to>"). This is the function's only stdout, so the caller
+    # can capture it directly.
+    printf '%s' "${variety}"
 }

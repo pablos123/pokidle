@@ -61,8 +61,10 @@ function _emit {
 # Notify about an encounter (with shiny/legendary prefix) and play its sound.
 function notify_pokemon {
     local enc="$1"
+    # The title shows the encountered form (e.g. meowth-galar), matching the
+    # variety-resolved sprite; fall back to the bare species when absent.
     local species
-    species="$(jq -r '.species' <<<"${enc}")"
+    species="$(jq -r '.variety // .species' <<<"${enc}")"
     # Defense in depth: never emit an empty-species encounter notification.
     if [[ -z "${species}" || "${species}" == "null" ]]; then
         printf 'notify_pokemon: empty species, skipping notification\n' >&2

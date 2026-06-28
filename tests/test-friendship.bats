@@ -27,6 +27,31 @@ _seed_friendly() {
             VALUES (1, $now, 'rattata', 19, 5, 'hardy', 'guts', 0, 'M', 0, '[]', $fr);"
 }
 
+@test "pokidle tick friendship: befriended candidate reports its variety" {
+    local mon_ts dow
+    dow="$(date +%u)"
+    mon_ts="$(date -d "$(( dow - 1 )) days ago $(date +%F) 00:00:00" +%s 2>/dev/null \
+              || date -v-$(( dow - 1 ))d -v0H -v0M -v0S +%s)"
+    local now=$((mon_ts + 86400))
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('city', $mon_ts);
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json, friendship)
+            VALUES (1, $now, 'meowth', 'meowth-galar', 52, 5, 'hardy', 'pickup', 0, 'M', 0, '[]', 70);"
+    local i hit=0 out
+    for i in {1..30}; do
+        out="$("$REPO_ROOT/pokidle" tick friendship --dry-run --no-notify --json 2>/dev/null)"
+        local n
+        n="$(jq '.befriended | length' <<< "$out")"
+        if (( n > 0 )); then
+            hit=1
+            [ "$(jq -r '.befriended[0].species' <<< "$out")" = "meowth-galar" ]
+            break
+        fi
+    done
+    [ "$hit" = "1" ]
+}
+
 @test "pokidle tick friendship --json bumps friendship by 5 when roll < 50" {
     _seed_friendly 70
     local i hit=0 out
