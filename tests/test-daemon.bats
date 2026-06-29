@@ -135,9 +135,10 @@ source_pokidle_lib() {
     # Open biome session so the tick resolves a biome.
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);"
-    # Simulate a PokeAPI fetch failure during the item lookup.
-    pokeapi_get() { return 1; }
-    export -f pokeapi_get
+    # Simulate an empty item pool so the roll fails (the roll no longer fetches
+    # from PokeAPI, so an outage can't fail it — only an empty pool can).
+    encounter_roll_item() { return 1; }
+    export -f encounter_roll_item
     # The daemon invokes this under `if ! pokidle_tick item`, which suppresses
     # set -e — a failed roll must return nonzero, not fall through to an empty
     # drop and a bogus "Found " notification.

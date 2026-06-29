@@ -408,15 +408,15 @@ EOF
     echo "$output" | grep -qx "fire-stone"
 }
 
-@test "encounter_roll_pickup: returns item with item and sprite_url keys" {
-    run encounter_roll_pickup
-    [ "$status" -eq 0 ]
-    local item sprite
-    item="$(jq -r '.item' <<< "$output")"
-    sprite="$(jq -r '.sprite_url' <<< "$output")"
+@test "encounter_roll_pickup: returns item key, no sprite fetch" {
+    local out item
+    out="$(encounter_roll_pickup)"
+    item="$(jq -r '.item' <<< "$out")"
     [ -n "$item" ]
     [ "$item" != "null" ]
-    [ -n "$sprite" ]
+    # Sprite is resolved by the tick, not the roll; no dead sprite_url field.
+    run jq -e 'has("sprite_url")' <<<"$out"
+    [ "$status" -ne 0 ]
 }
 
 @test "encounter_roll_pickup: rate 0 picks a typeless holdable item" {

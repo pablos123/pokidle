@@ -975,7 +975,8 @@ function _encounter_typed_items_for_biome {
 # with probability POKIDLE_EVOLUTION_ITEM_RATE% (default 15) pick from
 # encounter_evolution_items; otherwise pick from showdown_typeless_holdable_items
 # (falling back to evolution items if typeless holdable yields nothing).
-# Prints {"item","sprite_url"}; returns 1 on an empty pool or fetch failure.
+# Prints {"item"}; returns 1 on an empty pool. The sprite is resolved later
+# by the tick (via item_sprite), so the roll does no network fetch.
 function encounter_roll_pickup {
     if ! command -v showdown_typeless_holdable_items >/dev/null; then
         # shellcheck disable=SC1091
@@ -998,18 +999,13 @@ function encounter_roll_pickup {
         return 1
     fi
     local name="${pool[$((RANDOM % n))]}"
-    local item_json
-    if ! item_json="$(pokeapi_get "item/${name}")"; then
-        return 1
-    fi
-    local sprite
-    sprite="$(jq -r '.sprites.default // ""' <<<"${item_json}")"
-    jq -n --arg item "${name}" --arg sprite "${sprite}" '{item: $item, sprite_url: $sprite}'
+    jq -n --arg item "${name}" '{item: $item}'
 }
 
 # encounter_roll_item <biome_id>
 # Roll a biome item drop from the pool file's typed items + berries. Prints
-# {"item","sprite_url"}; returns 1 on an empty pool or fetch failure.
+# {"item"}; returns 1 on an empty pool. The sprite is resolved later by the
+# tick (via item_sprite), so the roll does no network fetch.
 function encounter_roll_item {
     local biome_id="$1"
     local pool
@@ -1024,11 +1020,5 @@ function encounter_roll_item {
         return 1
     fi
     local name="${candidates[$((RANDOM % n))]}"
-    local item_json
-    if ! item_json="$(pokeapi_get "item/${name}")"; then
-        return 1
-    fi
-    local sprite
-    sprite="$(jq -r '.sprites.default // ""' <<<"${item_json}")"
-    jq -n --arg item "${name}" --arg sprite "${sprite}" '{item: $item, sprite_url: $sprite}'
+    jq -n --arg item "${name}" '{item: $item}'
 }

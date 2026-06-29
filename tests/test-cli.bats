@@ -669,7 +669,7 @@ _seed_pokeapi_cache() {
     [[ "$output" == *"Usage:"* ]]
 }
 
-@test "pokidle tick pickup --dry-run: emits item json with item and sprite_url" {
+@test "pokidle tick pickup --dry-run: emits item json with item key" {
     sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
