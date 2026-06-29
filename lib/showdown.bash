@@ -186,13 +186,13 @@ function _showdown_fetch_items {
 
 # _showdown_excluded_item_categories
 # Print one PokeAPI item slug per line for every item that is never a legal
-# competitive HELD item: evolution items, mega stones, and Z-crystals. PokeAPI's
-# "--held" suffix is stripped so slugs match our Showdown-derived holdable slugs.
-# Best-effort: a category whose fetch fails contributes nothing (the holdable
-# list stays legal, just broader).
+# competitive HELD item: evolution items, mega stones, Z-crystals, and machines
+# (TMs/TRs). PokeAPI's "--held" suffix is stripped so slugs match our
+# Showdown-derived holdable slugs. Best-effort: a category whose fetch fails
+# contributes nothing (the holdable list stays legal, just broader).
 function _showdown_excluded_item_categories {
     local c body
-    for c in evolution mega-stones z-crystals; do
+    for c in evolution mega-stones z-crystals all-machines; do
         if body="$(pokeapi_get "item-category/${c}")"; then
             jq -r '.items[].name' <<<"${body}"
         fi

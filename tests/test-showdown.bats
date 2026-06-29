@@ -82,6 +82,27 @@ setup() {
     [ "$output" = "$(printf 'air-balloon\t\t0\ncharcoal\tfire\t0\nfire-gem\tfire\t0\nflame-plate\tfire\t0\nleftovers\t\t0\nquick-claw\t\t0\nsitrus-berry\tpsychic\t1')" ]
 }
 
+@test "_showdown_build_holdable_meta: drops machines/TR rows via all-machines category" {
+    # items.js carries leftovers (legal) and tr00 (a TR / all-machines item).
+    _showdown_fetch_items() {
+        printf '%s' 'exports.BattleItems = {leftovers:{name:"Leftovers",num:234,gen:2},tr00:{name:"TR00",num:1130,gen:8}};'
+    }
+    # all-machines lists tr00; the other excluded categories contribute nothing.
+    pokeapi_get() {
+        case "$1" in
+            item-category/all-machines) printf '{"items":[{"name":"tr00"}]}' ;;
+            item-category/*) printf '{"items":[]}' ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f _showdown_fetch_items pokeapi_get
+    run _showdown_build_holdable_meta
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx $'leftovers\t\t0'
+    run bash -c "printf '%s\n' \"$output\" | grep -qx $'tr00\t\t0'"
+    [ "$status" -ne 0 ]
+}
+
 @test "showdown_typed_holdable_items: only typed non-berry rows as slug<TAB>type" {
     run showdown_typed_holdable_items
     [ "$status" -eq 0 ]
