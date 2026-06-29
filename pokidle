@@ -81,16 +81,9 @@ Commands:
                             --reverse         Reverse the sort (default: ascending)
                             --no-images       Skip inline sprite previews
                             --json            Emit raw JSON
-  export [filters]        Random Pokémon Showdown team: up to 6 distinct
-                          species from the current week (override window with
-                          --since/--until DATE; YYYY-MM-DD or any date(1)
-                          string), each given a distinct, Showdown-
-                          legal held item from item drops in the same window.
-                          Accepts the same filters as encounters (incl.
-                          --min-level/--max-level). Each mon's moves are trimmed
-                          to its National Dex legal set and event-only
-                          species (Paradox Pokémon) are never exported, as
-                          Showdown rejects both on import.
+  export [filters]        Random Pokémon Showdown team: up to 6 species
+                          (default: current week; --since/--until DATE to
+                          override). Same filters as encounters.
   items [filters]         Pretty list of item drops
                             --since DATE      Drops at/after DATE (YYYY-MM-DD or any date(1) string)
                             --until DATE      Drops at/before DATE (YYYY-MM-DD or any date(1) string)
