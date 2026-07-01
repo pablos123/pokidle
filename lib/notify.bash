@@ -157,7 +157,7 @@ function _play_sound {
     local -i enabled_default
     case "${kind}" in
         shiny | legendary) enabled_default=1 ;;
-        encounter | item | biome | level | friendship) enabled_default=0 ;;
+        encounter | item | pickup | biome | level | friendship) enabled_default=0 ;;
         *) return 0 ;;
     esac
     local toggle="POKIDLE_SOUND_${kind^^}_ENABLED"
@@ -183,6 +183,7 @@ function _play_sound {
         shiny) file="${POKIDLE_SOUND_SHINY:-${sounds_dir}/shiny.ogg}" ;;
         encounter) file="${POKIDLE_SOUND_ENCOUNTER:-${sounds_dir}/encounter.ogg}" ;;
         item) file="${POKIDLE_SOUND_ITEM:-${sounds_dir}/item.ogg}" ;;
+        pickup) file="${POKIDLE_SOUND_PICKUP:-${sounds_dir}/item.ogg}" ;;
         biome) file="${POKIDLE_SOUND_BIOME:-${sounds_dir}/biome.ogg}" ;;
         level) file="${POKIDLE_SOUND_LEVEL:-${sounds_dir}/level.ogg}" ;;
         friendship) file="${POKIDLE_SOUND_FRIENDSHIP:-${sounds_dir}/friendship.ogg}" ;;
@@ -222,7 +223,7 @@ function notify_item {
 }
 
 # notify_pickup <item_json>
-# Notify about a pickup item drop (biome-agnostic) and play the item sound.
+# Notify about a pickup item drop (biome-agnostic) and play the pickup sound.
 function notify_pickup {
     local item_json="$1"
     local name
@@ -242,7 +243,7 @@ function notify_pickup {
     local title="Pickup: ${name_t}"
     local body=""
     _emit "${title}" "${body}" "low" "${icon}"
-    _play_sound item
+    _play_sound pickup
 }
 
 # notify_evolution <evo_json>

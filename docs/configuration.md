@@ -31,7 +31,8 @@ Each event kind has its own interval in **seconds**. The daemon fires a kind whe
 | Variable | Default | Event |
 |----------|---------|-------|
 | `POKIDLE_POKEMON_INTERVAL` | `3600` (1 h) | Wild Pokemon encounter. |
-| `POKIDLE_ITEM_INTERVAL` | `3600` (1 h) | Held-item drop. |
+| `POKIDLE_ITEM_INTERVAL` | `7200` (2 h) | Biome held-item drop. |
+| `POKIDLE_PICKUP_INTERVAL` | `7200` (2 h) | Biome-agnostic pickup drop (evolution/form/typeless items). |
 | `POKIDLE_LEVEL_INTERVAL` | `3600` (1 h) | Level-up pass over current-week catches. |
 | `POKIDLE_FRIENDSHIP_INTERVAL` | `1800` (30 min) | Friendship pass over current-week catches. |
 | `POKIDLE_EVOLVE_INTERVAL` | `10800` (3 h) | Evolution pass over current-week catches. |
@@ -45,7 +46,8 @@ Set to `0` to skip that tick in the daemon loop; the timer still advances, so it
 | Variable | Default | Kind |
 |----------|---------|------|
 | `POKIDLE_POKEMON_ENABLED` | `1` | Wild encounters. |
-| `POKIDLE_ITEM_ENABLED` | `1` | Item drops. |
+| `POKIDLE_ITEM_ENABLED` | `1` | Biome item drops. |
+| `POKIDLE_PICKUP_ENABLED` | `1` | Pickup drops. |
 | `POKIDLE_LEVEL_ENABLED` | `1` | Level-up pass. |
 | `POKIDLE_FRIENDSHIP_ENABLED` | `1` | Friendship pass. |
 | `POKIDLE_EVOLVE_ENABLED` | `1` | Evolution pass. |
@@ -98,7 +100,7 @@ The species is chosen at random among legendaries whose types intersect the acti
 
 ## Event log
 
-The daemon records one row per real tick event (encounter, item, level,
+The daemon records one row per real tick event (encounter, item, pickup, level,
 friendship, evolve, legendary) in the `event_log` table; `pokidle log` prints
 them one line each. Rows older than the retention window are pruned by the
 daemon on each loop, and `pokidle log` never displays rows beyond the window.
@@ -112,7 +114,8 @@ daemon on each loop, and `pokidle log` never displays rows beyond the window.
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `POKIDLE_NOTIFY_POKEMON` | `1` | Wild, shiny, and legendary encounter notifications. |
-| `POKIDLE_NOTIFY_ITEM` | `1` | Held-item drop notifications. |
+| `POKIDLE_NOTIFY_ITEM` | `1` | Biome held-item drop notifications. |
+| `POKIDLE_NOTIFY_PICKUP` | `1` | Pickup drop notifications. |
 | `POKIDLE_NOTIFY_BIOME` | `1` | Biome rotation notifications. |
 | `POKIDLE_NOTIFY_EVOLVE` | `1` | Evolution notifications. |
 | `POKIDLE_NOTIFY_LEVEL` | `0` | Level-up tick notifications (per mon). |
@@ -135,7 +138,8 @@ daemon on each loop, and `pokidle log` never displays rows beyond the window.
 | `POKIDLE_SOUND_SHINY_ENABLED` | `1` | shiny encounter |
 | `POKIDLE_SOUND_LEGENDARY_ENABLED` | `1` | legendary encounter |
 | `POKIDLE_SOUND_ENCOUNTER_ENABLED` | `0` | normal encounter (also used by the evolve event) |
-| `POKIDLE_SOUND_ITEM_ENABLED` | `0` | item drop |
+| `POKIDLE_SOUND_ITEM_ENABLED` | `0` | biome item drop |
+| `POKIDLE_SOUND_PICKUP_ENABLED` | `0` | pickup drop |
 | `POKIDLE_SOUND_BIOME_ENABLED` | `0` | biome rotation |
 | `POKIDLE_SOUND_LEVEL_ENABLED` | `0` | level-up tick |
 | `POKIDLE_SOUND_FRIENDSHIP_ENABLED` | `0` | friendship tick |
@@ -157,6 +161,7 @@ A missing file is a silent skip. Playback uses `paplay` (PulseAudio) if availabl
 | `POKIDLE_SOUND_SHINY` | `$POKIDLE_SOUND_DIR/shiny.ogg` |
 | `POKIDLE_SOUND_LEGENDARY` | `$POKIDLE_SOUND_DIR/legendary.ogg` |
 | `POKIDLE_SOUND_ITEM` | `$POKIDLE_SOUND_DIR/item.ogg` |
+| `POKIDLE_SOUND_PICKUP` | `$POKIDLE_SOUND_DIR/item.ogg` |
 | `POKIDLE_SOUND_BIOME` | `$POKIDLE_SOUND_DIR/biome.ogg` |
 | `POKIDLE_SOUND_LEVEL` | `$POKIDLE_SOUND_DIR/level.ogg` |
 | `POKIDLE_SOUND_FRIENDSHIP` | `$POKIDLE_SOUND_DIR/friendship.ogg` |

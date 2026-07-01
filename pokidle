@@ -254,13 +254,13 @@ function _pokidle_daemon_run {
     local next_item
     next_item="$(db_state_get last_item_tick_target)"
     if ((${next_item:-0} <= now)); then
-        next_item="$(_pokidle_next_tick_target "${now}" "${POKIDLE_ITEM_INTERVAL:-3600}")"
+        next_item="$(_pokidle_next_tick_target "${now}" "${POKIDLE_ITEM_INTERVAL:-7200}")"
         _pokidle_persist_target last_item_tick_target "${next_item}"
     fi
     local next_pickup
     next_pickup="$(db_state_get last_pickup_tick_target)"
     if ((${next_pickup:-0} <= now)); then
-        next_pickup="$(_pokidle_next_tick_target "${now}" "${POKIDLE_PICKUP_INTERVAL:-3600}")"
+        next_pickup="$(_pokidle_next_tick_target "${now}" "${POKIDLE_PICKUP_INTERVAL:-7200}")"
         _pokidle_persist_target last_pickup_tick_target "${next_pickup}"
     fi
     local next_level
@@ -312,21 +312,21 @@ function _pokidle_daemon_run {
             _pokidle_persist_target last_pokemon_tick_target "${next_pokemon}"
         fi
         if ((now >= next_item)); then
-            if _pokidle_should_fire "${now}" "${next_item}" "${POKIDLE_ITEM_ENABLED:-1}" "${POKIDLE_ITEM_INTERVAL:-3600}"; then
+            if _pokidle_should_fire "${now}" "${next_item}" "${POKIDLE_ITEM_ENABLED:-1}" "${POKIDLE_ITEM_INTERVAL:-7200}"; then
                 if ! pokidle_tick item --no-dry-run; then
                     printf 'daemon: item tick failed (continuing)\n' >&2
                 fi
             fi
-            next_item="$(_pokidle_next_tick_target "${now}" "${POKIDLE_ITEM_INTERVAL:-3600}")"
+            next_item="$(_pokidle_next_tick_target "${now}" "${POKIDLE_ITEM_INTERVAL:-7200}")"
             _pokidle_persist_target last_item_tick_target "${next_item}"
         fi
         if ((now >= next_pickup)); then
-            if _pokidle_should_fire "${now}" "${next_pickup}" "${POKIDLE_PICKUP_ENABLED:-1}" "${POKIDLE_PICKUP_INTERVAL:-3600}"; then
+            if _pokidle_should_fire "${now}" "${next_pickup}" "${POKIDLE_PICKUP_ENABLED:-1}" "${POKIDLE_PICKUP_INTERVAL:-7200}"; then
                 if ! pokidle_tick pickup --no-dry-run; then
                     printf 'daemon: pickup tick failed (continuing)\n' >&2
                 fi
             fi
-            next_pickup="$(_pokidle_next_tick_target "${now}" "${POKIDLE_PICKUP_INTERVAL:-3600}")"
+            next_pickup="$(_pokidle_next_tick_target "${now}" "${POKIDLE_PICKUP_INTERVAL:-7200}")"
             _pokidle_persist_target last_pickup_tick_target "${next_pickup}"
         fi
         if ((now >= next_level)); then
