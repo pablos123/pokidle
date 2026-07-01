@@ -483,6 +483,53 @@ EOF
     [ ! -f "$tmpdb" ]
 }
 
+@test "pokidle clean showdown --yes purges the showdown cache" {
+    local tmp
+    tmp="$(mktemp -d)"
+    POKIDLE_SHOWDOWN_CACHE_DIR="$tmp/showdown"
+    export POKIDLE_SHOWDOWN_CACHE_DIR
+    mkdir -p "$POKIDLE_SHOWDOWN_CACHE_DIR"
+    : > "$POKIDLE_SHOWDOWN_CACHE_DIR/pokedex.json"
+    : > "$POKIDLE_SHOWDOWN_CACHE_DIR/items.js"
+    run "$REPO_ROOT/pokidle" clean showdown --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$POKIDLE_SHOWDOWN_CACHE_DIR" ]
+}
+
+@test "pokidle clean pokeapi --yes purges the pokeapi cache" {
+    local tmp
+    tmp="$(mktemp -d)"
+    POKEAPI_CACHE_DIR="$tmp/pokeapi"
+    export POKEAPI_CACHE_DIR
+    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
+    : > "$POKEAPI_CACHE_DIR/pokemon/treecko.json"
+    run "$REPO_ROOT/pokidle" clean pokeapi --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$POKEAPI_CACHE_DIR" ]
+}
+
+@test "pokidle clean all --yes also wipes showdown + pokeapi caches" {
+    local tmp
+    tmp="$(mktemp -d)"
+    POKIDLE_CACHE_DIR="$tmp/cache"
+    POKIDLE_SHOWDOWN_CACHE_DIR="$tmp/showdown"
+    POKEAPI_CACHE_DIR="$tmp/pokeapi"
+    POKIDLE_DB_PATH="$tmp/x.db"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_CACHE_DIR POKIDLE_SHOWDOWN_CACHE_DIR POKEAPI_CACHE_DIR POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    mkdir -p "$POKIDLE_CACHE_DIR/pools" "$POKIDLE_SHOWDOWN_CACHE_DIR" "$POKEAPI_CACHE_DIR"
+    : > "$POKIDLE_CACHE_DIR/pools/forest.json"
+    : > "$POKIDLE_SHOWDOWN_CACHE_DIR/pokedex.json"
+    : > "$POKEAPI_CACHE_DIR/x.json"
+    sqlite3 "$POKIDLE_DB_PATH" "CREATE TABLE x(a INTEGER);"
+    run "$REPO_ROOT/pokidle" clean all --yes
+    [ "$status" -eq 0 ]
+    [ ! -d "$POKIDLE_CACHE_DIR/pools" ]
+    [ ! -d "$POKIDLE_SHOWDOWN_CACHE_DIR" ]
+    [ ! -d "$POKEAPI_CACHE_DIR" ]
+    [ ! -f "$POKIDLE_DB_PATH" ]
+}
+
 @test "pokidle clean without target prints usage and fails" {
     run "$REPO_ROOT/pokidle" clean
     [ "$status" -ne 0 ]
@@ -958,4 +1005,149 @@ _seed_pokeapi_cache() {
     '
     [ "$status" -eq 0 ]
     [[ "$output" == *"meowth-galar"* ]]
+}
+
+@test "pokidle pokeapi: id subcommand reads the cache and prints the id" {
+    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
+    printf '%s' '{"id":252,"name":"treecko"}' > "$POKEAPI_CACHE_DIR/pokemon/treecko.json"
+    run "$REPO_ROOT/pokidle" pokeapi id treecko
+    [ "$status" -eq 0 ]
+    [ "$output" = "252" ]
+}
+
+@test "pokidle pokeapi: help lists subcommands" {
+    run "$REPO_ROOT/pokidle" pokeapi help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"get <endpoint>"* ]]
+}
+
+@test "pokidle showdown: name resolves the Showdown display name" {
+    run "$REPO_ROOT/pokidle" showdown name iron-hands
+    [ "$status" -eq 0 ]
+    [ "$output" = "Iron Hands" ]
+}
+
+@test "pokidle showdown: abilities lists the legal ability set" {
+    run "$REPO_ROOT/pokidle" showdown abilities corviknight
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pressure"* ]]
+}
+
+@test "pokidle showdown: help lists subcommands" {
+    run "$REPO_ROOT/pokidle" showdown help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"abilities"* ]]
+}
+
+@test "standalone pokeapi executable is gone" {
+    [ ! -e "$REPO_ROOT/pokeapi" ]
+}
+
+@test "export skips a mon whose Showdown name cannot resolve, keeps the rest" {
+    _seed_schema
+    local sid; sid="$(_mk_session tundra)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" snorlax "$now"          # in the seeded Showdown fixture
+    _ins_enc "$sid" zzzunknownmon "$now"    # not in fixture -> no Showdown name
+    local out="$BATS_TMPDIR/exp.$$"
+    local status=0
+    "$REPO_ROOT/pokidle" export >"$out" 2>/dev/null || status=$?
+    [ "$status" -eq 0 ]
+    grep -q "Snorlax" "$out"
+    ! grep -qi "zzzunknownmon" "$out"
+}
+
+@test "export assigns a held form-item (mega stone) to its matching mon" {
+    _seed_schema
+    local sid; sid="$(_mk_session volcano)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" charizard "$now"
+    _ins_item "$sid" charizardite-x "$now"
+    printf 'charizardite-x\tcharizard\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Charizard @ Charizardite X"* ]]
+}
+
+@test "export never puts a form-item on a non-matching mon" {
+    _seed_schema
+    local sid; sid="$(_mk_session forest)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" pidgey "$now"
+    _ins_item "$sid" charizardite-x "$now"
+    printf 'charizardite-x\tcharizard\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Charizardite"* ]]
+}
+
+@test "export --force-level overrides level on every mon" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" snorlax "$now"
+    run "$REPO_ROOT/pokidle" export --force-level 100
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Level: 100"* ]]
+    [[ "$output" != *"Level: 50"* ]]
+}
+
+@test "export --force-perfect sets all IVs to 31" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'snorlax', 143, 50, 'adamant', 'overgrow', 0, 'M', 0, NULL,
+            5,5,5,5,5,5, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"tackle\"]', NULL);"
+    run "$REPO_ROOT/pokidle" export --force-perfect
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"IVs: 31 HP / 31 Atk / 31 Def / 31 SpA / 31 SpD / 31 Spe"* ]]
+}
+
+@test "export rejects non-integer --force-level" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" export --force-level abc
+    [ "$status" -ne 0 ]
+}
+
+@test "export --force-mega pulls the mega-eligible mon into the team with its stone" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    local sp
+    for sp in pidgey zubat gengar snorlax bulbasaur charmander squirtle; do
+        _ins_enc "$sid" "$sp" "$now"
+    done
+    _ins_enc "$sid" charizard "$now"
+    _ins_item "$sid" charizardite-x "$now"
+    printf 'charizardite-x\tcharizard\tmega\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
+    # 8 species, team caps at 6 — without forcing charizard could be dropped.
+    local i
+    for i in 1 2 3 4 5 6 7 8; do
+        run "$REPO_ROOT/pokidle" export --force-mega
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"Charizard @ Charizardite X"* ]]
+    done
+}
+
+@test "export --force-z pulls the Z-eligible regional form with its crystal" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'raichu', 'raichu-alola', 10026, 50, 'timid', 'surge-surfer', 0, 'M', 0, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"thunderbolt\"]', NULL);"
+    _ins_item "$sid" aloraichium-z "$now"
+    printf 'aloraichium-z\traichu-alola\tz\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
+    run "$REPO_ROOT/pokidle" export --force-z
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Raichu-Alola @ Aloraichium Z"* ]]
 }

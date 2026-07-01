@@ -25,13 +25,13 @@ function _showdown_fetch {
         -- "${POKIDLE_SHOWDOWN_BASE_URL}/${file}.json"
 }
 
-# showdown_get <file>
-# Print cached JSON for <file> (pokedex|learnsets|moves). Serve a fresh cache
-# directly; otherwise refetch and cache; on fetch failure fall back to a stale
-# cache if present. Returns 1 only when there is no data at all.
-function showdown_get {
-    local file="$1"
-    local path="${POKIDLE_SHOWDOWN_CACHE_DIR}/${file}.json"
+# _showdown_cached_fetch <path> <fetch-cmd...>
+# TTL-cache helper: serve a fresh cache at <path>; otherwise run <fetch-cmd>,
+# cache its stdout, and print it; on fetch failure fall back to a stale cache if
+# present. Returns 1 only when there is no data at all.
+function _showdown_cached_fetch {
+    local path="$1"
+    shift
     if [[ -f "${path}" ]]; then
         local now mtime
         now="$(date +%s)"
@@ -42,7 +42,7 @@ function showdown_get {
         fi
     fi
     local body
-    if body="$(_showdown_fetch "${file}")"; then
+    if body="$("$@")"; then
         printf '%s' "${body}" | atomic_write "${path}"
         printf '%s' "${body}"
         return 0
@@ -54,16 +54,76 @@ function showdown_get {
     return 1
 }
 
-# showdown_legal_abilities <variety-slug>
-# Print "<ability-slug>\t<hidden>" per legal ability of the forme. hidden=1 for
-# the "H" key. Abilities are forme-specific. Returns 1 if the id is unknown.
-function showdown_legal_abilities {
+# showdown_get <file>
+# Print cached JSON for <file> (pokedex|learnsets|moves). Serve a fresh cache
+# directly; otherwise refetch and cache; on fetch failure fall back to a stale
+# cache if present. Returns 1 only when there is no data at all.
+function showdown_get {
+    local file="$1"
+    _showdown_cached_fetch "${POKIDLE_SHOWDOWN_CACHE_DIR}/${file}.json" _showdown_fetch "${file}"
+}
+
+# showdown_items_raw
+# Print Showdown's raw items.js (a JS module), TTL-cached on disk exactly like
+# the JSON data files, so rebuilding the holdable artifact reuses the cache
+# instead of hitting the network. Returns 1 only when there is no data at all.
+function showdown_items_raw {
+    _showdown_cached_fetch "${POKIDLE_SHOWDOWN_CACHE_DIR}/items.js" _showdown_fetch_items
+}
+
+# _showdown_resolve_id <name> <pokedex-json>
+# Showdown id that actually exists in the pokedex for <name>: the full id when
+# present, else the bare species (first hyphen segment). PokeAPI default-forme
+# names (shaymin-land, giratina-altered, deoxys-normal, tornadus-incarnate, …)
+# fold to the base Showdown key, while genuine alternate formes (shaymin-sky,
+# thundurus-therian) keep their own key. Prints the full id unchanged when
+# neither resolves, so the caller's own "unknown id" path returns 1.
+function _showdown_resolve_id {
     local id
     id="$(showdown_id "$1")"
+    local pokedex="$2"
+    if jq -e --arg i "${id}" 'has($i)' <<<"${pokedex}" >/dev/null; then
+        printf '%s' "${id}"
+        return
+    fi
+    local bid
+    bid="$(showdown_id "${1%%-*}")"
+    if jq -e --arg i "${bid}" 'has($i)' <<<"${pokedex}" >/dev/null; then
+        printf '%s' "${bid}"
+        return
+    fi
+    printf '%s' "${id}"
+}
+
+# showdown_species_name <variety-slug>
+# Print the canonical Pokémon Showdown display name for a PokeAPI species/variety
+# slug (Great Tusk, Mr. Mime, Meowth-Galar, …). Default-forme slugs fold to the
+# base key. Returns 1 when Showdown data is unavailable or the slug is unknown.
+function showdown_species_name {
     local pokedex
     if ! pokedex="$(showdown_get pokedex)"; then
         return 1
     fi
+    local id
+    id="$(_showdown_resolve_id "$1" "${pokedex}")"
+    local name
+    name="$(jq -r --arg i "${id}" '.[$i].name // empty' <<<"${pokedex}")"
+    if [[ -z "${name}" ]]; then
+        return 1
+    fi
+    printf '%s' "${name}"
+}
+
+# showdown_legal_abilities <variety-slug>
+# Print "<ability-slug>\t<hidden>" per legal ability of the forme. hidden=1 for
+# the "H" key. Abilities are forme-specific. Returns 1 if the id is unknown.
+function showdown_legal_abilities {
+    local pokedex
+    if ! pokedex="$(showdown_get pokedex)"; then
+        return 1
+    fi
+    local id
+    id="$(_showdown_resolve_id "$1" "${pokedex}")"
     local out
     out="$(jq -r --arg id "${id}" '
         (.[$id].abilities // empty) | to_entries[]
@@ -80,12 +140,12 @@ function showdown_legal_abilities {
 # species (formes carry no learnset); union the base learnset up the prevo
 # chain. Returns 1 if nothing resolves.
 function showdown_legal_moves {
-    local id
-    id="$(showdown_id "$1")"
     local pokedex learn moves
     if ! pokedex="$(showdown_get pokedex)"; then return 1; fi
     if ! learn="$(showdown_get learnsets)"; then return 1; fi
     if ! moves="$(showdown_get moves)"; then return 1; fi
+    local id
+    id="$(_showdown_resolve_id "$1" "${pokedex}")"
 
     local base
     base="$(jq -r --arg id "${id}" '.[$id].baseSpecies // empty' <<<"${pokedex}")"
@@ -131,9 +191,11 @@ function showdown_legal_moves {
 # _showdown_items_meta_transform
 # Read Showdown items.js on stdin; print TSV rows <slug>\t<type|"">\t<isberry 0|1>
 # for each "universally holdable" item. Holdable = no itemUser field, not
-# isPokeball:true, and isNonstandard not in {CAP,Custom,Future,LGPE}. items.js is
-# a JS object literal (not JSON); item strings contain no braces and no escaped
-# quotes, so a brace-depth + quote-state scanner splits items unambiguously.
+# isPokeball:true, and no isNonstandard key at all (any value — Past/Future/CAP/
+# Unobtainable — marks a non-current-gen item: megas, Z-crystals, gems, fossils,
+# drives, old berries, fan-made). items.js is a JS object literal (not JSON);
+# item strings contain no braces and no escaped quotes, so a brace-depth +
+# quote-state scanner splits items unambiguously.
 function _showdown_items_meta_transform {
     # Strip the `exports.BattleItems = {` prefix and the trailing `};`.
     sed -E 's/^[^{]*\{//; s/\};?[[:space:]]*$//' \
@@ -155,7 +217,10 @@ function _showdown_items_meta_transform {
             if (rec == "") return;
             if (rec ~ /itemUser:/) return;
             if (rec ~ /isPokeball:true/) return;
-            if (rec ~ /isNonstandard:"(CAP|Custom|Future|LGPE)"/) return;
+            # Any isNonstandard value (Past/Future/CAP/Unobtainable/…) means the
+            # item is not a current-gen legal held item: megas, Z-crystals, gems,
+            # fossils, drives, old berries, fan-made items all carry it.
+            if (rec ~ /isNonstandard:/) return;
             if (!match(rec, /name:"[^"]*"/)) return;
             nm = substr(rec, RSTART + 6, RLENGTH - 7);
             s = tolower(nm); gsub(/[^a-z0-9]+/, "-", s); sub(/^-/, "", s); sub(/-$/, "", s);
@@ -185,14 +250,19 @@ function _showdown_fetch_items {
 }
 
 # _showdown_excluded_item_categories
-# Print one PokeAPI item slug per line for every item that is never a legal
-# competitive HELD item: evolution items, mega stones, Z-crystals, and machines
-# (TMs/TRs). PokeAPI's "--held" suffix is stripped so slugs match our
-# Showdown-derived holdable slugs. Best-effort: a category whose fetch fails
+# Print one PokeAPI item slug per line for items that survive the isNonstandard
+# filter (no key) but are still never a team held item:
+#   - evolution: Fire Stone etc. are standard yet inert when held (evolution
+#     mechanic / item_drops).
+#   - all-machines: TMs/TRs. Today's TRs are isNonstandard:Past (already dropped),
+#     so this is a safety net against a future standard machine item.
+# Mega stones and Z-crystals are isNonstandard:Past and dropped by the transform,
+# so no category is needed for them. PokeAPI's "--held" suffix is stripped so
+# slugs match our Showdown-derived holdable slugs. Best-effort: a fetch failure
 # contributes nothing (the holdable list stays legal, just broader).
 function _showdown_excluded_item_categories {
     local c body
-    for c in evolution mega-stones z-crystals all-machines; do
+    for c in evolution all-machines; do
         if body="$(pokeapi_get "item-category/${c}")"; then
             jq -r '.items[].name' <<<"${body}"
         fi
@@ -207,7 +277,7 @@ function _showdown_excluded_item_categories {
 function _showdown_build_holdable_meta {
     local path="${POKIDLE_SHOWDOWN_CACHE_DIR}/items-holdable.tsv"
     local meta
-    meta="$(_showdown_fetch_items | _showdown_items_meta_transform)"
+    meta="$(showdown_items_raw | _showdown_items_meta_transform)"
     if [[ -z "${meta}" ]]; then
         return 1
     fi
@@ -216,6 +286,108 @@ function _showdown_build_holdable_meta {
     meta="$(awk -F'\t' 'NR==FNR{x[$0]=1;next} !($1 in x)' <(printf '%s\n' "${excl}") - <<<"${meta}")"
     printf '%s\n' "${meta}" | atomic_write "${path}"
     printf '%s\n' "${meta}"
+}
+
+# _showdown_form_items_transform
+# Read Showdown items.js on stdin; print TSV rows
+# <item-slug>\t<eligible-slug>\t<class> for species-specific FORM items only: an
+# item with itemUser AND one of megaStone / isPrimalOrb:true / zMove. class is
+# mega|primal|z. One row per itemUser entry. Generic type Z-crystals (no
+# itemUser) and plain items are skipped; Future/CAP/etc excluded (only none or
+# Past). Same brace-depth/quote scanner as the holdable transform.
+function _showdown_form_items_transform {
+    sed -E 's/^[^{]*\{//; s/\};?[[:space:]]*$//' \
+        | awk '
+        {
+            n = length($0); depth = 0; inq = 0; buf = "";
+            for (i = 1; i <= n; i++) {
+                c = substr($0, i, 1);
+                if (inq)        { buf = buf c; if (c == "\"") inq = 0; continue }
+                if (c == "\"")  { inq = 1; buf = buf c; continue }
+                if (c == "{")   { depth++; buf = buf c; continue }
+                if (c == "}")   { depth--; buf = buf c; continue }
+                if (c == "," && depth == 0) { emit(buf); buf = ""; continue }
+                buf = buf c;
+            }
+            emit(buf);
+        }
+        function slug(x,   s) { s = tolower(x); gsub(/[^a-z0-9]+/, "-", s); sub(/^-/, "", s); sub(/-$/, "", s); return s }
+        function emit(rec,   nm, it, users, j, u, cls) {
+            if (rec == "") return;
+            if (rec !~ /itemUser:/) return;
+            if (rec !~ /megaStone:/ && rec !~ /isPrimalOrb:true/ && rec !~ /zMove:/) return;
+            # Only real items: no isNonstandard, or isNonstandard:"Past" (mega/Z/
+            # primal are past-gen but real). Future/CAP/Unobtainable are not.
+            if (rec ~ /isNonstandard:/ && rec !~ /isNonstandard:"Past"/) return;
+            if (!match(rec, /name:"[^"]*"/)) return;
+            nm = slug(substr(rec, RSTART + 6, RLENGTH - 7));
+            if (nm == "") return;
+            cls = (rec ~ /megaStone:/) ? "mega" : (rec ~ /isPrimalOrb:true/) ? "primal" : "z";
+            if (!match(rec, /itemUser:\[[^]]*\]/)) return;
+            it = substr(rec, RSTART + 9, RLENGTH - 10);   # inside the [ ]
+            j = split(it, users, ",");
+            for (u = 1; u <= j; u++) {
+                gsub(/[" ]/, "", users[u]);
+                if (users[u] != "") printf "%s\t%s\t%s\n", nm, slug(users[u]), cls;
+            }
+        }'
+}
+
+# _showdown_build_form_items_meta
+# Force-build the form-item registry artifact from the cached items.js, write
+# form-items.tsv (atomic), and print it. Returns 1 (writing nothing) when there
+# is no data.
+function _showdown_build_form_items_meta {
+    local path="${POKIDLE_SHOWDOWN_CACHE_DIR}/form-items.tsv"
+    local meta
+    meta="$(showdown_items_raw | _showdown_form_items_transform)"
+    if [[ -z "${meta}" ]]; then
+        return 1
+    fi
+    printf '%s\n' "${meta}" | atomic_write "${path}"
+    printf '%s\n' "${meta}"
+}
+
+# showdown_form_items_meta
+# Print the form-item registry (TSV item-slug<TAB>eligible-slug). Read the
+# shipped/built artifact if present (no TTL); build it once if missing.
+function showdown_form_items_meta {
+    local path="${POKIDLE_SHOWDOWN_CACHE_DIR}/form-items.tsv"
+    if [[ -f "${path}" ]]; then
+        cat -- "${path}"
+        return 0
+    fi
+    _showdown_build_form_items_meta
+}
+
+# showdown_form_item_slugs
+# Print each distinct form-item slug (field 1), the pool of droppable form-items.
+# Returns 1 when there is no registry data.
+function showdown_form_item_slugs {
+    local meta
+    if ! meta="$(showdown_form_items_meta)"; then
+        return 1
+    fi
+    cut -f1 <<<"${meta}" | sort -u
+}
+
+# showdown_form_items_for_species <species> <variety>
+# Print each form-item slug eligible for the mon (its eligible-slug equals the
+# bare species OR the variety). Returns non-zero when none match.
+function showdown_form_items_for_species {
+    local species="$1"
+    local variety="$2"
+    local meta
+    if ! meta="$(showdown_form_items_meta)"; then
+        return 1
+    fi
+    local out
+    out="$(awk -F'\t' -v sp="${species}" -v va="${variety}" \
+        '$2 == sp || $2 == va {print $1}' <<<"${meta}")"
+    if [[ -z "${out}" ]]; then
+        return 1
+    fi
+    printf '%s\n' "${out}"
 }
 
 # showdown_holdable_meta
@@ -271,4 +443,56 @@ function showdown_item_is_holdable {
         return 1
     fi
     grep -qxF -- "${slug}" <<<"${list}"
+}
+
+# _showdown_cli_usage
+# Print the `pokidle showdown` subcommand help.
+function _showdown_cli_usage {
+    cat <<'EOF'
+pokidle showdown — query the cached Pokémon Showdown data used for legality.
+
+Usage:
+  pokidle showdown <command> [args...]
+
+Commands:
+  get <pokedex|learnsets|moves>   Raw cached JSON data file
+  items-raw                       Raw cached items.js
+  name <variety>                  Showdown display name (Great Tusk, Mr. Mime, …)
+  id <name>                       Showdown id (lowercased, punctuation stripped)
+  abilities <variety>             Legal abilities: "<slug>\t<hidden>"
+  moves <variety>                 Legal move slugs, one per line
+  holdable                        Holdable item slugs, one per line
+  is-holdable <item>             Exit 0 if the item is Showdown-holdable
+  form-items                      Form-item registry: item-slug<TAB>eligible-slug
+  help, -h, --help                Show this help
+EOF
+}
+
+# showdown_cli [args...]
+# Dispatch for the `pokidle showdown` subcommand. Returns 2 on a missing or
+# unknown command.
+function showdown_cli {
+    local cmd="${1-}"
+    if [[ -z "${cmd}" ]]; then
+        _showdown_cli_usage >&2
+        return 2
+    fi
+    shift
+    case "${cmd}" in
+        get) showdown_get "$@" ;;
+        items-raw) showdown_items_raw ;;
+        name) showdown_species_name "$@" ;;
+        id) showdown_id "$@" ;;
+        abilities) showdown_legal_abilities "$@" ;;
+        moves) showdown_legal_moves "$@" ;;
+        holdable) showdown_holdable_items ;;
+        form-items) showdown_form_items_meta ;;
+        is-holdable) showdown_item_is_holdable "$@" ;;
+        help | -h | --help) _showdown_cli_usage ;;
+        *)
+            printf 'unknown command: %s\n' "${cmd}" >&2
+            _showdown_cli_usage >&2
+            return 2
+            ;;
+    esac
 }

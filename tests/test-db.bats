@@ -465,6 +465,31 @@ teardown() {
     row="$(sqlite3 "$POKIDLE_DB_PATH" \
         "SELECT species||','||dex_id||','||sprite_path||','||stat_hp||','||stat_atk||','||stat_def||','||stat_spa||','||stat_spd||','||stat_spe FROM encounters WHERE id=1;")"
     [ "$row" = "vaporeon,134,new.png,60,30,30,50,50,30" ]
+    # ability/moves untouched when not supplied.
+    local keep
+    keep="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT ability||'|'||is_hidden_ability||'|'||moves_json FROM encounters WHERE id=1;")"
+    [ "$keep" = "run-away|0|[]" ]
+}
+
+@test "db_update_encounter_evolved updates ability, is_hidden, moves when supplied" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    load_lib db
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json,
+            friendship, sprite_path)
+            VALUES (1, 1700000000, 'eevee', 133, 20, 'hardy', 'run-away', 0, 'M', 0, '[]',
+                70, 'old.png');"
+    db_update_encounter_evolved 1 vaporeon 134 "new.png" "60 30 30 50 50 30" vaporeon \
+        "water-absorb" 1 '["surf","ice-beam"]'
+    local row
+    row="$(sqlite3 "$POKIDLE_DB_PATH" \
+        "SELECT ability||'|'||is_hidden_ability||'|'||moves_json FROM encounters WHERE id=1;")"
+    [ "$row" = "water-absorb|1|[\"surf\",\"ice-beam\"]" ]
 }
 
 @test "db_consume_one_item_drop marks oldest available, keeps the row" {

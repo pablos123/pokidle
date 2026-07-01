@@ -1,6 +1,84 @@
 {
-  "thundurus": {"learnset": {"thunderbolt": ["9M"], "nastyplot": ["9M"]}},
-  "corviknight": {"learnset": {"bravebird": ["9M"], "doubleedge": ["9M"]}},
-  "corvisquire": {"learnset": {"fury attack": ["9L1"]}},
-  "rookidee": {"learnset": {"peck": ["9L1"]}}
+  "thundurus": {
+    "learnset": {
+      "thunderbolt": [
+        "9M"
+      ],
+      "nastyplot": [
+        "9M"
+      ]
+    }
+  },
+  "corviknight": {
+    "learnset": {
+      "bravebird": [
+        "9M"
+      ],
+      "doubleedge": [
+        "9M"
+      ]
+    }
+  },
+  "corvisquire": {
+    "learnset": {
+      "fury attack": [
+        "9L1"
+      ]
+    }
+  },
+  "rookidee": {
+    "learnset": {
+      "peck": [
+        "9L1"
+      ]
+    }
+  },
+  "treecko": {
+    "learnset": {
+      "pound": [
+        "9L1"
+      ],
+      "leer": [
+        "9L3"
+      ],
+      "absorb": [
+        "9L6"
+      ],
+      "quickattack": [
+        "9L11"
+      ]
+    }
+  },
+  "articuno": {
+    "learnset": {
+      "gust": [
+        "9L1"
+      ],
+      "powdersnow": [
+        "9L1"
+      ],
+      "icebeam": [
+        "9M"
+      ],
+      "roost": [
+        "9L"
+      ]
+    }
+  },
+  "shaymin": {
+    "learnset": {
+      "growth": [
+        "9L1"
+      ],
+      "magicalleaf": [
+        "9L10"
+      ],
+      "synthesis": [
+        "9L20"
+      ],
+      "seedflare": [
+        "9L50"
+      ]
+    }
+  }
 }

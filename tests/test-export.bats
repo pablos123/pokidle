@@ -3,7 +3,11 @@
 load helpers
 
 setup() {
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_REPO_ROOT
     load_lib export
+    load_lib showdown
+    seed_showdown
 }
 
 @test "export_format: full encounter renders correctly" {
@@ -106,12 +110,41 @@ setup() {
     [ "$(export_species_name porygon-z)" = "Porygon-Z" ]
 }
 
-@test "export_species_name: irregular Showdown names mapped directly" {
+@test "export_species_name: irregular Showdown names come from Showdown data" {
     [ "$(export_species_name mr-mime)" = "Mr. Mime" ]
     [ "$(export_species_name mime-jr)" = "Mime Jr." ]
     [ "$(export_species_name type-null)" = "Type: Null" ]
     [ "$(export_species_name tapu-koko)" = "Tapu Koko" ]
     [ "$(export_species_name jangmo-o)" = "Jangmo-o" ]
+}
+
+@test "export_species_name: paradox names with spaces resolve via Showdown data" {
+    # The old titlecase algorithm produced "Iron-Hands"/"Great-Tusk"; Showdown
+    # ships the correct spaced display names.
+    [ "$(export_species_name iron-hands)" = "Iron Hands" ]
+    [ "$(export_species_name great-tusk)" = "Great Tusk" ]
+}
+
+@test "export_species_name: fails when Showdown name is unavailable (no titlecase guess)" {
+    showdown_species_name() { return 1; }
+    export -f showdown_species_name
+    local got=""
+    got="$(export_species_name iron-hands 2>/dev/null)" || true
+    [ -z "$got" ]
+    run export_species_name iron-hands
+    [ "$status" -ne 0 ]
+}
+
+@test "export_format: fails when a species name cannot be resolved" {
+    showdown_species_name() { return 1; }
+    export -f showdown_species_name
+    local enc='{
+        "species":"iron-hands","level":50,"nature":"adamant","ability":"quark-drive",
+        "is_hidden_ability":0,"gender":"genderless","shiny":0,"held_berry":null,
+        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["close-combat"]
+    }'
+    run export_format "$enc"
+    [ "$status" -ne 0 ]
 }
 
 @test "export_format: renders the encountered form name" {

@@ -155,7 +155,7 @@ source_pokidle_lib() {
     [ "$n" = "0" ]          # wrote no empty-name row
 }
 
-@test "pokidle_tick encounter: a failed roll fails the tick, no empty encounter/output (daemon if-! context)" {
+@test "pokidle_tick encounter: an unrollable mon skips the tick, no empty encounter/output" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
@@ -164,21 +164,20 @@ source_pokidle_lib() {
     source_pokidle_lib
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', 1700000000);"
-    # Simulate a PokeAPI fetch failure during the pokemon lookup.
+    # Simulate a PokeAPI fetch failure during the pokemon lookup so every retry
+    # fails to produce an importable mon.
     pokeapi_get() { return 1; }
     export -f pokeapi_get
     local out="$BATS_TMPDIR/pkmn.$$"
-    if pokidle_tick encounter --no-dry-run --no-notify --json >"$out" 2>/dev/null; then
-        fired=1
-    else
-        fired=0
-    fi
+    # No importable mon after retries -> skip the tick gracefully (exit 0).
+    local status=0
+    pokidle_tick encounter --no-dry-run --no-notify --json >"$out" 2>/dev/null || status=$?
     rm -rf "$POKIDLE_CACHE_DIR"
-    [ "$fired" = "0" ]      # tick reported failure instead of falling through
-    [ ! -s "$out" ]         # emitted no bogus encounter line
+    [ "$status" -eq 0 ]     # skipped, did not error
+    [ ! -s "$out" ]         # emitted no bogus encounter line on stdout
     local n
     n="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM encounters;")"
-    [ "$n" = "0" ]
+    [ "$n" = "0" ]          # nothing inserted
 }
 
 @test "pokidle_daemon run dispatches to the blocking loop (_pokidle_daemon_run)" {

@@ -1,4 +1,4 @@
-# bash completion for the pokidle and pokeapi CLIs.
+# bash completion for the pokidle CLI.
 #
 # Sourced into an interactive shell, so no `set -Eeuo pipefail` (it would leak
 # into the user's session).
@@ -31,7 +31,7 @@ function _pokidle {
     local cmd="${COMP_WORDS[1]:-}"
 
     local commands="daemon tick encounters export items stats current rebuild-pool \
-switch-biome biomes clean setup uninstall help"
+switch-biome biomes clean pokeapi showdown setup uninstall help"
 
     # First positional arg: the subcommand.
     if ((COMP_CWORD == 1)); then
@@ -65,7 +65,8 @@ run start stop restart status logs enable disable" -- "${cur}")
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
---min-level --max-level --limit --newest-first" -- "${cur}")
+--min-level --max-level --limit --newest-first \
+--force-level --force-perfect --force-mega --force-z" -- "${cur}")
             fi
             ;;
         items)
@@ -85,7 +86,7 @@ run start stop restart status logs enable disable" -- "${cur}")
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "--yes" -- "${cur}")
             else
-                mapfile -t COMPREPLY < <(compgen -W "pools db all" -- "${cur}")
+                mapfile -t COMPREPLY < <(compgen -W "pools db showdown pokeapi all" -- "${cur}")
             fi
             ;;
         switch-biome | rebuild-pool)
@@ -102,6 +103,20 @@ run start stop restart status logs enable disable" -- "${cur}")
                 mapfile -t COMPREPLY < <(compgen -W "--json" -- "${cur}")
             fi
             ;;
+        pokeapi)
+            # Only the subcommand is completed; resource names need the cache.
+            if ((COMP_CWORD == 2)); then
+                mapfile -t COMPREPLY < <(compgen -W "\
+get pokemon move ability type species item nature natures stats types moves \
+id name forms sprite-url sprite cache-path cache-clear help" -- "${cur}")
+            fi
+            ;;
+        showdown)
+            if ((COMP_CWORD == 2)); then
+                mapfile -t COMPREPLY < <(compgen -W "\
+get items-raw name id abilities moves holdable is-holdable form-items help" -- "${cur}")
+            fi
+            ;;
         setup)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "--no-enable" -- "${cur}")
@@ -112,21 +127,4 @@ run start stop restart status logs enable disable" -- "${cur}")
     return 0
 }
 
-# _pokeapi
-# Programmable completion for the pokeapi CLI.
-function _pokeapi {
-    local cur="${COMP_WORDS[COMP_CWORD]}"
-
-    local commands="get pokemon move ability type species item nature \
-natures stats types moves id name forms sprite-url sprite cache-path \
-cache-clear help"
-
-    # Only the subcommand is completed; resource names need the network/cache.
-    if ((COMP_CWORD == 1)); then
-        mapfile -t COMPREPLY < <(compgen -W "${commands}" -- "${cur}")
-    fi
-    return 0
-}
-
 complete -F _pokidle pokidle
-complete -F _pokeapi pokeapi

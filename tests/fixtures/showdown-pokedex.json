@@ -1,7 +1,157 @@
 {
-  "thundurus": {"abilities": {"0": "Prankster", "H": "Defiant"}},
-  "thundurustherian": {"abilities": {"0": "Volt Absorb"}, "baseSpecies": "Thundurus", "forme": "Therian"},
-  "corviknight": {"abilities": {"0": "Pressure", "1": "Unnerve", "H": "Mirror Armor"}, "prevo": "Corvisquire"},
-  "corvisquire": {"abilities": {"0": "Keen Eye"}, "prevo": "Rookidee"},
-  "rookidee": {"abilities": {"0": "Keen Eye"}}
+  "thundurus": {
+    "abilities": {
+      "0": "Prankster",
+      "H": "Defiant"
+    }
+  },
+  "thundurustherian": {
+    "abilities": {
+      "0": "Volt Absorb"
+    },
+    "baseSpecies": "Thundurus",
+    "forme": "Therian",
+    "name": "Thundurus-Therian"
+  },
+  "corviknight": {
+    "abilities": {
+      "0": "Pressure",
+      "1": "Unnerve",
+      "H": "Mirror Armor"
+    },
+    "prevo": "Corvisquire",
+    "name": "Corviknight"
+  },
+  "corvisquire": {
+    "abilities": {
+      "0": "Keen Eye"
+    },
+    "prevo": "Rookidee"
+  },
+  "rookidee": {
+    "abilities": {
+      "0": "Keen Eye"
+    }
+  },
+  "treecko": {
+    "abilities": {
+      "0": "Overgrow",
+      "H": "Unburden"
+    },
+    "name": "Treecko"
+  },
+  "articuno": {
+    "abilities": {
+      "0": "Pressure",
+      "H": "Snow Cloak"
+    },
+    "name": "Articuno"
+  },
+  "shaymin": {
+    "abilities": {
+      "0": "Natural Cure"
+    },
+    "name": "Shaymin"
+  },
+  "shayminsky": {
+    "abilities": {
+      "0": "Serene Grace"
+    },
+    "baseSpecies": "Shaymin",
+    "forme": "Sky",
+    "name": "Shaymin-Sky"
+  },
+  "meowthgalar": {
+    "name": "Meowth-Galar"
+  },
+  "raichualola": {
+    "name": "Raichu-Alola"
+  },
+  "wormadamtrash": {
+    "name": "Wormadam-Trash"
+  },
+  "lycanrocmidnight": {
+    "name": "Lycanroc-Midnight"
+  },
+  "snorlax": {
+    "name": "Snorlax"
+  },
+  "nidoranf": {
+    "name": "Nidoran-F"
+  },
+  "hooh": {
+    "name": "Ho-Oh"
+  },
+  "porygonz": {
+    "name": "Porygon-Z"
+  },
+  "mrmime": {
+    "name": "Mr. Mime"
+  },
+  "mimejr": {
+    "name": "Mime Jr."
+  },
+  "typenull": {
+    "name": "Type: Null"
+  },
+  "tapukoko": {
+    "name": "Tapu Koko"
+  },
+  "jangmoo": {
+    "name": "Jangmo-o"
+  },
+  "sceptile": {
+    "name": "Sceptile"
+  },
+  "ironhands": {
+    "name": "Iron Hands"
+  },
+  "greattusk": {
+    "name": "Great Tusk"
+  },
+  "bulbasaur": {
+    "name": "Bulbasaur"
+  },
+  "charmander": {
+    "name": "Charmander"
+  },
+  "squirtle": {
+    "name": "Squirtle"
+  },
+  "pidgey": {
+    "name": "Pidgey"
+  },
+  "rattata": {
+    "name": "Rattata"
+  },
+  "ekans": {
+    "name": "Ekans"
+  },
+  "sandshrew": {
+    "name": "Sandshrew"
+  },
+  "zubat": {
+    "name": "Zubat"
+  },
+  "gengar": {
+    "name": "Gengar"
+  },
+  "kingdra": {
+    "name": "Kingdra"
+  },
+  "nidoran": {
+    "name": "Nidoran"
+  },
+  "garchomp": {
+    "name": "Garchomp"
+  },
+  "sneasel": {
+    "name": "Sneasel"
+  },
+  "charizard": {
+    "name": "Charizard"
+  },
+  "raichu": {
+    "name": "Raichu"
+  }
 }

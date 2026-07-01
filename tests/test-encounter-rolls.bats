@@ -87,47 +87,6 @@ setup() {
     done
 }
 
-@test "encounter_roll_ability: forced normal yields slot1+slot2 only" {
-    POKIDLE_HIDDEN_ABILITY_RATE=0
-    local i out
-    for i in {1..30}; do
-        out="$(encounter_roll_ability treecko)"
-        local name hidden
-        name="$(jq -r '.name' <<< "$out")"
-        hidden="$(jq -r '.is_hidden' <<< "$out")"
-        [ "$hidden" = "false" ]
-        [ "$name" = "overgrow" ]
-    done
-}
-
-@test "encounter_roll_ability: forced hidden yields hidden when present" {
-    POKIDLE_HIDDEN_ABILITY_RATE=100
-    run encounter_roll_ability treecko
-    [ "$status" -eq 0 ]
-    local hidden
-    hidden="$(jq -r '.is_hidden' <<< "$output")"
-    [ "$hidden" = "true" ]
-}
-
-@test "encounter_roll_moves: at level 5 returns 4 candidates ≤ level" {
-    # Treecko fixture has level-up moves at 1,3,6,11,17 + machine/egg/tutor (level 0)
-    # At level 5 candidates ≤5: pound(1), leer(3), giga-drain(0,machine), endeavor(0,egg), snatch(0,tutor) = 5 candidates
-    run encounter_roll_moves treecko 5
-    [ "$status" -eq 0 ]
-    local n
-    n="$(jq 'length' <<< "$output")"
-    [ "$n" = "4" ]
-}
-
-@test "encounter_roll_moves: at level 1 with limited pool returns 4 (or fewer if not enough)" {
-    # Level 1: pound(1) + machine + egg + tutor = 4
-    run encounter_roll_moves treecko 1
-    [ "$status" -eq 0 ]
-    local n
-    n="$(jq 'length' <<< "$output")"
-    [ "$n" = "4" ]
-}
-
 @test "encounter_roll_gender: gender_rate -1 returns genderless" {
     run encounter_roll_gender magnemite
     [ "$status" -eq 0 ]
@@ -348,36 +307,6 @@ EOF
     (( seen_base && seen_galar ))
 }
 
-@test "encounter_roll_moves: empty variety moveset falls back to base species" {
-    pokeapi_get() {
-        case "$1" in
-            pokemon/snorlax-gmax) printf '%s' '{"moves":[]}' ;;
-            pokemon/snorlax)
-                printf '%s' '{"moves":[{"move":{"name":"body-slam"},"version_group_details":[{"move_learn_method":{"name":"level-up"},"level_learned_at":1}]}]}'
-                ;;
-            *) return 1 ;;
-        esac
-    }
-    export -f pokeapi_get
-    run encounter_roll_moves snorlax-gmax 50 snorlax
-    [ "$status" -eq 0 ]
-    [ "$output" != "[]" ]
-    [[ "$output" == *body-slam* ]]
-}
-
-@test "encounter_roll_moves: no fallback arg keeps prior 2-arg behavior (empty stays empty)" {
-    pokeapi_get() {
-        case "$1" in
-            pokemon/snorlax-gmax) printf '%s' '{"moves":[]}' ;;
-            *) return 1 ;;
-        esac
-    }
-    export -f pokeapi_get
-    run encounter_roll_moves snorlax-gmax 50
-    [ "$status" -eq 0 ]
-    [ "$output" = "[]" ]
-}
-
 @test "encounter_roll_ability_legal: hidden-rate 0 never picks the hidden ability" {
     POKIDLE_HIDDEN_ABILITY_RATE=0 run encounter_roll_ability_legal "corviknight"
     [ "$status" -eq 0 ]
@@ -400,6 +329,70 @@ EOF
     echo "$output" | jq -e 'all(.[]; . | test("^[a-z0-9-]+$"))'
     # every chosen move is within the legal pool
     echo "$output" | jq -e 'all(.[]; IN("brave-bird","double-edge","fury-attack","peck"))'
+}
+
+@test "encounter_roll_ability_legal: showdown unavailable -> fails, never touches pokeapi" {
+    showdown_legal_abilities() { return 1; }
+    pokeapi_get() { touch "${BATS_TEST_TMPDIR}/papi_called"; return 1; }
+    export -f showdown_legal_abilities pokeapi_get
+    run encounter_roll_ability_legal "corviknight"
+    [ "$status" -ne 0 ]
+    [ ! -f "${BATS_TEST_TMPDIR}/papi_called" ]
+}
+
+@test "encounter_roll_ability_legal: empty legal set -> fails, never touches pokeapi" {
+    showdown_legal_abilities() { printf '\n'; return 0; }
+    pokeapi_get() { touch "${BATS_TEST_TMPDIR}/papi_called"; return 1; }
+    export -f showdown_legal_abilities pokeapi_get
+    run encounter_roll_ability_legal "corviknight"
+    [ "$status" -ne 0 ]
+    [ ! -f "${BATS_TEST_TMPDIR}/papi_called" ]
+}
+
+@test "encounter_roll_moves_legal: showdown unavailable -> fails, never touches pokeapi" {
+    showdown_legal_moves() { return 1; }
+    pokeapi_get() { touch "${BATS_TEST_TMPDIR}/papi_called"; return 1; }
+    export -f showdown_legal_moves pokeapi_get
+    run encounter_roll_moves_legal "corviknight" 50 "corviknight"
+    [ "$status" -ne 0 ]
+    [ ! -f "${BATS_TEST_TMPDIR}/papi_called" ]
+}
+
+@test "encounter_roll_moves_legal: empty legal pool -> fails, never touches pokeapi" {
+    showdown_legal_moves() { printf '\n'; return 0; }
+    pokeapi_get() { touch "${BATS_TEST_TMPDIR}/papi_called"; return 1; }
+    export -f showdown_legal_moves pokeapi_get
+    run encounter_roll_moves_legal "corviknight" 50 "corviknight"
+    [ "$status" -ne 0 ]
+    [ ! -f "${BATS_TEST_TMPDIR}/papi_called" ]
+}
+
+@test "encounter_roll_importable: retries until a roll succeeds" {
+    encounter_roll_pool_entry() { printf '{"species":"x","varieties":["x"],"min":5,"max":7}'; }
+    encounter_roll_pokemon() {
+        local c="${BATS_TEST_TMPDIR}/n"; local -i n=0
+        [[ -f "$c" ]] && n="$(cat "$c")"; n=$((n+1)); printf '%s' "$n" > "$c"
+        if ((n < 3)); then return 1; fi
+        printf '{"species":"x","moves":["a","b","c","d"]}'
+    }
+    export -f encounter_roll_pool_entry encounter_roll_pokemon
+    run encounter_roll_importable '{}' forest 3
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.species' <<< "$output")" = "x" ]
+    [ "$(cat "${BATS_TEST_TMPDIR}/n")" = "3" ]
+}
+
+@test "encounter_roll_importable: returns 1 after N failed tries" {
+    encounter_roll_pool_entry() { printf '{"species":"x","varieties":["x"]}'; }
+    encounter_roll_pokemon() {
+        local c="${BATS_TEST_TMPDIR}/n"; local -i n=0
+        [[ -f "$c" ]] && n="$(cat "$c")"; printf '%s' "$((n+1))" > "$c"
+        return 1
+    }
+    export -f encounter_roll_pool_entry encounter_roll_pokemon
+    run encounter_roll_importable '{}' forest 3
+    [ "$status" -ne 0 ]
+    [ "$(cat "${BATS_TEST_TMPDIR}/n")" = "3" ]
 }
 
 @test "encounter_evolution_items: lists the PokeAPI evolution category" {
@@ -431,6 +424,20 @@ EOF
     [ "$status" -eq 0 ]
     name="$(jq -r '.item' <<<"$output")"
     echo "$name" | grep -qxE "fire-stone|water-stone"
+}
+
+@test "encounter_roll_pickup: form-item rate 100 picks a form item" {
+    printf 'charizardite-x\tcharizard\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
+    POKIDLE_FORM_ITEM_RATE=100 run encounter_roll_pickup
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.item' <<<"$output")" = "charizardite-x" ]
+}
+
+@test "encounter_roll_pickup: form-item rate 0 never picks a form item" {
+    printf 'charizardite-x\tcharizard\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
+    POKIDLE_FORM_ITEM_RATE=0 POKIDLE_EVOLUTION_ITEM_RATE=0 run encounter_roll_pickup
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.item' <<<"$output")" != "charizardite-x" ]
 }
 
 @test "encounter_roll_pickup: fails gracefully when no data available" {

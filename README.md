@@ -53,10 +53,12 @@ git -C <pokidle_repo_path> pull && pokidle setup
 pokidle help
 ```
 
-`pokeapi` is a standalone cache-aware PokeAPI client, independent of the daemon:
+`pokidle pokeapi` is a cache-aware PokeAPI client, and `pokidle showdown` queries
+the cached Pokémon Showdown legality data:
 
 ```
-pokeapi help
+pokidle pokeapi help
+pokidle showdown help
 ```
 
 ## Configuration

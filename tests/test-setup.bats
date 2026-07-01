@@ -131,7 +131,7 @@ EOF
     [ "$status" -eq 0 ]
     local compdir="$XDG_DATA_HOME/bash-completion/completions"
     [ -L "$compdir/pokidle" ]
-    [ -L "$compdir/pokeapi" ]
+    [ ! -e "$compdir/pokeapi" ]   # pokeapi is a subcommand now, no separate completion
     [ "$(readlink "$compdir/pokidle")" = "$REPO_ROOT/share/completions/pokidle.bash" ]
 }
 
@@ -201,6 +201,22 @@ EOF
     if ((!already_exists)); then rm -f "${fixture_tsv}"; fi
     [ "$status_ok" -eq 0 ]
     [ -f "${sd_cache}/items-holdable.tsv" ]
+}
+
+@test "pokidle setup seeds share/form-items.tsv into showdown cache" {
+    local fixture_tsv="${REPO_ROOT}/share/form-items.tsv"
+    local already_exists=0
+    [[ -f "${fixture_tsv}" ]] && already_exists=1
+    if ((!already_exists)); then
+        printf 'charizardite-x\tcharizard\n' > "${fixture_tsv}"
+    fi
+    local sd_cache="${XDG_CACHE_HOME}/pokidle/showdown"
+    rm -f "${sd_cache}/form-items.tsv"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    local status_ok=$status
+    if ((!already_exists)); then rm -f "${fixture_tsv}"; fi
+    [ "$status_ok" -eq 0 ]
+    [ -f "${sd_cache}/form-items.tsv" ]
 }
 
 @test "pokidle setup keeps a newer cached items-holdable.tsv" {

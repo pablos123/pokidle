@@ -27,6 +27,34 @@ EOF
     echo "$output" | jq -e '.varieties | length > 0'
 }
 
+@test "legendary_roll_importable: retries until a build succeeds" {
+    legendary_roll_species_for_biome() { printf '{"species":"x","varieties":["x"]}'; }
+    legendary_build_encounter() {
+        local c="${BATS_TEST_TMPDIR}/n"; local -i n=0
+        [[ -f "$c" ]] && n="$(cat "$c")"; n=$((n+1)); printf '%s' "$n" > "$c"
+        if ((n < 2)); then return 1; fi
+        printf '{"species":"x","is_legendary":true}'
+    }
+    export -f legendary_roll_species_for_biome legendary_build_encounter
+    run legendary_roll_importable forest 3
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.species' <<< "$output")" = "x" ]
+    [ "$(cat "${BATS_TEST_TMPDIR}/n")" = "2" ]
+}
+
+@test "legendary_roll_importable: returns 1 after N failed tries" {
+    legendary_roll_species_for_biome() { printf '{"species":"x","varieties":["x"]}'; }
+    legendary_build_encounter() {
+        local c="${BATS_TEST_TMPDIR}/n"; local -i n=0
+        [[ -f "$c" ]] && n="$(cat "$c")"; printf '%s' "$((n+1))" > "$c"
+        return 1
+    }
+    export -f legendary_roll_species_for_biome legendary_build_encounter
+    run legendary_roll_importable forest 3
+    [ "$status" -ne 0 ]
+    [ "$(cat "${BATS_TEST_TMPDIR}/n")" = "3" ]
+}
+
 @test "legendary_roll_species_for_biome: empty .legendaries returns 1" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
@@ -54,7 +82,9 @@ EOF
     POKIDLE_LEGENDARY_LEVEL_MAX=70
     export POKIDLE_LEGENDARY_LEVEL_MIN POKIDLE_LEGENDARY_LEVEL_MAX
     load_lib encounter
+    load_lib showdown
     stub_pokeapi
+    seed_showdown
     local enc
     enc="$(legendary_build_encounter '{"species":"articuno","varieties":["articuno"]}' forest)"
     [ -n "$enc" ]
@@ -77,7 +107,9 @@ EOF
     POKIDLE_LEGENDARY_LEVEL_MAX=70
     export POKIDLE_LEGENDARY_LEVEL_MIN POKIDLE_LEGENDARY_LEVEL_MAX
     load_lib encounter
+    load_lib showdown
     stub_pokeapi
+    seed_showdown
     # /pokemon/shaymin 404s on real PokeAPI; only /pokemon/shaymin-{land,sky} exist.
     # No pokemon-shaymin.json fixture is provided on purpose — fix must read
     # /pokemon-species/shaymin → varieties[] and pick one (land OR sky).

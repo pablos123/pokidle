@@ -295,6 +295,97 @@ function evolution_enumerate_viable_paths {
     printf '%s' "${out}"
 }
 
+# evolution_reconcile_ability <variety> <old_ability_slug>
+# Keep <old_ability_slug> if it is legal for <variety> (recomputing is_hidden
+# from the new species' table); otherwise re-roll from the new legal pool.
+# Falls back to the legal roller when Showdown data is unavailable. Prints
+# {"name","is_hidden"}.
+function evolution_reconcile_ability {
+    local variety="$1"
+    local old="$2"
+    if ! command -v showdown_legal_abilities >/dev/null; then
+        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
+        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+    fi
+    if ! command -v encounter_roll_ability_legal >/dev/null; then
+        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
+        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
+    fi
+    local lines
+    if ! lines="$(showdown_legal_abilities "${variety}")"; then
+        encounter_roll_ability_legal "${variety}"
+        return
+    fi
+    local slug hid
+    while IFS=$'\t' read -r slug hid; do
+        [[ -z "${slug}" ]] && continue
+        if [[ "${slug}" == "${old}" ]]; then
+            local h="false"
+            [[ "${hid}" == "1" ]] && h="true"
+            jq -nc --arg n "${old}" --argjson h "${h}" '{name:$n, is_hidden:$h}'
+            return
+        fi
+    done <<<"${lines}"
+    encounter_roll_ability_legal "${variety}"
+}
+
+# evolution_reconcile_moves <variety> <level> <old_moves_json> [fallback]
+# Keep the old moves that are legal for <variety> (in original order, deduped),
+# then refill empty slots from the new legal pool up to 4. Falls back to the
+# legal roller when Showdown data is unavailable. Prints a JSON array of slugs.
+function evolution_reconcile_moves {
+    local variety="$1"
+    local level="$2"
+    local old="$3"
+    local fallback="${4:-}"
+    if ! command -v showdown_legal_moves >/dev/null; then
+        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
+        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+    fi
+    if ! command -v encounter_roll_moves_legal >/dev/null; then
+        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
+        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
+    fi
+    local pool
+    if ! pool="$(showdown_legal_moves "${variety}")"; then
+        encounter_roll_moves_legal "${variety}" "${level}" "${fallback}"
+        return
+    fi
+    local -A legal=()
+    local m
+    while IFS= read -r m; do
+        [[ -n "${m}" ]] && legal["${m}"]=1
+    done <<<"${pool}"
+
+    local -a kept=()
+    local -A taken=()
+    while IFS= read -r m; do
+        [[ -z "${m}" ]] && continue
+        if [[ -n "${legal[$m]:-}" && -z "${taken[$m]:-}" ]]; then
+            kept+=("${m}")
+            taken["${m}"]=1
+        fi
+    done < <(jq -r '.[]' <<<"${old}")
+
+    local -a refill=()
+    for m in "${!legal[@]}"; do
+        [[ -z "${taken[$m]:-}" ]] && refill+=("${m}")
+    done
+    while ((${#kept[@]} < 4 && ${#refill[@]} > 0)); do
+        local -i idx=$((RANDOM % ${#refill[@]}))
+        kept+=("${refill[idx]}")
+        refill=("${refill[@]:0:idx}" "${refill[@]:idx+1}")
+    done
+
+    printf '['
+    local sep="" i
+    for i in "${kept[@]}"; do
+        printf '%s"%s"' "${sep}" "${i}"
+        sep=","
+    done
+    printf ']'
+}
+
 # evolution_apply <encounter_id> <path_json>
 # Mutate the encounter row to the evolved species, recomputing stats. Consumes
 # one item_drops row when path.kind == "item". Returns 1 on fetch failure.
@@ -379,7 +470,21 @@ function evolution_apply {
         fi
     fi
 
-    if ! db_update_encounter_evolved "${enc_id}" "${species}" "${dex_id}" "${sprite_local}" "${stats}" "${variety}"; then
+    # Reconcile the carried ability/moves against the new species: keep what is
+    # still legal, re-roll the rest. Stale picks (e.g. meowth-alola -> persian)
+    # would otherwise survive the evolution.
+    local old_ability old_moves
+    old_ability="$(jq -r '.ability // ""' <<<"${enc_row}")"
+    old_moves="$(jq -c '.moves_json | fromjson? // []' <<<"${enc_row}")"
+    local ability_obj
+    ability_obj="$(evolution_reconcile_ability "${variety}" "${old_ability}")"
+    local ability is_hidden
+    ability="$(jq -r '.name' <<<"${ability_obj}")"
+    is_hidden="$(jq -r 'if .is_hidden then 1 else 0 end' <<<"${ability_obj}")"
+    local moves_json
+    moves_json="$(evolution_reconcile_moves "${variety}" "${level}" "${old_moves}" "${species}")"
+
+    if ! db_update_encounter_evolved "${enc_id}" "${species}" "${dex_id}" "${sprite_local}" "${stats}" "${variety}" "${ability}" "${is_hidden}" "${moves_json}"; then
         return 1
     fi
     # Echo the resolved result form so the caller can show it (e.g. the evolution

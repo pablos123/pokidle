@@ -201,118 +201,16 @@ function encounter_compute_all_stats {
     printf '%s' "${out[*]}"
 }
 
-# encounter_roll_ability <species>
-# Roll an ability. Prints JSON {name, is_hidden}. Returns 1 on fetch failure.
-function encounter_roll_ability {
-    local species="$1"
-    local poke
-    if ! poke="$(pokeapi_get "pokemon/${species}")"; then
-        return 1
-    fi
-    local -i hidden_rate="${POKIDLE_HIDDEN_ABILITY_RATE:-5}"
-
-    local hidden_arr
-    hidden_arr="$(jq '[.abilities[] | select(.is_hidden==true) | {name: .ability.name, is_hidden: true}]' <<<"${poke}")"
-    local normal_arr
-    normal_arr="$(jq '[.abilities[] | select(.is_hidden==false) | {name: .ability.name, is_hidden: false}]' <<<"${poke}")"
-
-    local -i roll=$((RANDOM % 100))
-    local -i hidden_len
-    hidden_len="$(jq 'length' <<<"${hidden_arr}")"
-    local pool
-    if ((roll < hidden_rate && hidden_len > 0)); then
-        pool="${hidden_arr}"
-    else
-        pool="${normal_arr}"
-    fi
-    local -i pool_len
-    pool_len="$(jq 'length' <<<"${pool}")"
-    if ((pool_len == 0)); then
-        pool="${hidden_arr}" # last-resort
-    fi
-
-    local -i n
-    n="$(jq 'length' <<<"${pool}")"
-    local -i idx=$((RANDOM % n))
-    jq -c ".[${idx}]" <<<"${pool}"
-}
-
-# encounter_roll_moves <species> <level> [fallback_species]
-# Roll up to 4 moves from the union of (level-up + machine + egg + tutor) where
-# level_learned_at <= level. Prints a JSON array of move-name strings.
-# If the moveset is empty and a distinct fallback_species is given, retry with
-# it — guards against forms PokeAPI ships move-less (the encounter keeps its
-# bare species name, so the base species is the right fallback).
-function encounter_roll_moves {
-    local species="$1"
-    local level="$2"
-    local fallback="${3:-}"
-    local poke
-    if ! poke="$(pokeapi_get "pokemon/${species}")"; then
-        return 1
-    fi
-
-    local candidates
-    candidates="$(jq -r --argjson lvl "${level}" '
-        [
-          .moves[] |
-          .move.name as $name |
-          .version_group_details[] |
-          select(
-            (.move_learn_method.name | IN("level-up","machine","egg","tutor")) and
-            (.level_learned_at <= $lvl)
-          ) | $name
-        ] | unique | .[]
-    ' <<<"${poke}")"
-
-    local -a arr=()
-    local m
-    while IFS= read -r m; do
-        if [[ -n "${m}" ]]; then
-            arr+=("${m}")
-        fi
-    done <<<"${candidates}"
-
-    local -i n="${#arr[@]}"
-    if ((n == 0)); then
-        if [[ -n "${fallback}" && "${fallback}" != "${species}" ]]; then
-            encounter_roll_moves "${fallback}" "${level}"
-            return
-        fi
-        printf '[]'
-        return
-    fi
-
-    # shuffle and take 4
-    local -a picked=()
-    while ((${#picked[@]} < 4 && ${#arr[@]} > 0)); do
-        local -i idx=$((RANDOM % ${#arr[@]}))
-        picked+=("${arr[idx]}")
-        # remove arr[idx]
-        arr=("${arr[@]:0:idx}" "${arr[@]:idx+1}")
-    done
-
-    # emit JSON array
-    printf '['
-    local sep=""
-    local i
-    for i in "${picked[@]}"; do
-        printf '%s"%s"' "${sep}" "${i}"
-        sep=","
-    done
-    printf ']'
-}
-
 # encounter_roll_ability_legal <variety> [level]
 # Roll an ability from the variety's Showdown-legal set, honoring
 # POKIDLE_HIDDEN_ABILITY_RATE. Prints {"name","is_hidden"} with name as a slug.
-# Falls back to the PokeAPI roller when Showdown data is unavailable.
+# Returns non-zero when Showdown data is unavailable or yields no abilities —
+# legality is Showdown's job, never PokeAPI's, so the caller skips the mon.
 function encounter_roll_ability_legal {
     local variety="$1"
     local lines
     if ! lines="$(showdown_legal_abilities "${variety}")"; then
-        encounter_roll_ability "${variety}"
-        return
+        return 1
     fi
     local -a normal=() hidden=()
     local slug hid
@@ -337,25 +235,22 @@ function encounter_roll_ability_legal {
         name="${hidden[$((RANDOM % ${#hidden[@]}))]}"
         is_hidden="true"
     else
-        encounter_roll_ability "${variety}"
-        return
+        return 1
     fi
     jq -nc --arg n "${name}" --argjson h "${is_hidden}" '{name: $n, is_hidden: $h}'
 }
 
 # encounter_roll_moves_legal <variety> <level> [fallback]
 # Roll up to 4 moves from the variety's Showdown-legal pool. Prints a JSON
-# array of slugs. Falls back to the PokeAPI roller when Showdown data is
-# unavailable. <level> is accepted for signature parity; the Showdown pool is
-# not level-gated.
+# array of slugs. Returns non-zero when Showdown data is unavailable or the
+# pool is empty — legality is Showdown's job, never PokeAPI's, so the caller
+# skips the mon. <level> and <fallback> are ignored (accepted for call-site
+# parity with the old PokeAPI roller); the Showdown pool is not level-gated.
 function encounter_roll_moves_legal {
     local variety="$1"
-    local level="$2"
-    local fallback="${3:-}"
     local pool
     if ! pool="$(showdown_legal_moves "${variety}")"; then
-        encounter_roll_moves "${variety}" "${level}" "${fallback}"
-        return
+        return 1
     fi
     local -a arr=()
     local m
@@ -363,8 +258,7 @@ function encounter_roll_moves_legal {
         [[ -n "${m}" ]] && arr+=("${m}")
     done <<<"${pool}"
     if ((${#arr[@]} == 0)); then
-        encounter_roll_moves "${variety}" "${level}" "${fallback}"
-        return
+        return 1
     fi
     local -a picked=()
     while ((${#picked[@]} < 4 && ${#arr[@]} > 0)); do
@@ -814,6 +708,30 @@ function encounter_roll_pool_entry {
     return 1
 }
 
+# encounter_roll_importable <pool_json> <biome_id> [tries]
+# Roll an encounter that is born importable, re-rolling the pool entry on each
+# attempt. A roll fails when its species has no Showdown-legal ability/move data
+# (unimportable mon) or the Showdown source is unavailable; retry up to <tries>
+# (default 3), then return 1 so the caller skips the tick. Prints the encounter
+# JSON on success.
+function encounter_roll_importable {
+    local pool="$1"
+    local biome="$2"
+    local -i tries="${3:-3}"
+    local -i i
+    local entry enc
+    for ((i = 0; i < tries; i++)); do
+        if ! entry="$(encounter_roll_pool_entry "${pool}")"; then
+            continue
+        fi
+        if enc="$(encounter_roll_pokemon "${entry}" "${biome}")"; then
+            printf '%s' "${enc}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # encounter_roll_pokemon <entry_json> <biome_id>
 # Print a JSON encounter object ready for db_insert_encounter (after adding
 # session_id, encountered_at, sprite_path). Returns 1 if any roll step fails.
@@ -982,6 +900,19 @@ function encounter_roll_pickup {
         # shellcheck disable=SC1091
         source "${POKIDLE_REPO_ROOT}/lib/showdown.bash" 2>/dev/null || return 1
     fi
+    # Species-specific form items (mega stones, primal orbs, signature Z-crystals)
+    # drop at a low rate. They sit in item_drops until export matches one to its
+    # eligible mon; they are never assigned to a non-matching mon.
+    local -i form_rate="${POKIDLE_FORM_ITEM_RATE:-3}"
+    if ((RANDOM % 100 < form_rate)); then
+        local -a form_pool=()
+        mapfile -t form_pool < <(showdown_form_item_slugs 2>/dev/null)
+        if ((${#form_pool[@]} > 0)); then
+            jq -n --arg item "${form_pool[$((RANDOM % ${#form_pool[@]}))]}" '{item: $item}'
+            return
+        fi
+    fi
+
     local -i evo_rate="${POKIDLE_EVOLUTION_ITEM_RATE:-15}"
     local -a pool=()
     if ((RANDOM % 100 < evo_rate)); then

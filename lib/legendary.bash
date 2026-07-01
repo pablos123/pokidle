@@ -26,6 +26,28 @@ function legendary_roll_species_for_biome {
     jq -c --argjson i "$((RANDOM % n))" '.legendaries[$i]' <<<"${pool}"
 }
 
+# legendary_roll_importable <biome_id> [tries]
+# Roll a legendary that is born importable, re-rolling the species on each
+# attempt. A build fails when the species has no Showdown-legal ability/move data
+# or the Showdown source is unavailable; retry up to <tries> (default 3), then
+# return 1 so the caller skips the tick. Prints the encounter JSON on success.
+function legendary_roll_importable {
+    local biome="$1"
+    local -i tries="${2:-3}"
+    local -i i
+    local entry enc
+    for ((i = 0; i < tries; i++)); do
+        if ! entry="$(legendary_roll_species_for_biome "${biome}")"; then
+            continue
+        fi
+        if enc="$(legendary_build_encounter "${entry}" "${biome}")"; then
+            printf '%s' "${enc}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # legendary_build_encounter <entry_json> <biome_id>
 # Print a JSON encounter object ready for db_insert_encounter (after adding
 # session_id, encountered_at, sprite_path). Always sets .is_legendary=true and

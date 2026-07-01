@@ -1,7 +1,53 @@
 {
-  "thunderbolt": {"name": "Thunderbolt"},
-  "nastyplot": {"name": "Nasty Plot"},
-  "bravebird": {"name": "Brave Bird"},
-  "doubleedge": {"name": "Double-Edge"},
-  "peck": {"name": "Peck"}
+  "thunderbolt": {
+    "name": "Thunderbolt"
+  },
+  "nastyplot": {
+    "name": "Nasty Plot"
+  },
+  "bravebird": {
+    "name": "Brave Bird"
+  },
+  "doubleedge": {
+    "name": "Double-Edge"
+  },
+  "peck": {
+    "name": "Peck"
+  },
+  "pound": {
+    "name": "Pound"
+  },
+  "leer": {
+    "name": "Leer"
+  },
+  "absorb": {
+    "name": "Absorb"
+  },
+  "quickattack": {
+    "name": "Quick Attack"
+  },
+  "gust": {
+    "name": "Gust"
+  },
+  "powdersnow": {
+    "name": "Powder Snow"
+  },
+  "icebeam": {
+    "name": "Ice Beam"
+  },
+  "roost": {
+    "name": "Roost"
+  },
+  "growth": {
+    "name": "Growth"
+  },
+  "magicalleaf": {
+    "name": "Magical Leaf"
+  },
+  "synthesis": {
+    "name": "Synthesis"
+  },
+  "seedflare": {
+    "name": "Seed Flare"
+  }
 }

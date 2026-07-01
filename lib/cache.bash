@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Filesystem cache for pokeapi responses.
 
-: "${POKEAPI_CACHE_DIR:=${XDG_CACHE_HOME:-${HOME}/.cache}/pokeapi}"
+# Lives under the pokidle cache dir (sibling of the showdown cache) so all
+# pokidle caches share one root and clean/relocation stays consistent.
+: "${POKEAPI_CACHE_DIR:=${POKIDLE_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/pokidle}/pokeapi}"
 
 # cache_path <endpoint>
 # Print the JSON cache file path for an endpoint.

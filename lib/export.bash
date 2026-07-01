@@ -16,76 +16,23 @@ function _export_stat_label {
 }
 
 # export_species_name <slug>
-# Map a PokeAPI species/variety slug to its Pokémon Showdown species name.
-# Default: titlecase each hyphen-separated segment and rejoin with hyphens, so
-# regional/forme suffixes survive intact (meowth-galar -> Meowth-Galar) — unlike
-# titlecase_words, which would flatten the hyphen to a space. A handful of
-# species carry irregular Showdown names (punctuation, spaces, a lowercase
-# tail) and are mapped directly.
+# Map a PokeAPI species/variety slug to its Pokémon Showdown species name, the
+# authoritative source (handles spaces, punctuation, lowercase tails: Great Tusk,
+# Mr. Mime, Kommo-o, …). Returns non-zero (printing nothing) when Showdown can't
+# resolve a name — a guessed name would make the Showdown import fail silently,
+# so the caller must fail controllably instead.
 function export_species_name {
     local slug="$1"
-    case "${slug}" in
-        mr-mime)
-            printf 'Mr. Mime'
-            return
-            ;;
-        mr-rime)
-            printf 'Mr. Rime'
-            return
-            ;;
-        mime-jr)
-            printf 'Mime Jr.'
-            return
-            ;;
-        type-null)
-            printf 'Type: Null'
-            return
-            ;;
-        farfetchd)
-            printf "Farfetch'd"
-            return
-            ;;
-        sirfetchd)
-            printf "Sirfetch'd"
-            return
-            ;;
-        tapu-koko)
-            printf 'Tapu Koko'
-            return
-            ;;
-        tapu-lele)
-            printf 'Tapu Lele'
-            return
-            ;;
-        tapu-bulu)
-            printf 'Tapu Bulu'
-            return
-            ;;
-        tapu-fini)
-            printf 'Tapu Fini'
-            return
-            ;;
-        jangmo-o)
-            printf 'Jangmo-o'
-            return
-            ;;
-        hakamo-o)
-            printf 'Hakamo-o'
-            return
-            ;;
-        kommo-o)
-            printf 'Kommo-o'
-            return
-            ;;
-    esac
-    local -a segs
-    IFS='-' read -ra segs <<<"${slug}"
-    local out="" sep="" s
-    for s in "${segs[@]}"; do
-        out+="${sep}${s^}"
-        sep="-"
-    done
-    printf '%s' "${out}"
+    if ! command -v showdown_species_name >/dev/null; then
+        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
+        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+    fi
+    local name
+    if ! name="$(showdown_species_name "${slug}")"; then
+        printf 'export_species_name: no Showdown name for %s\n' "${slug}" >&2
+        return 1
+    fi
+    printf '%s' "${name}"
 }
 
 # export_format <encounter_json>
@@ -110,7 +57,9 @@ function export_format {
         ] | join($US)' <<<"${enc}")
 
     local sp_t
-    sp_t="$(export_species_name "${species}")"
+    if ! sp_t="$(export_species_name "${species}")"; then
+        return 1
+    fi
     local ab_t
     ab_t="$(titlecase_words "${ability}")"
     local nat_t

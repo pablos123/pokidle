@@ -179,11 +179,11 @@ The XDG roots; sound, sprite, and DB paths all derive from these.
 
 ## PokeAPI client
 
-Shared with the standalone `pokeapi` CLI.
+Used by the daemon and the `pokidle pokeapi` subcommand.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `POKEAPI_CACHE_DIR` | `$XDG_CACHE_HOME/pokeapi` | On-disk cache of raw PokeAPI JSON responses. |
+| `POKEAPI_CACHE_DIR` | `$POKIDLE_CACHE_DIR/pokeapi` (`~/.cache/pokidle/pokeapi`) | On-disk cache of raw PokeAPI JSON responses. |
 | `POKEAPI_BASE_URL` | `https://pokeapi.co/api/v2` | API base URL. Point at a mirror or local cache if desired. |
 | `POKEAPI_USER_AGENT` | `pokeapi-bash/0.1` | `User-Agent` header sent with every request. |
 | `POKEAPI_RATE_LIMIT_SLEEP` | `0.5` | Seconds to sleep after each live fetch (cache misses only). |

@@ -410,6 +410,60 @@ EOF
     [ "$hit" = "1" ]
 }
 
+@test "evolution_apply: reconciles ability and moves for the new species" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    load_lib db
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    db_init
+    # Stale ability (pickup) and a stale move (tackle) illegal for corviknight;
+    # peck is legal and must be kept.
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('orchard', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json, friendship,
+            iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
+            ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe)
+            VALUES (1, 1700000000, 'rookidee', 821, 20, 'hardy', 'pickup', 0, 'M', 0,
+                '[\"tackle\",\"peck\"]',
+                70, 10,10,10,10,10,10, 0,0,0,0,0,0);"
+
+    pokeapi_get() {
+        case "$1" in
+            pokemon/corviknight)
+                printf '%s' '{"id":823,"sprites":{"front_default":"corv.png","front_shiny":""},
+                  "stats":[
+                    {"base_stat":98,"stat":{"name":"hp"}},
+                    {"base_stat":87,"stat":{"name":"attack"}},
+                    {"base_stat":105,"stat":{"name":"defense"}},
+                    {"base_stat":53,"stat":{"name":"special-attack"}},
+                    {"base_stat":85,"stat":{"name":"special-defense"}},
+                    {"base_stat":67,"stat":{"name":"speed"}}]}'
+                ;;
+            nature/hardy) printf '{"increased_stat":null,"decreased_stat":null}' ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+
+    local path='{"species":"corviknight","kind":"synthetic","evo":{"min_level":38}}'
+    run evolution_apply 1 "$path"
+    [ "$status" -eq 0 ]
+    local ability moves
+    ability="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT ability FROM encounters WHERE id=1;")"
+    moves="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT moves_json FROM encounters WHERE id=1;")"
+    # Ability re-rolled into corviknight's legal pool.
+    [[ "$ability" == "pressure" || "$ability" == "unnerve" || "$ability" == "mirror-armor" ]]
+    # peck kept; tackle dropped; every move legal for corviknight.
+    [ "$(jq -r 'index("peck") != null' <<< "$moves")" = "true" ]
+    [ "$(jq -r 'index("tackle") == null' <<< "$moves")" = "true" ]
+    local legal='["brave-bird","double-edge","peck"]'
+    [ "$(jq --argjson L "$legal" 'all(.[]; . as $m | $L | index($m) != null)' <<< "$moves")" = "true" ]
+}
+
 @test "evolution_apply: item path consumes one item_drops row" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
@@ -579,4 +633,91 @@ EOF
     local evo='{"min_level":30}'
     run evolution_check_hard_filters "$enc" "$evo"
     [ "$status" -eq 0 ]
+}
+
+@test "evolution_reconcile_ability: legal ability is kept" {
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    run evolution_reconcile_ability "corviknight" "pressure"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.name' <<< "$output")" = "pressure" ]
+    [ "$(jq -r '.is_hidden' <<< "$output")" = "false" ]
+}
+
+@test "evolution_reconcile_ability: kept ability recomputes is_hidden from new species" {
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    # mirror-armor is the hidden ability of corviknight; stored flag said 0.
+    run evolution_reconcile_ability "corviknight" "mirror-armor"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.name' <<< "$output")" = "mirror-armor" ]
+    [ "$(jq -r '.is_hidden' <<< "$output")" = "true" ]
+}
+
+@test "evolution_reconcile_ability: illegal ability is re-rolled from new species pool" {
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    run evolution_reconcile_ability "corviknight" "overgrow"
+    [ "$status" -eq 0 ]
+    local name
+    name="$(jq -r '.name' <<< "$output")"
+    [[ "$name" == "pressure" || "$name" == "unnerve" || "$name" == "mirror-armor" ]]
+}
+
+@test "evolution_reconcile_ability: showdown unavailable -> re-rolls via legal roller" {
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    showdown_legal_abilities() { return 1; }
+    encounter_roll_ability_legal() { printf '{"name":"sentinel","is_hidden":false}'; }
+    export -f showdown_legal_abilities encounter_roll_ability_legal
+    run evolution_reconcile_ability "corviknight" "pressure"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.name' <<< "$output")" = "sentinel" ]
+}
+
+@test "evolution_reconcile_moves: keeps legal moves, drops illegal, refills to pool cap" {
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    # corviknight legal pool: brave-bird, double-edge, peck.
+    local old='["peck","tackle","growl","brave-bird"]'
+    run evolution_reconcile_moves "corviknight" 50 "$old" "corviknight"
+    [ "$status" -eq 0 ]
+    # peck + brave-bird kept; tackle/growl dropped; double-edge refills. Pool of 3
+    # caps the result at 3.
+    [ "$(jq 'length' <<< "$output")" = "3" ]
+    [ "$(jq -r 'index("peck")     != null' <<< "$output")" = "true" ]
+    [ "$(jq -r 'index("brave-bird")!= null' <<< "$output")" = "true" ]
+    [ "$(jq -r 'index("double-edge")!=null' <<< "$output")" = "true" ]
+    [ "$(jq -r 'index("tackle")   == null' <<< "$output")" = "true" ]
+    # kept moves come first, in original order.
+    [ "$(jq -r '.[0]' <<< "$output")" = "peck" ]
+    [ "$(jq -r '.[1]' <<< "$output")" = "brave-bird" ]
+}
+
+@test "evolution_reconcile_moves: no duplicate moves when refilling" {
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    local old='["peck"]'
+    run evolution_reconcile_moves "corviknight" 50 "$old" "corviknight"
+    [ "$status" -eq 0 ]
+    [ "$(jq 'length == (unique | length)' <<< "$output")" = "true" ]
+    [ "$(jq -r 'index("peck") != null' <<< "$output")" = "true" ]
+}
+
+@test "evolution_reconcile_moves: showdown unavailable -> re-rolls via legal roller" {
+    load_lib encounter
+    load_lib showdown
+    seed_showdown
+    showdown_legal_moves() { return 1; }
+    encounter_roll_moves_legal() { printf '["sentinel-move"]'; }
+    export -f showdown_legal_moves encounter_roll_moves_legal
+    run evolution_reconcile_moves "corviknight" 50 '["peck"]' "corviknight"
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.[0]' <<< "$output")" = "sentinel-move" ]
 }

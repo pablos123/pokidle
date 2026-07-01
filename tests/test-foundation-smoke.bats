@@ -22,6 +22,13 @@ teardown() {
     rm -rf "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR"
 }
 
+@test "foundation: pokeapi cache defaults under the pokidle cache dir" {
+    local got
+    got="$(env -u POKEAPI_CACHE_DIR -u POKIDLE_CACHE_DIR -u XDG_CACHE_HOME HOME=/home/u \
+        bash -c "source '$REPO_ROOT/lib/cache.bash'; printf '%s' \"\$POKEAPI_CACHE_DIR\"")"
+    [ "$got" = "/home/u/.cache/pokidle/pokeapi" ]
+}
+
 @test "foundation: pick biome -> open session -> insert encounter -> list" {
     db_init
     biome_validate

@@ -449,6 +449,9 @@ function db_update_encounter_evolved {
     local sprite="$4"
     local stats_str="$5"
     local variety="${6:-$species}"
+    local ability="${7:-}"
+    local is_hidden="${8:-}"
+    local moves_json="${9:-}"
     if ! _db_assert_int "${id}" id; then
         return 2
     fi
@@ -467,10 +470,22 @@ function db_update_encounter_evolved {
     if [[ -n "${sprite}" ]]; then
         sprite_sql="'${sprite//\'/\'\'}'"
     fi
+    # Optional ability/moves reconciliation columns. Only set when supplied so
+    # legacy callers (sprite/stats-only) leave them untouched.
+    local extra=""
+    if [[ -n "${ability}" ]]; then
+        if ! _db_assert_int "${is_hidden}" is_hidden; then
+            return 2
+        fi
+        extra+=", ability='${ability//\'/\'\'}', is_hidden_ability=${is_hidden}"
+    fi
+    if [[ -n "${moves_json}" ]]; then
+        extra+=", moves_json='${moves_json//\'/\'\'}'"
+    fi
     db_exec "UPDATE encounters
         SET species='${species//\'/\'\'}', variety='${variety//\'/\'\'}', dex_id=${dex_id}, sprite_path=${sprite_sql},
             stat_hp=${stats[0]}, stat_atk=${stats[1]}, stat_def=${stats[2]},
-            stat_spa=${stats[3]}, stat_spd=${stats[4]}, stat_spe=${stats[5]}
+            stat_spa=${stats[3]}, stat_spd=${stats[4]}, stat_spe=${stats[5]}${extra}
         WHERE id=${id};"
 }
 
