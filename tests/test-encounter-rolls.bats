@@ -228,11 +228,24 @@ EOF
     POKIDLE_CACHE_DIR="$(mktemp -d "${BATS_TMPDIR}/cache.XXXXXX")"
     export POKIDLE_CACHE_DIR
     mkdir -p "${POKIDLE_CACHE_DIR}/pools"
-    printf '%s' '{"biome":"volcano","tiers":{},"berries":["rawst-berry"],"items":["charcoal"]}' \
+    # Pool berries are stored bare (shared with the held_berry roll); as an item
+    # drop they must carry the "-berry" item slug so the sprite/export lookups hit.
+    printf '%s' '{"biome":"volcano","tiers":{},"berries":["rawst"],"items":["charcoal"]}' \
         > "${POKIDLE_CACHE_DIR}/pools/volcano.json"
     out="$(encounter_roll_item volcano)"
     name="$(jq -r '.item' <<<"$out")"
     [ "$name" = "charcoal" ] || [ "$name" = "rawst-berry" ]
+}
+
+@test "encounter_roll_item: berry-only pool always yields the -berry item slug" {
+    POKIDLE_CACHE_DIR="$(mktemp -d "${BATS_TMPDIR}/cache.XXXXXX")"
+    export POKIDLE_CACHE_DIR
+    mkdir -p "${POKIDLE_CACHE_DIR}/pools"
+    printf '%s' '{"biome":"volcano","tiers":{},"berries":["pomeg"],"items":[]}' \
+        > "${POKIDLE_CACHE_DIR}/pools/volcano.json"
+    out="$(encounter_roll_item volcano)"
+    name="$(jq -r '.item' <<<"$out")"
+    [ "$name" = "pomeg-berry" ]
 }
 
 @test "_encounter_variety_is_non_wild: flags battle/totem/event/cosmetic forms, allows base/regional" {

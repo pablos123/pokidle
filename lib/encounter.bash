@@ -944,7 +944,10 @@ function encounter_roll_item {
         return 1
     fi
     local -a candidates=()
-    mapfile -t candidates < <(jq -r '(.items // [])[], (.berries // [])[]' <<<"${pool}")
+    # Items are already full slugs; berries are stored bare (shared with the
+    # held_berry roll) but as an item drop each needs its "-berry" item slug so
+    # the sprite fetch and the export/held-item match resolve.
+    mapfile -t candidates < <(jq -r '(.items // [])[], ((.berries // [])[] | . + "-berry")' <<<"${pool}")
     local -i n="${#candidates[@]}"
     if ((n == 0)); then
         printf 'encounter_roll_item: empty item pool for biome %s\n' "${biome_id}" >&2

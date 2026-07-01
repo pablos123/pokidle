@@ -268,7 +268,7 @@ EOF
 {"biome":"glacier","built_at":"2026-05-28T00:00:00Z",
  "tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},
  "items":["never-melt-ice","icicle-plate","icy-rock","icium-z","glalitite","ice-stone"],
- "berries":["yache-berry","aspear-berry"]}
+ "berries":["yache","aspear"]}
 EOF
     run "$REPO_ROOT/pokidle" current items
     [ "$status" -eq 0 ]
@@ -298,7 +298,7 @@ EOF
 {"biome":"glacier","built_at":"2026-05-28T00:00:00Z",
  "tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},
  "items":["never-melt-ice","icicle-plate","icy-rock","icium-z","glalitite","ice-stone"],
- "berries":["yache-berry","aspear-berry"]}
+ "berries":["yache","aspear"]}
 EOF
     run "$REPO_ROOT/pokidle" current berries
     [ "$status" -eq 0 ]

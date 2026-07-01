@@ -1959,7 +1959,10 @@ function _pokidle_current_items {
 # alphabetical, one slug per line.
 function _pokidle_current_berries {
     local biome="$1"
-    encounter_pool_load "${biome}" 2>/dev/null | jq -r '(.berries // [])[]' | LC_ALL=C sort -u
+    # Pool berries are stored bare; drops carry the "-berry" item slug (see
+    # encounter_roll_item), so show that slug here to match what the tick logs.
+    encounter_pool_load "${biome}" 2>/dev/null \
+        | jq -r '(.berries // [])[] | . + "-berry"' | LC_ALL=C sort -u
 }
 
 # _pokidle_current_encounters <biome>
