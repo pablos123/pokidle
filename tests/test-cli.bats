@@ -937,14 +937,18 @@ _seed_pokeapi_cache() {
         POKIDLE_CACHE_DIR="${POKIDLE_CACHE_DIR}" \
         bash -c '
             source "'"${REPO_ROOT}"'/pokidle"
-            # Override _showdown_build_holdable_meta with a stub.
+            # Override the artifact builders with stubs (no network).
             _showdown_build_holdable_meta() {
                 printf "leftovers\t\t0\nchoice-band\t\t0\n" > "'"${sd_dir}"'/items-holdable.tsv"
+            }
+            _showdown_build_form_items_meta() {
+                printf "charizardite-x\tcharizard\tmega\n" > "'"${sd_dir}"'/form-items.tsv"
             }
             pokidle_rebuild_pool --items
         '
     [ "$status" -eq 0 ]
     [ -f "${sd_dir}/items-holdable.tsv" ]
+    [ -f "${sd_dir}/form-items.tsv" ]
     # No pool files should have been written.
     local n
     n="$(find "${POKIDLE_CACHE_DIR}/pools" -name '*.json' 2>/dev/null | wc -l)"

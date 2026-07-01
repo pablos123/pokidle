@@ -37,9 +37,12 @@ printf 'building pools (this can take ~2 hours due to PokeAPI rate-limit sleep)\
 printf 'copying %s/pools/*.json -> %s/\n' "${CACHE_DIR}" "${SHIP_DIR}"
 cp -- "${CACHE_DIR}"/pools/*.json "${SHIP_DIR}/"
 
-printf 'copying items-holdable.tsv -> %s/\n' "${REPO_ROOT}/share"
+printf 'copying Showdown artifacts -> %s/\n' "${REPO_ROOT}/share"
 mkdir -p -- "${REPO_ROOT}/share"
-cp -- "${CACHE_DIR}/showdown/items-holdable.tsv" "${REPO_ROOT}/share/items-holdable.tsv"
+# Sort on copy so the shipped artifacts are deterministic (the builders emit in
+# items.js order); keeps git diffs to real content changes across rebuilds.
+sort -- "${CACHE_DIR}/showdown/items-holdable.tsv" > "${REPO_ROOT}/share/items-holdable.tsv"
+sort -- "${CACHE_DIR}/showdown/form-items.tsv" > "${REPO_ROOT}/share/form-items.tsv"
 
 shipped=("${SHIP_DIR}"/*.json)
 printf 'done: %d pool(s) in %s\n' "${#shipped[@]}" "${SHIP_DIR}"

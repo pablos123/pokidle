@@ -2109,12 +2109,18 @@ function pokidle_rebuild_pool {
     local -i full=0
     [[ -z "${target}" ]] && full=1
 
-    # Build the holdable item artifact when: --items flag, or full rebuild without --no-items.
+    # Build the Showdown artifacts (holdable items + form-item registry) when:
+    # --items flag, or full rebuild without --no-items.
     if ((items_only || (do_items && full))); then
         if _showdown_build_holdable_meta >/dev/null; then
             printf 'rebuilt items artifact: %s\n' "${POKIDLE_SHOWDOWN_CACHE_DIR}/items-holdable.tsv"
         else
             printf 'rebuild-pool: item artifact build failed\n' >&2
+        fi
+        if _showdown_build_form_items_meta >/dev/null; then
+            printf 'rebuilt form-item registry: %s\n' "${POKIDLE_SHOWDOWN_CACHE_DIR}/form-items.tsv"
+        else
+            printf 'rebuild-pool: form-item registry build failed\n' >&2
         fi
     fi
     if ((items_only)); then
