@@ -1320,7 +1320,11 @@ function _pokidle_item_sprite {
     if [[ "${POKIDLE_FETCH_SPRITES:-1}" != "1" ]]; then
         return 0
     fi
-    if ! item_sprite "${name}" 2>/dev/null; then
+    # Drops carry the Showdown item slug; the sprite lives under the PokeAPI slug,
+    # which differs for a few renamed items (e.g. pretty-feather -> pretty-wing).
+    local pokeapi
+    pokeapi="$(showdown_item_pokeapi_slug "${name}")"
+    if ! item_sprite "${pokeapi}" 2>/dev/null; then
         return 0
     fi
 }

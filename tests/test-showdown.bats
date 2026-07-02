@@ -128,7 +128,8 @@ setup() {
         > "${POKIDLE_SHOWDOWN_CACHE_DIR}/items.js"
     _showdown_fetch_items() { touch "${BATS_TEST_TMPDIR}/items_fetched"; return 1; }
     pokeapi_get() { printf '{"items":[]}'; }
-    export -f _showdown_fetch_items pokeapi_get
+    showdown_item_name_index() { return 1; }
+    export -f _showdown_fetch_items pokeapi_get showdown_item_name_index
     run _showdown_build_holdable_meta
     [ "$status" -eq 0 ]
     [ ! -f "${BATS_TEST_TMPDIR}/items_fetched" ]
@@ -149,12 +150,118 @@ setup() {
             *) return 1 ;;
         esac
     }
-    export -f _showdown_fetch_items pokeapi_get
+    showdown_item_name_index() { return 1; }
+    export -f _showdown_fetch_items pokeapi_get showdown_item_name_index
     run _showdown_build_holdable_meta
     [ "$status" -eq 0 ]
     echo "$output" | grep -qx $'leftovers\t\t0'
     run bash -c "printf '%s\n' \"$output\" | grep -qxE $'(fire-stone|tm99)\t\t0'"
     [ "$status" -ne 0 ]
+}
+
+@test "showdown_item_name_index: prints slug + normalized English-name key" {
+    # PokeAPI carries the Showdown display name as its English item name, even
+    # when the slug differs. The name key is that English name normalized the
+    # same way Showdown slugs are (lowercase, non-alnum -> '-', trimmed), so a
+    # Showdown slug can join to the PokeAPI slug. Note pretty-wing's English name
+    # is "Pretty Feather" and kings-rock uses a curly apostrophe.
+    showdown_item_name_index_query() { printf 'QUERY'; }
+    pokeapi_graphql() {
+        printf '%s' '{"data":{"item":[
+            {"name":"leftovers","itemnames":[{"name":"Leftovers"}]},
+            {"name":"kings-rock","itemnames":[{"name":"King’s Rock"}]},
+            {"name":"pretty-wing","itemnames":[{"name":"Pretty Feather"}]},
+            {"name":"nameless","itemnames":[]}
+        ]}}'
+    }
+    export -f showdown_item_name_index_query pokeapi_graphql
+    run showdown_item_name_index
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx $'leftovers\tleftovers'
+    echo "$output" | grep -qx $'kings-rock\tking-s-rock'
+    echo "$output" | grep -qx $'pretty-wing\tpretty-feather'
+    # Items with no English name contribute nothing (no bogus key).
+    run bash -c "printf '%s\n' \"$output\" | grep -q nameless"
+    [ "$status" -ne 0 ]
+}
+
+@test "_showdown_resolve_pokeapi_slug: valid PokeAPI slug resolves to itself" {
+    showdown_item_name_index() {
+        printf 'leftovers\tleftovers\nkings-rock\tking-s-rock\n'
+    }
+    export -f showdown_item_name_index
+    run _showdown_resolve_pokeapi_slug leftovers
+    [ "$status" -eq 0 ]
+    [ "$output" = "leftovers" ]
+}
+
+@test "_showdown_resolve_pokeapi_slug: renamed item resolves via unique name key" {
+    # PokeAPI slug "kings-rock", but its normalized English name is "king-s-rock"
+    # (Showdown's "King's Rock"). The Showdown-derived slug king-s-rock is not a
+    # PokeAPI slug, so it must map through the name key to kings-rock.
+    showdown_item_name_index() {
+        printf 'leftovers\tleftovers\nkings-rock\tking-s-rock\npretty-wing\tpretty-feather\n'
+    }
+    export -f showdown_item_name_index
+    run _showdown_resolve_pokeapi_slug king-s-rock
+    [ "$status" -eq 0 ]
+    [ "$output" = "kings-rock" ]
+    run _showdown_resolve_pokeapi_slug pretty-feather
+    [ "$output" = "pretty-wing" ]
+}
+
+@test "_showdown_resolve_pokeapi_slug: ambiguous name key falls back to identity" {
+    # Two PokeAPI slugs share a normalized name (e.g. --held/--bag variants).
+    # An unknown slug hitting that key must not pick a wrong sprite: keep identity.
+    showdown_item_name_index() {
+        printf 'buginium-z--bag\tbuginium-z\nbuginium-z--held\tbuginium-z\n'
+    }
+    export -f showdown_item_name_index
+    run _showdown_resolve_pokeapi_slug buginium-z
+    [ "$status" -eq 0 ]
+    [ "$output" = "buginium-z" ]
+}
+
+@test "_showdown_resolve_pokeapi_slug: unknown slug (neither slug nor name) keeps identity" {
+    showdown_item_name_index() { printf 'leftovers\tleftovers\n'; }
+    export -f showdown_item_name_index
+    run _showdown_resolve_pokeapi_slug totally-made-up
+    [ "$status" -eq 0 ]
+    [ "$output" = "totally-made-up" ]
+}
+
+@test "_showdown_build_holdable_meta: appends a 4th pokeapi_slug column only for renamed items" {
+    _showdown_fetch_items() {
+        printf '%s' 'exports.BattleItems = {leftovers:{name:"Leftovers",num:234,gen:2},prettyfeather:{name:"Pretty Feather",num:571,gen:5}};'
+    }
+    pokeapi_get() { printf '{"items":[]}'; }
+    # Pretty Feather's Showdown slug (pretty-feather) is not a PokeAPI slug; its
+    # English name maps to PokeAPI slug pretty-wing.
+    showdown_item_name_index() {
+        printf 'leftovers\tleftovers\npretty-wing\tpretty-feather\n'
+    }
+    export -f _showdown_fetch_items pokeapi_get showdown_item_name_index
+    run _showdown_build_holdable_meta
+    [ "$status" -eq 0 ]
+    # Identity item stays 3 columns (no trailing pokeapi_slug).
+    echo "$output" | grep -qx $'leftovers\t\t0'
+    # Renamed item carries the resolved PokeAPI slug in column 4.
+    echo "$output" | grep -qx $'pretty-feather\t\t0\tpretty-wing'
+}
+
+@test "showdown_item_pokeapi_slug: returns column 4 for renamed items, identity otherwise" {
+    printf 'leftovers\t\t0\nking-s-rock\t\t0\tkings-rock\naspear-berry\tice\t1\n' \
+        > "${POKIDLE_SHOWDOWN_CACHE_DIR}/items-holdable.tsv"
+    run showdown_item_pokeapi_slug king-s-rock
+    [ "$status" -eq 0 ]
+    [ "$output" = "kings-rock" ]
+    run showdown_item_pokeapi_slug leftovers
+    [ "$output" = "leftovers" ]
+    run showdown_item_pokeapi_slug aspear-berry
+    [ "$output" = "aspear-berry" ]
+    # Unknown slug (not a holdable, e.g. an evolution-item drop) passes through.
+    run showdown_item_pokeapi_slug fire-stone
+    [ "$output" = "fire-stone" ]
 }
 
 @test "_showdown_form_items_transform: species-specific mega/primal/signature-Z only" {

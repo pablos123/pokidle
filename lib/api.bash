@@ -18,6 +18,27 @@ function pokeapi_get {
     cache_get "${endpoint}"
 }
 
+# pokeapi_graphql <cache-key> <query>
+# Print the JSON response for a GraphQL <query>, cached on disk under
+# "graphql/<cache-key>" (permanent, like the REST cache). Serves the cache when
+# present; otherwise runs the query, caches, and prints it. Returns 1 only when
+# the query fails and nothing is cached. <cache-key> names the query's purpose,
+# so distinct queries must use distinct keys; reuse this for any future query.
+function pokeapi_graphql {
+    local key="graphql/$1"
+    local query="$2"
+    if cache_has "${key}"; then
+        cache_get "${key}"
+        return 0
+    fi
+    local body
+    if ! body="$(http_graphql "${query}")"; then
+        return 1
+    fi
+    printf '%s' "${body}" | cache_put "${key}"
+    cache_get "${key}"
+}
+
 # Resource fetchers: each takes <name-or-id> and prints the raw endpoint JSON.
 function pokemon { pokeapi_get "pokemon/$1"; }
 function move { pokeapi_get "move/$1"; }

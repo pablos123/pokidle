@@ -284,6 +284,22 @@ function _showdown_build_holdable_meta {
     local excl
     excl="$(_showdown_excluded_item_categories)"
     meta="$(awk -F'\t' 'NR==FNR{x[$0]=1;next} !($1 in x)' <(printf '%s\n' "${excl}") - <<<"${meta}")"
+    # Annotate rows whose Showdown slug differs from the PokeAPI item slug with a
+    # 4th column (the PokeAPI slug) so sprite/world-data fetches resolve. Identity
+    # rows keep 3 columns. Best-effort: no name index -> resolver returns identity
+    # -> no annotations.
+    local annotated="" line slug pokeapi
+    while IFS= read -r line; do
+        [[ -z "${line}" ]] && continue
+        slug="${line%%$'\t'*}"
+        pokeapi="$(_showdown_resolve_pokeapi_slug "${slug}")"
+        if [[ "${pokeapi}" != "${slug}" ]]; then
+            annotated+="${line}"$'\t'"${pokeapi}"$'\n'
+        else
+            annotated+="${line}"$'\n'
+        fi
+    done <<<"${meta}"
+    meta="${annotated%$'\n'}"
     printf '%s\n' "${meta}" | atomic_write "${path}"
     printf '%s\n' "${meta}"
 }
@@ -431,6 +447,87 @@ function showdown_typeless_holdable_items {
         return 1
     fi
     awk -F'\t' '$2 == "" && $3 == "0" {print $1}' <<<"${meta}"
+}
+
+# showdown_item_name_index_query
+# The GraphQL query behind showdown_item_name_index: every PokeAPI item slug
+# with its English display name. Split out so it can be stubbed in tests.
+function showdown_item_name_index_query {
+    printf '%s' 'query { item { name itemnames(where:{language:{name:{_eq:"en"}}}) { name } } }'
+}
+
+# showdown_item_name_index
+# Print "<pokeapi_slug>\t<name-key>" for every PokeAPI item, where <name-key> is
+# the item's English display name normalized like a Showdown slug (lowercase,
+# non-alnum runs -> '-', trimmed). PokeAPI stores the Showdown display name as
+# its English item name, so this key lets a Showdown-derived slug join to the
+# PokeAPI slug even when the two slugs differ. Cached via pokeapi_graphql.
+# Returns 1 when the query yields nothing.
+function showdown_item_name_index {
+    local json
+    if ! json="$(pokeapi_graphql item-names "$(showdown_item_name_index_query)")"; then
+        return 1
+    fi
+    jq -r '
+        .data.item[]
+        | select((.itemnames | length) > 0)
+        | (.itemnames[0].name
+           | ascii_downcase | gsub("[^a-z0-9]+"; "-")
+           | sub("^-+"; "") | sub("-+$"; "")) as $key
+        | select($key != "")
+        | "\(.name)\t\($key)"
+    ' <<<"${json}"
+}
+
+# _showdown_resolve_pokeapi_slug <showdown_slug>
+# Map a Showdown-derived item slug to the PokeAPI item slug used for world-data
+# (sprite) fetches, using the name index (PokeAPI slug<TAB>normalized-English-name
+# key). Showdown identity is authoritative; this only bridges to PokeAPI's slug
+# when Showdown's differs (apostrophes -> "king-s-rock" vs "kings-rock", or genuine
+# renames -> "pretty-feather" vs "pretty-wing"). Rules, in order:
+#   1. Slug is already a valid PokeAPI slug   -> itself.
+#   2. Slug matches exactly one name key      -> that PokeAPI slug.
+#   3. Otherwise (unknown, or ambiguous key)  -> itself (graceful; never guess a
+#      wrong sprite). Prints the input slug unchanged when the index is missing.
+function _showdown_resolve_pokeapi_slug {
+    local slug="$1"
+    local idx
+    if ! idx="$(showdown_item_name_index)" || [[ -z "${idx}" ]]; then
+        printf '%s\n' "${slug}"
+        return 0
+    fi
+    # Rule 1: already a PokeAPI slug (field 1).
+    if awk -F'\t' -v s="${slug}" '$1 == s {f = 1} END {exit !f}' <<<"${idx}"; then
+        printf '%s\n' "${slug}"
+        return 0
+    fi
+    # Rules 2/3: unique name-key match (field 2) -> its slug, else identity.
+    local matches
+    matches="$(awk -F'\t' -v s="${slug}" '$2 == s {print $1}' <<<"${idx}")"
+    if [[ -n "${matches}" && "$(wc -l <<<"${matches}")" -eq 1 ]]; then
+        printf '%s\n' "${matches}"
+    else
+        printf '%s\n' "${slug}"
+    fi
+    return 0
+}
+
+# showdown_item_pokeapi_slug <slug>
+# Print the PokeAPI item slug for a Showdown item slug: column 4 of the holdable
+# metadata when present (a renamed item), else the slug unchanged. Unknown slugs
+# (e.g. evolution-item drops not in the holdable table) pass through. This is the
+# one PokeAPI-boundary translation: pool/db/export keep the Showdown slug; only
+# world-data (sprite) fetches go through here.
+function showdown_item_pokeapi_slug {
+    local slug="$1"
+    local meta out
+    if ! meta="$(showdown_holdable_meta 2>/dev/null)"; then
+        printf '%s\n' "${slug}"
+        return 0
+    fi
+    out="$(awk -F'\t' -v s="${slug}" \
+        '$1 == s { print ($4 != "" ? $4 : $1); exit }' <<<"${meta}")"
+    printf '%s\n' "${out:-${slug}}"
 }
 
 # showdown_item_is_holdable <slug>
