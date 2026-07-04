@@ -51,5 +51,5 @@ function pokidle_switch_biome {
     fi
     local new_sid
     new_sid="$(db_open_biome_session "${biome}" "$(date +%s)")"
-    printf 'switched to %s (session %s)\n' "${biome}" "${new_sid}"
+    printf 'switched to %s (session %s)\n' "$(_pokidle_biome_display "${biome}")" "${new_sid}"
 }

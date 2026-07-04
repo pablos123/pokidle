@@ -25,7 +25,7 @@ setup() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"SHINY"* ]]
     [[ "$output" == *"Sceptile"* ]]
-    [[ "$output" == *"• leaf-blade"* ]]
+    [[ "$output" == *"• Leaf Blade"* ]]
     [[ "$output" == *"Held: Sitrus Berry"* ]]
 }
 
@@ -60,7 +60,7 @@ setup() {
     # IVs/EVs render before the move bullets.
     local ivpos movepos
     ivpos="$(printf '%s\n' "$output" | grep -n 'IVs:' | head -1 | cut -d: -f1)"
-    movepos="$(printf '%s\n' "$output" | grep -n 'leech-life' | head -1 | cut -d: -f1)"
+    movepos="$(printf '%s\n' "$output" | grep -n 'Leech Life' | head -1 | cut -d: -f1)"
     [ "$ivpos" -lt "$movepos" ]
 }
 
@@ -92,6 +92,15 @@ setup() {
     run notify_evolution "$evo"
     [ "$status" -eq 0 ]
     [[ "$output" == *"evolved into Charmeleon!"* ]]
+}
+
+@test "notify_evolution: form names use their Showdown display name" {
+    load_lib showdown
+    seed_showdown
+    local evo='{"from":"meowth","to":"meowth-galar","biome_label":"City","sprite_path":""}'
+    run notify_evolution "$evo"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"evolved into Meowth-Galar!"* ]]
 }
 
 @test "notify_level / notify_friendship: body empty (biome dropped)" {
@@ -191,11 +200,13 @@ setup() {
     [[ "$out" != *"LEGENDARY"* ]]
 }
 
-@test "notify_pokemon: title shows the encountered variety, not the bare species" {
+@test "notify_pokemon: title shows the encountered variety as its Showdown name" {
+    load_lib showdown
+    seed_showdown
     local enc out
     enc='{"species":"meowth","variety":"meowth-galar","level":12,"nature":"jolly","ability":"pickup","gender":"M","shiny":0,"held_berry":null,"biome_label":"City","stats":[20,18,16,12,14,22],"moves":["scratch"],"sprite_path":""}'
     out="$(notify_pokemon "$enc")"
-    [[ "$out" == *"Meowth Galar"* ]]
+    [[ "$out" == *"Meowth-Galar"* ]]
 }
 
 @test "notify_pokemon: falls back to species when variety absent" {

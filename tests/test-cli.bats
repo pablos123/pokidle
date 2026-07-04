@@ -188,7 +188,7 @@ _ins_item() { # $1 sid  $2 item  $3 ts
             31,31,31,31,31,31, 0,0,0,0,0,0, 50,50,50,50,50,50, '[\"scratch\"]', NULL);"
     run "$REPO_ROOT/pokidle" encounters --no-images
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Lv.12 meowth-galar"* ]]
+    [[ "$output" == *"Lv.12 Meowth-Galar"* ]]
 }
 
 @test "pokidle encounters shows the held berry as its full display name" {
@@ -204,7 +204,7 @@ _ins_item() { # $1 sid  $2 item  $3 ts
             31,31,31,31,31,31, 0,0,0,0,0,0, 50,50,50,50,50,50, '[\"tackle\"]', NULL);"
     run "$REPO_ROOT/pokidle" encounters --no-images
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Lv.5 zigzagoon @ Sitrus Berry"* ]]
+    [[ "$output" == *"Lv.5 Zigzagoon @ Sitrus Berry"* ]]
 }
 
 @test "pokidle encounters falls back to species when variety is NULL (legacy rows)" {
@@ -214,7 +214,7 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     _ins_enc "$sid" zubat "$now"
     run "$REPO_ROOT/pokidle" encounters --no-images
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Lv.50 zubat"* ]]
+    [[ "$output" == *"Lv.50 Zubat"* ]]
 }
 
 @test "encounters distinguishes an unknown option from an unexpected argument" {
@@ -390,12 +390,12 @@ EOF
     [[ "$output" == *"uncommon:"* ]]
     [[ "$output" == *"very_rare:"* ]]
     ! grep -qx 'rare:' <<< "$output"               # empty tier is skipped
-    [[ "$output" == *"geodude (L5-12)"* ]]
-    [[ "$output" == *"mewtwo (L50-60)"* ]]
+    [[ "$output" == *"Geodude (L5-12)"* ]]
+    [[ "$output" == *"Mewtwo (L50-60)"* ]]
     # Alphabetical within tier: geodude before zubat.
     local g z
-    g="$(printf '%s\n' "$output" | grep -n 'geodude' | head -1 | cut -d: -f1)"
-    z="$(printf '%s\n' "$output" | grep -n 'zubat'   | head -1 | cut -d: -f1)"
+    g="$(printf '%s\n' "$output" | grep -n 'Geodude' | head -1 | cut -d: -f1)"
+    z="$(printf '%s\n' "$output" | grep -n 'Zubat'   | head -1 | cut -d: -f1)"
     [ "$g" -lt "$z" ]
 }
 
@@ -404,7 +404,7 @@ EOF
     local sid; sid="$(_mk_session cave)"
     run "$REPO_ROOT/pokidle" current --no-images
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Active biome: cave"* ]]
+    [[ "$output" == *"Active biome: Cave"* ]]
     # No image rendered: summary occupies exactly 6 lines (incl. the Types line).
     [ "$(printf '%s\n' "$output" | wc -l)" -eq 6 ]
     # Types line is line 2, possible-line is line 3.
@@ -433,10 +433,10 @@ EOF
     run "$REPO_ROOT/pokidle" current encounters
     [ "$status" -eq 0 ]
     # The steel form is shown, not the bare (Normal-type) species name.
-    [[ "$output" == *"meowth-galar (L5-15)"* ]]
-    [[ "$output" != *"  meowth (L5-15)"* ]]
+    [[ "$output" == *"Meowth-Galar (L5-15)"* ]]
+    [[ "$output" != *"  Meowth (L5-15)"* ]]
     # Bare-form species still render as their plain name.
-    [[ "$output" == *"geodude (L5-12)"* ]]
+    [[ "$output" == *"Geodude (L5-12)"* ]]
 }
 
 @test "pokidle current rejects two kinds at once" {
@@ -675,6 +675,27 @@ _seed_pokeapi_cache() {
     [[ "$output" == *"Total encounters"* ]]
 }
 
+@test "pokidle stats shows biome labels and prettified species names" {
+    _seed_schema
+    local sid; sid="$(_mk_session crystal-cavern)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" pidgey "$now"
+    _ins_enc "$sid" pidgey "$now"
+    run "$REPO_ROOT/pokidle" stats
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Crystal Cavern"* ]]
+    [[ "$output" == *"Pidgey"* ]]
+    # Raw slugs no longer leak into the By-biome / Top-species tables.
+    [[ "$output" != *"crystal-cavern"* ]]
+}
+
+@test "pokidle switch-biome reports the biome label" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" switch-biome crystal-cavern
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"switched to Crystal Cavern"* ]]
+}
+
 @test "pokidle tick encounter --dry-run --no-notify --json: emits encounter without writing db" {
     sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
     sqlite3 "$POKIDLE_DB_PATH" \
@@ -714,8 +735,8 @@ _seed_pokeapi_cache() {
 
     run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --no-images
     [ "$status" -eq 0 ]
-    [[ "$output" == *"treecko"* ]]
-    [[ "$output" =~ (overgrow|unburden) ]]
+    [[ "$output" == *"Treecko"* ]]
+    [[ "$output" =~ (Overgrow|Unburden) ]]
     [[ "$output" == *"Moves:"* ]]
     [[ "$output" == *"IVs:"* ]]
     [[ "$output" == *"EVs:"* ]]
@@ -876,12 +897,12 @@ _seed_pokeapi_cache() {
             31,31,31,31,31,31, 1,2,3,4,5,6, 50,51,52,53,54,55, '[\"scratch\",\"bite\"]', NULL);"
     run "$REPO_ROOT/pokidle" encounters --no-images
     [ "$status" -eq 0 ]
-    [ "${lines[0]}" = "$(printf '%s   [crystal-cavern]   Lv.12 meowth-galar' "$(date -d "@$now" '+%F %H:%M')")" ]
-    [ "${lines[1]}" = "   adamant · pickup · M" ]
+    [ "${lines[0]}" = "$(printf '%s   [Crystal Cavern]   Lv.12 Meowth-Galar' "$(date -d "@$now" '+%F %H:%M')")" ]
+    [ "${lines[1]}" = "   Adamant · Pickup · M" ]
     [ "${lines[2]}" = "   Stats: 50/51/52/53/54/55" ]
     [ "${lines[3]}" = "   IVs:   31/31/31/31/31/31" ]
     [ "${lines[4]}" = "   EVs:   1/2/3/4/5/6" ]
-    [ "${lines[5]}" = "   Moves: scratch, bite" ]
+    [ "${lines[5]}" = "   Moves: Scratch, Bite" ]
 }
 
 @test "encounters marks shiny rows with a sparkle" {
@@ -897,7 +918,7 @@ _seed_pokeapi_cache() {
             10,10,10,10,10,10, 0,0,0,0,0,0, 20,20,20,20,20,20, '[\"bite\"]', NULL);"
     run "$REPO_ROOT/pokidle" encounters --no-images
     [ "$status" -eq 0 ]
-    [[ "${lines[0]}" == *"Lv.7 zubat ✨" ]]
+    [[ "${lines[0]}" == *"Lv.7 Zubat ✨" ]]
 }
 
 @test "items renders date, biome and item per row, oldest first" {
@@ -911,8 +932,8 @@ _seed_pokeapi_cache() {
     run "$REPO_ROOT/pokidle" items --all --no-images
     [ "$status" -eq 0 ]
     local l1 l2
-    l1="$(printf '%s   [%s]   %s   (%s)' "$(date -d "@$((now - 200))" '+%F %H:%M')" 'cave' 'Everstone' 'item')"
-    l2="$(printf '%s   [%s]   %s   (%s)%s' "$(date -d "@$((now - 100))" '+%F %H:%M')" 'cave' 'Leftovers' 'item' '   (used)')"
+    l1="$(printf '%s   [%s]   %s   (%s)' "$(date -d "@$((now - 200))" '+%F %H:%M')" 'Cave' 'Everstone' 'item')"
+    l2="$(printf '%s   [%s]   %s   (%s)%s' "$(date -d "@$((now - 100))" '+%F %H:%M')" 'Cave' 'Leftovers' 'item' '   (used)')"
     [ "${lines[0]}" = "$l1" ]
     [[ "${output}" == *"$l2"* ]]
 }
@@ -1074,7 +1095,7 @@ _seed_pokeapi_cache() {
         _pokidle_print_encounter "$enc"
     '
     [ "$status" -eq 0 ]
-    [[ "$output" == *"meowth-galar"* ]]
+    [[ "$output" == *"Meowth-Galar"* ]]
 }
 
 

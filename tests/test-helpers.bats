@@ -24,6 +24,14 @@ setup() {
     [ "$output" = "King Of The Hill" ]
 }
 
+@test "species_display_name: falls back to titlecased slug when Showdown unavailable" {
+    # showdown lib not sourced here, so showdown_species_name is undefined ->
+    # the helper must degrade to a titlecased slug, never blank.
+    run species_display_name "meowth-galar"
+    [ "$status" -eq 0 ]
+    [ "$output" = "Meowth Galar" ]
+}
+
 @test "strip_slashes: removes one leading and one trailing slash" {
     run strip_slashes "/pokemon/25/"
     [ "$output" = "pokemon/25" ]

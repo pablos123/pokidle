@@ -161,7 +161,7 @@ function _pokidle_current_summary {
             printf '\n'
         fi
     fi
-    printf 'Active biome: %s  (session #%s)\n' "${biome}" "${id}"
+    printf 'Active biome: %s  (session #%s)\n' "$(_pokidle_biome_display "${biome}")" "${id}"
     printf 'Types: %s\n' "${types_csv}"
     printf 'Possible encounters: %s   Possible items: %s   Berries: %s\n' "${poss_enc}" "${poss_item}" "${poss_berry}"
     printf 'Started: %s\n' "$(date -d "@${started_at}")"
@@ -199,13 +199,16 @@ function _pokidle_current_encounters {
     if ! pool="$(encounter_pool_load "${biome}")"; then
         return 1
     fi
+    local US=$'\037'
     local -i first=1
     local tier
     for tier in common uncommon rare very_rare; do
+        # jq emits name<US>min<US>max per qualifying form, still sorted by slug;
+        # the bash loop prettifies each name to its Showdown display name.
         local rows
-        rows="$(jq -r --arg t "${tier}" '
+        rows="$(jq -r --arg t "${tier}" --arg US "${US}" '
             [ .tiers[$t][]? as $e | $e.varieties[] | {name: ., min: $e.min, max: $e.max} ]
-            | sort_by(.name) | .[] | "  \(.name) (L\(.min)-\(.max))"' \
+            | sort_by(.name) | .[] | [.name, (.min | tostring), (.max | tostring)] | join($US)' \
             <<<"${pool}")"
         if [[ -z "${rows}" ]]; then
             continue
@@ -213,7 +216,11 @@ function _pokidle_current_encounters {
         if ((!first)); then
             printf '\n'
         fi
-        printf '%s:\n%s\n' "${tier}" "${rows}"
+        printf '%s:\n' "${tier}"
+        local name min max
+        while IFS="${US}" read -r name min max; do
+            printf '  %s (L%s-%s)\n' "$(species_display_name "${name}")" "${min}" "${max}"
+        done <<<"${rows}"
         first=0
     done
 }

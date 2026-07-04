@@ -48,12 +48,20 @@ function pokidle_stats {
         printf '   (1 / %.1f)' "$(awk -v t="${total}" -v s="${shinies}" 'BEGIN { printf "%.1f", t/s }')"
     fi
     printf '\n\nBy biome:\n'
-    db_query "SELECT s.biome_id, COUNT(*), SUM(e.shiny)
+    # biome_id -> label and species slug -> Showdown display name happen in bash
+    # (awk can't call them), keeping the same aligned columns.
+    local biome_id count shiny
+    while IFS=$'\t' read -r biome_id count shiny; do
+        [[ -z "${biome_id}" ]] && continue
+        printf '  %-16s %5d   (%d shiny)\n' "$(_pokidle_biome_display "${biome_id}")" "${count}" "${shiny}"
+    done < <(db_query "SELECT s.biome_id, COUNT(*), SUM(e.shiny)
               FROM encounters e JOIN biome_sessions s ON s.id=e.session_id
-              GROUP BY s.biome_id ORDER BY 2 DESC;" |
-        awk -F'\t' '{ printf "  %-12s %5d   (%d shiny)\n", $1, $2, $3 }'
+              GROUP BY s.biome_id ORDER BY 2 DESC;")
     printf '\nTop species:\n'
-    db_query "SELECT species, COUNT(*) FROM encounters
-              GROUP BY species ORDER BY 2 DESC LIMIT 10;" |
-        awk -F'\t' '{ printf "  %-12s %5d\n", $1, $2 }'
+    local species scount
+    while IFS=$'\t' read -r species scount; do
+        [[ -z "${species}" ]] && continue
+        printf '  %-16s %5d\n' "$(species_display_name "${species}")" "${scount}"
+    done < <(db_query "SELECT species, COUNT(*) FROM encounters
+              GROUP BY species ORDER BY 2 DESC LIMIT 10;")
 }

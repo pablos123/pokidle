@@ -83,8 +83,14 @@ function notify_pokemon {
     local is_legendary
     is_legendary="$(jq -r '.is_legendary // false' <<<"${enc}")"
 
-    local moves
-    moves="$(jq -r '.moves | map("• \(.)") | join("\n")' <<<"${enc}")"
+    # Moves are stored as slugs; titlecase each for the bullet list (water-gun ->
+    # "Water Gun"), matching the list/export wording.
+    local moves="" mv
+    while IFS= read -r mv; do
+        [[ -z "${mv}" ]] && continue
+        moves+="• $(titlecase_words "${mv}")"$'\n'
+    done < <(jq -r '.moves[]?' <<<"${enc}")
+    moves="${moves%$'\n'}"
 
     # Optional IV/EV block, rendered before the moves. Off by default so the
     # notification is unchanged unless POKIDLE_NOTIFY_IVS_EVS=1.
@@ -105,7 +111,7 @@ function notify_pokemon {
     fi
 
     local sp_title
-    sp_title="$(titlecase_words "${species}")"
+    sp_title="$(species_display_name "${species}")"
     local nat_title
     nat_title="$(titlecase "${nature}")"
     local abil_title
@@ -265,9 +271,9 @@ function notify_evolution {
     fi
 
     local from_t
-    from_t="$(titlecase_words "${from}")"
+    from_t="$(species_display_name "${from}")"
     local to_t
-    to_t="$(titlecase_words "${to}")"
+    to_t="$(species_display_name "${to}")"
     local title="${from_t} evolved into ${to_t}!"
     local body=""
 
@@ -295,7 +301,7 @@ function notify_level {
     local from="$2"
     local to="$3"
     local sp_title
-    sp_title="$(titlecase_words "${species}")"
+    sp_title="$(species_display_name "${species}")"
     local title="${sp_title} leveled ${from} → ${to}"
     local body=""
     _emit "${title}" "${body}" "low" "$(_notify_icon_path level-up)"
@@ -309,7 +315,7 @@ function notify_friendship {
     local from="$2"
     local to="$3"
     local sp_title
-    sp_title="$(titlecase_words "${species}")"
+    sp_title="$(species_display_name "${species}")"
     local title="${sp_title} friendship ${from} → ${to}"
     local body=""
     _emit "${title}" "${body}" "low" "$(_notify_icon_path friendship)"

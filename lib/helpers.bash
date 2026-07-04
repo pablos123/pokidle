@@ -22,6 +22,22 @@ function titlecase_words {
     printf '%s' "${out% }"
 }
 
+# species_display_name <slug>
+# Human-friendly name for a Pokémon species/variety slug, for display surfaces
+# (lists, ticks, notifications). Uses the canonical Showdown display name when it
+# resolves (Meowth-Galar, Mr. Mime, Kommo-o), else a titlecased slug (offline, or
+# the slug absent from Showdown data, or the showdown lib not loaded). Never
+# blanks. Not for export — that path must fail hard on an unknown name.
+function species_display_name {
+    local slug="$1"
+    local name
+    if name="$(showdown_species_name "${slug}" 2>/dev/null)" && [[ -n "${name}" ]]; then
+        printf '%s' "${name}"
+        return
+    fi
+    titlecase_words "${slug}"
+}
+
 # strip_slashes <path>
 # Print path with one leading and one trailing slash removed.
 function strip_slashes {
