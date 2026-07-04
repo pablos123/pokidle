@@ -136,31 +136,9 @@ _complete() {
     [[ "$output" != *items* ]]
 }
 
-@test "pokidle pokeapi: lists pokeapi subcommands" {
-    run _complete _pokidle pokidle pokeapi ''
-    [[ "$output" == *pokemon* ]]
-    [[ "$output" == *natures* ]]
-    [[ "$output" == *sprite-url* ]]
-    [[ "$output" == *cache-clear* ]]
-}
-
-@test "pokidle pokeapi: prefix filters subcommands" {
-    run _complete _pokidle pokidle pokeapi spr
-    [[ "$output" == *sprite-url* ]]
-    [[ "$output" == *sprite* ]]
-    [[ "$output" != *pokemon* ]]
-}
-
-@test "pokidle showdown: lists showdown subcommands" {
-    run _complete _pokidle pokidle showdown ''
-    [[ "$output" == *abilities* ]]
-    [[ "$output" == *moves* ]]
-    [[ "$output" == *name* ]]
-    [[ "$output" == *is-holdable* ]]
-}
-
-@test "pokidle: top-level lists pokeapi and showdown" {
+@test "pokidle: top-level completion drops the removed pokeapi/showdown commands" {
     run _complete _pokidle pokidle ''
-    [[ "$output" == *pokeapi* ]]
-    [[ "$output" == *showdown* ]]
+    [[ "$output" == *log* ]]
+    [[ "$output" != *pokeapi* ]]
+    [[ "$output" != *showdown* ]]
 }

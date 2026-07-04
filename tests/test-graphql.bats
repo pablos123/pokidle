@@ -7,14 +7,14 @@ setup() {
     load_lib http
     load_lib cache
     load_lib api
-    POKEAPI_CACHE_DIR="$(mktemp -d "${BATS_TMPDIR}/gqlcache.XXXXXX")"
-    export POKEAPI_CACHE_DIR
+    POKIDLE_POKEAPI_CACHE_DIR="$(mktemp -d "${BATS_TMPDIR}/gqlcache.XXXXXX")"
+    export POKIDLE_POKEAPI_CACHE_DIR
 }
 
 @test "http_graphql: POSTs the query and returns the JSON body on success" {
     curl() { printf '{"data":{"item":[{"name":"leftovers"}]}}'; }
     export -f curl
-    POKEAPI_GRAPHQL_URL="http://stub.local"
+    POKIDLE_POKEAPI_GRAPHQL_URL="http://stub.local"
     run http_graphql 'query { item { name } }'
     [ "$status" -eq 0 ]
     echo "$output" | jq -e '.data.item[0].name == "leftovers"'
@@ -23,7 +23,7 @@ setup() {
 @test "http_graphql: returns 1 when the response carries GraphQL errors" {
     curl() { printf '{"errors":[{"message":"field not found"}]}'; }
     export -f curl
-    POKEAPI_GRAPHQL_URL="http://stub.local"
+    POKIDLE_POKEAPI_GRAPHQL_URL="http://stub.local"
     run http_graphql 'query { nope }'
     [ "$status" -ne 0 ]
 }

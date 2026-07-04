@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Pokémon Showdown set text formatter.
 
+# Dependencies: sourced once at load, guarded so standalone/test re-sourcing is
+# a no-op. POKIDLE_REPO_ROOT is set by the entrypoint and by the tests.
+# shellcheck source=lib/showdown.bash disable=SC2154
+command -v showdown_species_name >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+
 # _export_stat_label <index>
 # Print the Showdown stat label (HP/Atk/Def/SpA/SpD/Spe) for index 0..5.
 function _export_stat_label {
@@ -23,10 +28,6 @@ function _export_stat_label {
 # so the caller must fail controllably instead.
 function export_species_name {
     local slug="$1"
-    if ! command -v showdown_species_name >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
-    fi
     local name
     if ! name="$(showdown_species_name "${slug}")"; then
         printf 'export_species_name: no Showdown name for %s\n' "${slug}" >&2
@@ -41,10 +42,9 @@ function export_format {
     local enc="$1"
     # One jq pass pulls every field (scalars, EV/IV arrays joined by space,
     # moves joined by comma — move slugs never contain commas) into a
-    # US-delimited record. Replaces the ~20 jq forks per mon (7 scalars + 6 EVs
-    # + 6 IVs + 1 moves) that made `export` crawl. Titlecasing and stat labels
-    # stay in bash (pure, no exec). US (\x1f) is non-whitespace so read keeps
-    # empty fields (e.g. a blank held item).
+    # US-delimited record; no per-field forks. Titlecasing and stat labels stay
+    # in bash (pure, no exec). US (\x1f) is non-whitespace so read keeps empty
+    # fields (e.g. a blank held item).
     local US=$'\037'
     local species nature ability level shiny held item evs_raw ivs_raw moves_raw
     IFS="${US}" read -r species nature ability level shiny held item \

@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS item_drops (
     encountered_at  INTEGER NOT NULL,
     item            TEXT NOT NULL,
     sprite_path     TEXT,
-    consumed_at     INTEGER
+    consumed_at     INTEGER,
+    kind            TEXT NOT NULL DEFAULT 'item'
 );
 CREATE INDEX IF NOT EXISTS idx_item_session ON item_drops(session_id);
 CREATE INDEX IF NOT EXISTS idx_item_time    ON item_drops(encountered_at);

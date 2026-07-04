@@ -30,8 +30,8 @@ function _pokidle {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local cmd="${COMP_WORDS[1]:-}"
 
-    local commands="daemon tick encounters export items stats current rebuild-pool \
-switch-biome biomes clean pokeapi showdown setup uninstall help"
+    local commands="daemon tick encounters export items log stats current rebuild-pool \
+switch-biome biomes clean setup uninstall help"
 
     # First positional arg: the subcommand.
     if ((COMP_CWORD == 1)); then
@@ -58,21 +58,21 @@ run start stop restart status logs enable disable" -- "${cur}")
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
---min-level --max-level --limit --newest-first --no-images --json" -- "${cur}")
+--min-level --max-level --limit --reverse --no-images --json" -- "${cur}")
             fi
             ;;
         export)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --since --until --biome --species --nature --min-iv-total \
---min-level --max-level --limit --newest-first \
+--min-level --max-level --limit --reverse \
 --force-level --force-perfect --force-mega --force-z" -- "${cur}")
             fi
             ;;
         items)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
---since --until --biome --item --limit --all --newest-first --no-images --json" -- "${cur}")
+--since --until --biome --item --limit --all --reverse --no-images --json" -- "${cur}")
             fi
             ;;
         current)
@@ -91,7 +91,7 @@ run start stop restart status logs enable disable" -- "${cur}")
             ;;
         switch-biome | rebuild-pool)
             if [[ "${cmd}" == rebuild-pool && "${cur}" == -* ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "--items --no-items --yes" -- "${cur}")
+                mapfile -t COMPREPLY < <(compgen -W "--items --no-items --graphql --rest --yes" -- "${cur}")
             else
                 local biomes
                 biomes="$(_pokidle_biome_ids)"
@@ -103,18 +103,9 @@ run start stop restart status logs enable disable" -- "${cur}")
                 mapfile -t COMPREPLY < <(compgen -W "--json" -- "${cur}")
             fi
             ;;
-        pokeapi)
-            # Only the subcommand is completed; resource names need the cache.
-            if ((COMP_CWORD == 2)); then
-                mapfile -t COMPREPLY < <(compgen -W "\
-get pokemon move ability type species item nature natures stats types moves \
-id name forms sprite-url sprite cache-path cache-clear help" -- "${cur}")
-            fi
-            ;;
-        showdown)
-            if ((COMP_CWORD == 2)); then
-                mapfile -t COMPREPLY < <(compgen -W "\
-get items-raw name id abilities moves holdable is-holdable form-items help" -- "${cur}")
+        log)
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "--kind --limit --reverse --json" -- "${cur}")
             fi
             ;;
         setup)

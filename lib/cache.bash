@@ -3,14 +3,14 @@
 
 # Lives under the pokidle cache dir (sibling of the showdown cache) so all
 # pokidle caches share one root and clean/relocation stays consistent.
-: "${POKEAPI_CACHE_DIR:=${POKIDLE_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/pokidle}/pokeapi}"
+: "${POKIDLE_POKEAPI_CACHE_DIR:=${POKIDLE_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/pokidle}/pokeapi}"
 
 # cache_path <endpoint>
 # Print the JSON cache file path for an endpoint.
 function cache_path {
     local endpoint
     endpoint="$(strip_slashes "$1")"
-    printf '%s/%s.json' "${POKEAPI_CACHE_DIR}" "${endpoint}"
+    printf '%s/%s.json' "${POKIDLE_POKEAPI_CACHE_DIR}" "${endpoint}"
 }
 
 # cache_has <endpoint>
@@ -45,7 +45,7 @@ function cache_blob_path {
     local key
     key="$(strip_slashes "$1")"
     local ext="${2:-bin}"
-    printf '%s/%s.%s' "${POKEAPI_CACHE_DIR}" "${key}" "${ext}"
+    printf '%s/%s.%s' "${POKIDLE_POKEAPI_CACHE_DIR}" "${key}" "${ext}"
 }
 
 # cache_clear [endpoint]
@@ -54,6 +54,6 @@ function cache_clear {
     if [[ -n "${1-}" ]]; then
         rm -f -- "$(cache_path "$1")"
     else
-        rm -rf -- "${POKEAPI_CACHE_DIR}"
+        rm -rf -- "${POKIDLE_POKEAPI_CACHE_DIR}"
     fi
 }

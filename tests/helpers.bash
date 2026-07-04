@@ -42,6 +42,42 @@ stub_pokeapi() {
     export -f pokeapi_get
 }
 
+# Stub the GraphQL berry index (name<TAB>gift-type) so encounter_build_pool needs
+# no network. Call after load_lib encounter (re-sourcing the lib restores the real
+# function). chesto=water and cheri=fire cover the natural_gift filter tests.
+stub_gql_berries() {
+    encounter_gql_berries() {
+        printf '%s\n' $'cheri\tfire' $'chesto\twater' $'pecha\telectric'
+    }
+    export -f encounter_gql_berries
+}
+
+# Stub the GraphQL pool seams (type->species rows + chain stage map) with a
+# forest-representative dataset, so encounter_build_pool needs no network.
+# Type-agnostic: returns the same rows for any type (the union dedups). Covers
+# the tiers/varieties/min-max/legendary assertions in the build_pool tests.
+stub_gql_pool() {
+    encounter_gql_type_species() {
+        cat <<'JSON'
+{"variety":"caterpie","species":"caterpie","cr":255,"leg":false}
+{"variety":"metapod","species":"metapod","cr":255,"leg":false}
+{"variety":"butterfree","species":"butterfree","cr":45,"leg":false}
+{"variety":"treecko","species":"treecko","cr":45,"leg":false}
+{"variety":"grovyle","species":"grovyle","cr":45,"leg":false}
+{"variety":"sceptile","species":"sceptile","cr":45,"leg":false}
+{"variety":"wormadam-plant","species":"wormadam","cr":45,"leg":false}
+{"variety":"wormadam-sandy","species":"wormadam","cr":45,"leg":false}
+{"variety":"wormadam-trash","species":"wormadam","cr":45,"leg":false}
+{"variety":"shaymin-land","species":"shaymin","cr":45,"leg":true}
+{"variety":"shaymin-sky","species":"shaymin","cr":45,"leg":true}
+JSON
+    }
+    encounter_gql_chain_stages() {
+        printf '%s' '{"caterpie":{"stage":0,"ml":null},"metapod":{"stage":1,"ml":7},"butterfree":{"stage":2,"ml":10},"treecko":{"stage":0,"ml":null},"grovyle":{"stage":1,"ml":16},"sceptile":{"stage":2,"ml":36},"wormadam":{"stage":1,"ml":20},"shaymin":{"stage":0,"ml":null}}'
+    }
+    export -f encounter_gql_type_species encounter_gql_chain_stages
+}
+
 # Seed the Showdown data cache from fixtures and block network fetches.
 # Call after load_lib so showdown functions exist.
 seed_showdown() {

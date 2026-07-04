@@ -21,7 +21,7 @@ function showdown_id {
 function _showdown_fetch {
     local file="$1"
     curl --silent --show-error --location --fail \
-        --user-agent "${POKEAPI_USER_AGENT:-pokidle-bash/0.1}" \
+        --user-agent "${POKIDLE_POKEAPI_USER_AGENT:-pokidle-bash/0.1}" \
         -- "${POKIDLE_SHOWDOWN_BASE_URL}/${file}.json"
 }
 
@@ -36,7 +36,7 @@ function _showdown_cached_fetch {
         local now mtime
         now="$(date +%s)"
         mtime="$(stat -c %Y -- "${path}" 2>/dev/null || date -r "${path}" +%s)"
-        if (( now - mtime < POKIDLE_SHOWDOWN_TTL )); then
+        if ((now - mtime < POKIDLE_SHOWDOWN_TTL)); then
             cat -- "${path}"
             return 0
         fi
@@ -164,8 +164,8 @@ function showdown_legal_moves {
         keys="$(jq -r --arg c "${cur}" '(.[$c].learnset // {}) | keys[]' <<<"${learn}")"
         local k
         while IFS= read -r k; do
-            if [[ -n "${k}" && -z "${seen[$k]:-}" ]]; then
-                seen[$k]=1
+            if [[ -n "${k}" && -z "${seen[${k}]:-}" ]]; then
+                seen[${k}]=1
                 ids+=("${k}")
             fi
         done <<<"${keys}"
@@ -198,8 +198,8 @@ function showdown_legal_moves {
 # quote-state scanner splits items unambiguously.
 function _showdown_items_meta_transform {
     # Strip the `exports.BattleItems = {` prefix and the trailing `};`.
-    sed -E 's/^[^{]*\{//; s/\};?[[:space:]]*$//' \
-        | awk '
+    sed -E 's/^[^{]*\{//; s/\};?[[:space:]]*$//' |
+        awk '
         {
             n = length($0); depth = 0; inq = 0; buf = "";
             for (i = 1; i <= n; i++) {
@@ -245,7 +245,7 @@ function _showdown_items_meta_transform {
 # Split out so tests can stub it.
 function _showdown_fetch_items {
     curl --silent --show-error --location --fail \
-        --user-agent "${POKEAPI_USER_AGENT:-pokidle-bash/0.1}" \
+        --user-agent "${POKIDLE_POKEAPI_USER_AGENT:-pokidle-bash/0.1}" \
         -- "${POKIDLE_SHOWDOWN_BASE_URL}/items.js"
 }
 
@@ -312,8 +312,8 @@ function _showdown_build_holdable_meta {
 # itemUser) and plain items are skipped; Future/CAP/etc excluded (only none or
 # Past). Same brace-depth/quote scanner as the holdable transform.
 function _showdown_form_items_transform {
-    sed -E 's/^[^{]*\{//; s/\};?[[:space:]]*$//' \
-        | awk '
+    sed -E 's/^[^{]*\{//; s/\};?[[:space:]]*$//' |
+        awk '
         {
             n = length($0); depth = 0; inq = 0; buf = "";
             for (i = 1; i <= n; i++) {
@@ -540,56 +540,4 @@ function showdown_item_is_holdable {
         return 1
     fi
     grep -qxF -- "${slug}" <<<"${list}"
-}
-
-# _showdown_cli_usage
-# Print the `pokidle showdown` subcommand help.
-function _showdown_cli_usage {
-    cat <<'EOF'
-pokidle showdown — query the cached Pokémon Showdown data used for legality.
-
-Usage:
-  pokidle showdown <command> [args...]
-
-Commands:
-  get <pokedex|learnsets|moves>   Raw cached JSON data file
-  items-raw                       Raw cached items.js
-  name <variety>                  Showdown display name (Great Tusk, Mr. Mime, …)
-  id <name>                       Showdown id (lowercased, punctuation stripped)
-  abilities <variety>             Legal abilities: "<slug>\t<hidden>"
-  moves <variety>                 Legal move slugs, one per line
-  holdable                        Holdable item slugs, one per line
-  is-holdable <item>             Exit 0 if the item is Showdown-holdable
-  form-items                      Form-item registry: item-slug<TAB>eligible-slug
-  help, -h, --help                Show this help
-EOF
-}
-
-# showdown_cli [args...]
-# Dispatch for the `pokidle showdown` subcommand. Returns 2 on a missing or
-# unknown command.
-function showdown_cli {
-    local cmd="${1-}"
-    if [[ -z "${cmd}" ]]; then
-        _showdown_cli_usage >&2
-        return 2
-    fi
-    shift
-    case "${cmd}" in
-        get) showdown_get "$@" ;;
-        items-raw) showdown_items_raw ;;
-        name) showdown_species_name "$@" ;;
-        id) showdown_id "$@" ;;
-        abilities) showdown_legal_abilities "$@" ;;
-        moves) showdown_legal_moves "$@" ;;
-        holdable) showdown_holdable_items ;;
-        form-items) showdown_form_items_meta ;;
-        is-holdable) showdown_item_is_holdable "$@" ;;
-        help | -h | --help) _showdown_cli_usage ;;
-        *)
-            printf 'unknown command: %s\n' "${cmd}" >&2
-            _showdown_cli_usage >&2
-            return 2
-            ;;
-    esac
 }

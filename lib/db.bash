@@ -43,6 +43,11 @@ function db_init {
     if ! _db_column_exists item_drops consumed_at; then
         db_exec "ALTER TABLE item_drops ADD COLUMN consumed_at INTEGER;"
     fi
+    # kind distinguishes a biome item drop from a biome-agnostic pickup. Rows
+    # predating this column default to 'item' (the original drop mechanic).
+    if ! _db_column_exists item_drops kind; then
+        db_exec "ALTER TABLE item_drops ADD COLUMN kind TEXT NOT NULL DEFAULT 'item';"
+    fi
     # variety holds the specific encountered form (e.g. meowth-galar). Bare-form
     # mons leave it equal to species. Rows predating this column read as NULL.
     if ! _db_column_exists encounters variety; then
@@ -147,14 +152,17 @@ JQ
     db_exec "${sql}"
 }
 
-# db_list_encounters [filters...]
-# List encounters as JSON. Filters parsed from argv:
+# db_list_encounters [options...]
+# List encounters as JSON. Options parsed from argv:
 #   --shiny --since YYYY-MM-DD --until YYYY-MM-DD --biome <id>
 #   --species <name> --nature <name> --min-iv-total N --limit N
 #   --sort date|name|level --reverse
 # Always selects the newest N rows (--limit), then orders that window by the
 # chosen key. Ascending by default (date=oldest-first); --reverse flips it.
 function db_list_encounters {
+    # Error prefix. Callers (pokidle_list/pokidle_export) set _db_list_errctx to
+    # their command name so messages read "encounters: …" not the lib fn name.
+    local errctx="${_db_list_errctx:-db_list_encounters}"
     local -a where=()
     local -i limit=50
     local ts
@@ -226,7 +234,7 @@ function db_list_encounters {
                         sort_key="$2"
                         ;;
                     *)
-                        printf 'db_list_encounters: invalid --sort: %s (date|name|level)\n' "$2" >&2
+                        printf '%s: invalid --sort: %s (date|name|level)\n' "${errctx}" "$2" >&2
                         return 2
                         ;;
                 esac
@@ -236,8 +244,12 @@ function db_list_encounters {
                 reverse=1
                 shift
                 ;;
+            -*)
+                printf '%s: unknown option %s\n' "${errctx}" "$1" >&2
+                return 2
+                ;;
             *)
-                printf 'db_list_encounters: unknown flag: %s\n' "$1" >&2
+                printf '%s: unexpected argument %s\n' "${errctx}" "$1" >&2
                 return 2
                 ;;
         esac
@@ -263,13 +275,15 @@ function db_list_encounters {
     db_query_json "${sql}"
 }
 
-# db_insert_item_drop <session_id> <ts> <item> <sprite>
-# Insert an item drop row. <sprite> may be empty (stored as NULL).
+# db_insert_item_drop <session_id> <ts> <item> <sprite> [kind]
+# Insert an item drop row. <sprite> may be empty (stored as NULL). <kind> is
+# 'item' (default) or 'pickup'.
 function db_insert_item_drop {
     local session_id="$1"
     local ts="$2"
     local item="$3"
     local sprite="$4"
+    local kind="${5:-item}"
     if ! _db_assert_int "${session_id}" session_id; then
         return 2
     fi
@@ -280,12 +294,12 @@ function db_insert_item_drop {
     if [[ -n "${sprite}" ]]; then
         sprite_sql="'${sprite//\'/\'\'}'"
     fi
-    db_exec "INSERT INTO item_drops(session_id, encountered_at, item, sprite_path)
-             VALUES (${session_id}, ${ts}, '${item//\'/\'\'}', ${sprite_sql});"
+    db_exec "INSERT INTO item_drops(session_id, encountered_at, item, sprite_path, kind)
+             VALUES (${session_id}, ${ts}, '${item//\'/\'\'}', ${sprite_sql}, '${kind//\'/\'\'}');"
 }
 
-# db_list_item_drops [filters...]
-# List item drops as JSON. Filters parsed from argv:
+# db_list_item_drops [options...]
+# List item drops as JSON. Options parsed from argv:
 #   --since YYYY-MM-DD --until YYYY-MM-DD --biome <id> --item <name>
 #   --limit N --sort date|name --reverse --include-consumed
 # Always selects the newest N rows (--limit), then orders that window by the
@@ -293,6 +307,7 @@ function db_insert_item_drop {
 # --sort level is accepted but treated as date (items have no level).
 # Consumed drops are excluded unless --include-consumed is given.
 function db_list_item_drops {
+    local errctx="${_db_list_errctx:-db_list_item_drops}"
     local -a where=()
     local -i limit=50
     local ts
@@ -336,7 +351,7 @@ function db_list_item_drops {
                         sort_key="$2"
                         ;;
                     *)
-                        printf 'db_list_item_drops: invalid --sort: %s (date|name)\n' "$2" >&2
+                        printf '%s: invalid --sort: %s (date|name)\n' "${errctx}" "$2" >&2
                         return 2
                         ;;
                 esac
@@ -350,8 +365,12 @@ function db_list_item_drops {
                 include_consumed=1
                 shift
                 ;;
+            -*)
+                printf '%s: unknown option %s\n' "${errctx}" "$1" >&2
+                return 2
+                ;;
             *)
-                printf 'db_list_item_drops: unknown flag: %s\n' "$1" >&2
+                printf '%s: unexpected argument %s\n' "${errctx}" "$1" >&2
                 return 2
                 ;;
         esac
@@ -448,7 +467,7 @@ function db_update_encounter_evolved {
     local dex_id="$3"
     local sprite="$4"
     local stats_str="$5"
-    local variety="${6:-$species}"
+    local variety="${6:-${species}}"
     local ability="${7:-}"
     local is_hidden="${8:-}"
     local moves_json="${9:-}"

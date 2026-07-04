@@ -2,15 +2,21 @@
 # Evolution-loop helpers.
 # Depends on pokeapi_get (api.bash) and encounter_pool_load (encounter.bash).
 
+# Dependencies: sourced once at load, guarded so standalone/test re-sourcing is
+# a no-op. POKIDLE_REPO_ROOT is set by the entrypoint and by the tests. lib/db.bash
+# is NOT loaded here: it hard-fails at source time unless POKIDLE_DB_PATH is set,
+# and callers set that per-invocation, so the two db-touching functions below
+# source it lazily at call time instead.
+# shellcheck source=lib/encounter.bash disable=SC2154
+command -v encounter_pool_load >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
+# shellcheck source=lib/showdown.bash disable=SC2154
+command -v showdown_legal_abilities >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+
 # evolution_tier_lookup <biome> <species>
 # Print the pool tier of <species> in <biome>; "common" if it isn't listed.
 function evolution_tier_lookup {
     local biome="$1"
     local species="$2"
-    if ! command -v encounter_pool_load >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
-    fi
     local pool
     if ! pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
         printf 'common'
@@ -252,10 +258,9 @@ function _evolution_count_item_drops {
 function evolution_enumerate_viable_paths {
     local enc="$1"
     local stages="$2"
-    if ! command -v db_query >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/db.bash"
-    fi
+    # db sourced lazily: it requires POKIDLE_DB_PATH at source time (see header).
+    # shellcheck source=lib/db.bash disable=SC2154
+    command -v db_query >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/db.bash"
     local out='[]'
     local -i n
     n="$(jq 'length' <<<"${stages}")"
@@ -303,14 +308,6 @@ function evolution_enumerate_viable_paths {
 function evolution_reconcile_ability {
     local variety="$1"
     local old="$2"
-    if ! command -v showdown_legal_abilities >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
-    fi
-    if ! command -v encounter_roll_ability_legal >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
-    fi
     local lines
     if ! lines="$(showdown_legal_abilities "${variety}")"; then
         encounter_roll_ability_legal "${variety}"
@@ -338,14 +335,6 @@ function evolution_reconcile_moves {
     local level="$2"
     local old="$3"
     local fallback="${4:-}"
-    if ! command -v showdown_legal_moves >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
-    fi
-    if ! command -v encounter_roll_moves_legal >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
-    fi
     local pool
     if ! pool="$(showdown_legal_moves "${variety}")"; then
         encounter_roll_moves_legal "${variety}" "${level}" "${fallback}"
@@ -361,7 +350,7 @@ function evolution_reconcile_moves {
     local -A taken=()
     while IFS= read -r m; do
         [[ -z "${m}" ]] && continue
-        if [[ -n "${legal[$m]:-}" && -z "${taken[$m]:-}" ]]; then
+        if [[ -n "${legal[${m}]:-}" && -z "${taken[${m}]:-}" ]]; then
             kept+=("${m}")
             taken["${m}"]=1
         fi
@@ -369,7 +358,7 @@ function evolution_reconcile_moves {
 
     local -a refill=()
     for m in "${!legal[@]}"; do
-        [[ -z "${taken[$m]:-}" ]] && refill+=("${m}")
+        [[ -z "${taken[${m}]:-}" ]] && refill+=("${m}")
     done
     while ((${#kept[@]} < 4 && ${#refill[@]} > 0)); do
         local -i idx=$((RANDOM % ${#refill[@]}))
@@ -397,14 +386,9 @@ function evolution_apply {
     local species
     species="$(jq -r '.species' <<<"${path}")"
 
-    if ! command -v db_query >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/db.bash"
-    fi
-    if ! command -v encounter_nature_mods >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
-    fi
+    # db sourced lazily: it requires POKIDLE_DB_PATH at source time (see header).
+    # shellcheck source=lib/db.bash disable=SC2154
+    command -v db_query >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/db.bash"
 
     if [[ "${kind}" == "item" ]]; then
         local item
@@ -458,10 +442,14 @@ function evolution_apply {
         return 1
     fi
 
+    # Cache the sprite under the resolved variety, not the bare species: a
+    # regional/form evolution (e.g. linoone-galar) has a different sprite from
+    # the base form, and keying by species would collide with — or reuse — the
+    # base form's cached PNG, showing the wrong sprite.
     local sprite_url="${sprite}"
     local sprite_local=""
     if [[ -n "${sprite_url}" ]]; then
-        sprite_local="${POKIDLE_CACHE_DIR:-${HOME}/.cache/pokidle}/sprites/${species}.png"
+        sprite_local="${POKIDLE_CACHE_DIR:-${HOME}/.cache/pokidle}/sprites/${variety}.png"
         mkdir -p -- "${sprite_local%/*}"
         if [[ ! -f "${sprite_local}" ]]; then
             if ! curl --silent --show-error --output "${sprite_local}" "${sprite_url}"; then

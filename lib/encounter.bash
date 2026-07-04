@@ -2,6 +2,13 @@
 # Pool build, evo expansion, rolls, stat formulas.
 # Depends on pokeapi_get from lib/api.bash.
 
+# Dependencies: sourced once at load, guarded so standalone/test re-sourcing is
+# a no-op. POKIDLE_REPO_ROOT is set by the entrypoint and by the tests.
+# shellcheck source=lib/biome.bash disable=SC2154
+command -v biome_types_for >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/biome.bash"
+# shellcheck source=lib/showdown.bash disable=SC2154
+command -v showdown_typed_holdable_items >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+
 # All 6 stats in canonical order. Guarded so the readonly global survives the
 # repeated re-sourcing the test harness does.
 if [[ -z "${ENCOUNTER_STATS:-}" ]]; then
@@ -102,11 +109,13 @@ function encounter_roll_ivs {
     local -i j tmp r
     for ((j = 5; j > 0; j--)); do
         r=$((RANDOM % (j + 1)))
-        tmp=${pos[j]}; pos[j]=${pos[r]}; pos[r]=$tmp
+        tmp=${pos[j]}
+        pos[j]=${pos[r]}
+        pos[r]=${tmp}
     done
-    out[${pos[0]}]=31
-    out[${pos[1]}]=31
-    out[${pos[2]}]=31
+    out[pos[0]]=31
+    out[pos[1]]=31
+    out[pos[2]]=31
     printf '%s' "${out[*]}"
 }
 
@@ -119,11 +128,13 @@ function encounter_roll_evs {
     local -i j tmp r
     for ((j = 5; j > 0; j--)); do
         r=$((RANDOM % (j + 1)))
-        tmp=${pos[j]}; pos[j]=${pos[r]}; pos[r]=$tmp
+        tmp=${pos[j]}
+        pos[j]=${pos[r]}
+        pos[r]=${tmp}
     done
-    out[${pos[0]}]=252
-    out[${pos[1]}]=252
-    out[${pos[2]}]=4
+    out[pos[0]]=252
+    out[pos[1]]=252
+    out[pos[2]]=4
     printf '%s' "${out[*]}"
 }
 
@@ -244,8 +255,8 @@ function encounter_roll_ability_legal {
 # Roll up to 4 moves from the variety's Showdown-legal pool. Prints a JSON
 # array of slugs. Returns non-zero when Showdown data is unavailable or the
 # pool is empty — legality is Showdown's job, never PokeAPI's, so the caller
-# skips the mon. <level> and <fallback> are ignored (accepted for call-site
-# parity with the old PokeAPI roller); the Showdown pool is not level-gated.
+# skips the mon. <level> and <fallback> are ignored (accepted so callers can
+# pass them uniformly); the Showdown pool is not level-gated.
 function encounter_roll_moves_legal {
     local variety="$1"
     local pool
@@ -338,24 +349,6 @@ function encounter_roll_held_berry {
     printf '%s' "${berries[idx]}"
 }
 
-# encounter_species_for_name <name>
-# Resolve a name (a bare species OR a variety-suffixed Pokemon name like
-# shaymin-land/wormadam-plant/deoxys-attack) to its bare species name. Try
-# /pokemon-species/<name>; on 404 fall back to /pokemon/<name>.species.name.
-# Empty on total failure.
-function encounter_species_for_name {
-    local name="$1"
-    if pokeapi_get "pokemon-species/${name}" >/dev/null 2>&1; then
-        printf '%s' "${name}"
-        return 0
-    fi
-    local poke
-    if ! poke="$(pokeapi_get "pokemon/${name}" 2>/dev/null)"; then
-        return 1
-    fi
-    jq -r '.species.name // empty' <<<"${poke}"
-}
-
 # encounter_pick_variety <species>
 # Print a random variety name from /pokemon-species/<sp>.varieties[]. Falls
 # back to <sp> if the species lookup fails or the varieties array is empty.
@@ -370,9 +363,9 @@ function encounter_species_for_name {
 #     the Let's-Go starter Pikachu/Eevee) — same stats as the base form, only
 #     ever handed out at events
 # Regional/cosmetic-but-wild formes (alola, galar, hisui, midnight, …) are
-# legitimate and return false. The authoritative is_battle_only flag (see
-# _encounter_form_is_battle_only) covers the battle/stance forms whose names
-# don't betray them (mega-z, aegislash-blade, …).
+# legitimate and return false. The battle/stance forms whose names don't betray
+# them (mega-z, aegislash-blade, …) are caught by the authoritative default-form
+# is_battle_only flag in the pool build's GraphQL query (encounter_gql_type_species).
 function _encounter_variety_is_non_wild {
     case "$1" in
         *-mega | *-mega-x | *-mega-y | *-primal | *-gmax | *-eternamax) return 0 ;;
@@ -382,20 +375,6 @@ function _encounter_variety_is_non_wild {
         *-rock-star | *-belle | *-pop-star | *-phd | *-libre) return 0 ;;
         *) return 1 ;;
     esac
-}
-
-# _encounter_form_is_battle_only <variety-name>
-# True (exit 0) if PokeAPI's /pokemon-form/<name> marks the form is_battle_only.
-# This is the authoritative catch the name-suffix check above cannot give —
-# e.g. mega-z forms (absol-mega-z) and stance/transform forms (aegislash-blade,
-# morpeko-hangry, mimikyu-busted). A missing form (404) or absent flag means the
-# form is wild-encounterable, so return 1.
-function _encounter_form_is_battle_only {
-    local form
-    if ! form="$(pokeapi_get "pokemon-form/$1" 2>/dev/null)"; then
-        return 1
-    fi
-    [[ "$(jq -r '.is_battle_only // false' <<<"${form}")" == "true" ]]
 }
 
 function encounter_pick_variety {
@@ -425,6 +404,208 @@ function encounter_pick_variety {
     printf '%s' "${varieties[$((RANDOM % n))]}"
 }
 
+# encounter_gql_berries_query
+# GraphQL query: every berry's name and natural-gift type, in id order.
+function encounter_gql_berries_query {
+    printf '%s' 'query { berry(order_by:{id:asc}) { name type { name } } }'
+}
+
+# encounter_gql_berries
+# Print "<berry-name>\t<natural-gift-type>" for every berry, id-ordered. Backed
+# by the permanent GraphQL cache (fetched once for all biomes). Returns 1 on
+# query failure so the caller can fail the build rather than ship a berryless
+# pool.
+function encounter_gql_berries {
+    local json
+    if ! json="$(pokeapi_graphql berries "$(encounter_gql_berries_query)")"; then
+        return 1
+    fi
+    jq -r '.data.berry[] | [.name, (.type.name // "")] | @tsv' <<<"${json}"
+}
+
+# encounter_gql_type_species_query <type-name>
+# GraphQL query: every pokemon of <type> with the tiering fields the pool needs
+# (default-form battle-only flag + species capture_rate and legendary/mythical).
+function encounter_gql_type_species_query {
+    printf 'query { pokemontype(where:{type:{name:{_eq:"%s"}}}) { pokemon { name pokemonforms { is_default is_battle_only } pokemonspecy { name capture_rate is_legendary is_mythical } } } }' "$1"
+}
+
+# encounter_gql_type_species <type-name>
+# Print one JSON object per line for every wild-eligible pokemon of <type>:
+# {variety, species, cr, leg}. Drops battle-only forms (via the pokemon's default
+# form) and non-wild name forms (mega/gmax/totem/cosmetic/…). Cached per type via
+# pokeapi_graphql, so a full 36-biome rebuild issues one query per type (18).
+# Returns 1 on failure.
+function encounter_gql_type_species {
+    local type="$1"
+    local json
+    if ! json="$(pokeapi_graphql "type-species/${type}" "$(encounter_gql_type_species_query "${type}")")"; then
+        return 1
+    fi
+    jq -c '
+      def nonwild: test("-(mega(-[xy])?|primal|gmax|eternamax|totem|battle-bond|bloodmoon|cap|cosplay|starter|rock-star|belle|pop-star|phd|libre)($|-)");
+      def battleonly: ((.pokemonforms // []) | map(select(.is_default)) | (.[0].is_battle_only // false));
+      .data.pokemontype[].pokemon
+      | select(battleonly | not) | select(.name | nonwild | not)
+      | select(.pokemonspecy != null)
+      | {variety:.name, species:.pokemonspecy.name, cr:(.pokemonspecy.capture_rate // 45),
+         leg:(.pokemonspecy.is_legendary or .pokemonspecy.is_mythical)}
+    ' <<<"${json}"
+}
+
+# encounter_gql_chain_stages_query
+# GraphQL query: every evolution chain's species with parent link + evolution
+# min_level, enough to derive each species' stage index and evolve level.
+function encounter_gql_chain_stages_query {
+    printf '%s' 'query { evolutionchain { pokemonspecies { name id evolves_from_species_id pokemonevolutions { min_level } } } }'
+}
+
+# encounter_gql_chain_stages
+# Print a JSON object mapping every species name to {stage, ml}: stage = its index
+# in the evolution chain (0 = root), ml = the min_level of the evolution INTO it
+# (null if none). One cached query covers all chains. Returns 1 on failure.
+function encounter_gql_chain_stages {
+    local json
+    if ! json="$(pokeapi_graphql chain-stages "$(encounter_gql_chain_stages_query)")"; then
+        return 1
+    fi
+    jq -c '
+      [ .data.evolutionchain[] | .pokemonspecies as $ps
+        | ($ps | map({(.id|tostring): .evolves_from_species_id}) | add) as $parent
+        | $ps[]
+        | { name, ml:(.pokemonevolutions[0].min_level // null),
+            stage:( [ .id ] | until( (.[-1] as $x | $parent[$x|tostring]) == null;
+                                      . + [ $parent[(.[-1]|tostring)] ] ) | length - 1 ) } ]
+      | map({(.name): {stage,ml}}) | add
+    ' <<<"${json}"
+}
+
+# _encounter_build_pool_graphql <biome_id>
+# GraphQL path (default): builds the pool from cached GraphQL queries.
+# Print {tiers:{common:[],uncommon:[],rare:[],very_rare:[]}, berries:[...]}.
+# Pool = direct union of a cached GraphQL type->species query for each biome.types[];
+# dropped; each species tiered by its own capture_rate. min/max levels come from
+# the species' own evolution_details.min_level (root → 5-15; non-level evos like
+# stones → 5+15*stage_idx). Each entry also carries varieties[]: the specific
+# forms that reached the pool via the biome's types (e.g. meowth-galar in a
+# steel biome), so the roller encounters a type-coherent form. Returns 1 on
+# fetch failure.
+function _encounter_build_pool_graphql {
+    local biome_id="$1"
+    local types_list
+    if ! types_list="$(biome_types_for "${biome_id}")"; then
+        return 1
+    fi
+
+    # Union the wild-eligible rows across the biome's types. One cached GraphQL
+    # query per type returns each pokemon's variety name, bare species, capture
+    # rate and legendary/mythical flag, already filtered of battle-only and
+    # non-wild forms.
+    local rows='[]'
+    local t
+    while IFS= read -r t; do
+        [[ -z "${t}" ]] && continue
+        local trows
+        if ! trows="$(encounter_gql_type_species "${t}")"; then
+            return 1
+        fi
+        if [[ -n "${trows}" ]]; then
+            rows="$(jq -c --slurpfile add <(printf '%s\n' "${trows}") '. + ($add | flatten)' <<<"${rows}")"
+        fi
+    done <<<"${types_list}"
+
+    # Species stage/min-level map (one cached query for every evolution chain).
+    local stages
+    if ! stages="$(encounter_gql_chain_stages)"; then
+        return 1
+    fi
+
+    # Assemble tiers + legendaries in one jq pass, sorted by species so the
+    # output matches the shipped pool layout byte-for-byte. Tiering by own
+    # capture_rate; min/max from the species' stage and evolve level (root →
+    # env default 5-15; a level evo → its own min_level..+10; a non-level evo at
+    # stage n → 5+15n..+10). The variety (the type-coherent form present in this
+    # biome, e.g. meowth-galar in a steel biome) drives the encounter; the bare
+    # species keys the tiering data.
+    local dmin="${POKIDLE_ENCOUNTER_LEVEL_MIN:-5}"
+    local dmax="${POKIDLE_ENCOUNTER_LEVEL_MAX:-15}"
+    local built
+    built="$(jq -c --argjson stages "${stages}" --argjson dmin "${dmin}" --argjson dmax "${dmax}" '
+      def tier(cr): if cr>=150 then "common" elif cr>=75 then "uncommon" elif cr>=25 then "rare" else "very_rare" end;
+      (unique) as $all
+      | ($all | map(select(.leg|not))
+          | group_by(.species)
+          | map({species:.[0].species, cr:.[0].cr, varieties:(map(.variety)|unique)})) as $species
+      | { tiers: ( reduce $species[] as $s ({common:[],uncommon:[],rare:[],very_rare:[]};
+            ($stages[$s.species].stage // 0) as $stage
+            | ($stages[$s.species].ml) as $ml
+            | (if $ml != null then $ml elif $stage>0 then 5+15*$stage else $dmin end) as $mn
+            | (if $ml != null then $ml+10 elif $stage>0 then 5+15*$stage+10 else $dmax end) as $mx
+            | .[tier($s.cr)] += [{species:$s.species, varieties:$s.varieties, min:$mn, max:$mx}] )),
+          legendaries: ($all | map(select(.leg))
+            | group_by(.species)
+            | map({species:.[0].species, varieties:(map(.variety)|unique)})) }
+    ' <<<"${rows}")"
+    local tiered legendaries
+    tiered="$(jq -c '.tiers' <<<"${built}")"
+    legendaries="$(jq -c '.legendaries' <<<"${built}")"
+
+    # Derive berries by natural_gift_type intersection with biome.types. One
+    # cached GraphQL query yields every berry's gift type (id-ordered), then a
+    # single jq pass filters to this biome's types — no per-berry forks, no
+    # per-biome REST storm.
+    local berry_index
+    if ! berry_index="$(encounter_gql_berries)"; then
+        return 1
+    fi
+    local types_array
+    types_array="$(biome_types_for "${biome_id}" | jq -R . | jq -s -c .)"
+    local berries_json
+    berries_json="$(jq -R -s -c --argjson types "${types_array}" '
+        [ split("\n")[] | select(length > 0) | split("\t")
+          | select(.[1] as $t | $types | index($t))
+          | .[0] ]' <<<"${berry_index}")"
+
+    local items_json
+    items_json="$(_encounter_typed_items_for_biome "${biome_id}" | jq -R . | jq -s -c .)"
+
+    jq -c -n --argjson tiers "${tiered}" --argjson berries "${berries_json}" \
+        --argjson items "${items_json}" --argjson legendaries "${legendaries}" \
+        '{tiers: $tiers, berries: $berries, items: $items, legendaries: $legendaries}'
+}
+
+# encounter_species_for_name <name>
+# Resolve a name (a bare species OR a variety-suffixed Pokemon name like
+# shaymin-land/wormadam-plant/deoxys-attack) to its bare species name. Try
+# /pokemon-species/<name>; on 404 fall back to /pokemon/<name>.species.name.
+# Empty on total failure.
+function encounter_species_for_name {
+    local name="$1"
+    if pokeapi_get "pokemon-species/${name}" >/dev/null 2>&1; then
+        printf '%s' "${name}"
+        return 0
+    fi
+    local poke
+    if ! poke="$(pokeapi_get "pokemon/${name}" 2>/dev/null)"; then
+        return 1
+    fi
+    jq -r '.species.name // empty' <<<"${poke}"
+}
+
+# _encounter_form_is_battle_only <variety-name>
+# True (exit 0) if PokeAPI's /pokemon-form/<name> marks the form is_battle_only.
+# This is the authoritative catch the name-suffix check above cannot give —
+# e.g. mega-z forms (absol-mega-z) and stance/transform forms (aegislash-blade,
+# morpeko-hangry, mimikyu-busted). A missing form (404) or absent flag means the
+# form is wild-encounterable, so return 1.
+function _encounter_form_is_battle_only {
+    local form
+    if ! form="$(pokeapi_get "pokemon-form/$1" 2>/dev/null)"; then
+        return 1
+    fi
+    [[ "$(jq -r '.is_battle_only // false' <<<"${form}")" == "true" ]]
+}
+
 # encounter_walk_chain <chain_json>
 # Print a JSON array of {species, stage_idx, min_level_evo (nullable)}.
 # stage_idx 0 for root; root has no min_level_evo.
@@ -439,7 +620,10 @@ function encounter_walk_chain {
     ' <<<"${chain_json}"
 }
 
-# encounter_build_pool <biome_id>
+# _encounter_build_pool_rest <biome_id>
+# REST path (fallback): builds the pool from the classic PokeAPI REST endpoints
+# (/type, /pokemon-species, /evolution-chain, /berry). Slower + rate-limited, but
+# independent of the GraphQL endpoint. Output is identical to the GraphQL path.
 # Print {tiers:{common:[],uncommon:[],rare:[],very_rare:[]}, berries:[...]}.
 # Pool = direct union of /type/<t> for each biome.types[]; legendaries/mythicals
 # dropped; each species tiered by its own capture_rate. min/max levels come from
@@ -448,12 +632,8 @@ function encounter_walk_chain {
 # forms that reached the pool via the biome's types (e.g. meowth-galar in a
 # steel biome), so the roller encounters a type-coherent form. Returns 1 on
 # fetch failure.
-function encounter_build_pool {
+function _encounter_build_pool_rest {
     local biome_id="$1"
-    if ! command -v biome_types_for >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/biome.bash"
-    fi
 
     # Union pokemon-resource names across biome.types[].
     local raw_names='[]'
@@ -629,6 +809,39 @@ function encounter_build_pool {
     jq -c -n --argjson tiers "${tiered}" --argjson berries "${berries_json}" \
         --argjson items "${items_json}" --argjson legendaries "${legendaries}" \
         '{tiers: $tiers, berries: $berries, items: $items, legendaries: $legendaries}'
+}
+
+# encounter_build_pool <biome_id> [method]
+# Build a biome pool. <method> (default: $POKIDLE_POOL_METHOD, else "auto"):
+#   auto    — GraphQL, falling back to the REST path if GraphQL fails.
+#   graphql — GraphQL only (fail if the endpoint is unavailable).
+#   rest    — classic REST endpoints only (independent of the GraphQL endpoint).
+# Both paths produce identical output. Returns non-zero on failure of the chosen
+# path (auto fails only if BOTH GraphQL and REST fail).
+function encounter_build_pool {
+    local biome_id="$1"
+    local method="${2:-${POKIDLE_POOL_METHOD:-auto}}"
+    case "${method}" in
+        graphql)
+            _encounter_build_pool_graphql "${biome_id}"
+            ;;
+        rest)
+            _encounter_build_pool_rest "${biome_id}"
+            ;;
+        auto)
+            local out
+            if out="$(_encounter_build_pool_graphql "${biome_id}")"; then
+                printf '%s' "${out}"
+            else
+                printf 'encounter_build_pool: GraphQL failed for %s — falling back to REST\n' "${biome_id}" >&2
+                _encounter_build_pool_rest "${biome_id}"
+            fi
+            ;;
+        *)
+            printf 'encounter_build_pool: unknown method %s (auto|graphql|rest)\n' "${method}" >&2
+            return 2
+            ;;
+    esac
 }
 
 # encounter_pool_path <biome>
@@ -875,17 +1088,13 @@ function encounter_roll_friendship {
 # types (the biome's themeable item drops). Empty on missing data (fail-open).
 function _encounter_typed_items_for_biome {
     local biome_id="$1"
-    if ! command -v showdown_typed_holdable_items >/dev/null; then
-        # shellcheck disable=SC1091
-        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash" 2>/dev/null || return 0
-    fi
     local types_csv
     types_csv="$(biome_types_for "${biome_id}" 2>/dev/null | paste -sd'|' -)"
     if [[ -z "${types_csv}" ]]; then
         return 0
     fi
-    showdown_typed_holdable_items 2>/dev/null \
-        | awk -F'\t' -v re="^(${types_csv})$" '$2 ~ re {print $1}'
+    showdown_typed_holdable_items 2>/dev/null |
+        awk -F'\t' -v re="^(${types_csv})$" '$2 ~ re {print $1}'
 }
 
 # encounter_roll_pickup
@@ -896,10 +1105,6 @@ function _encounter_typed_items_for_biome {
 # Prints {"item"}; returns 1 on an empty pool. The sprite is resolved later
 # by the tick (via item_sprite), so the roll does no network fetch.
 function encounter_roll_pickup {
-    if ! command -v showdown_typeless_holdable_items >/dev/null; then
-        # shellcheck disable=SC1091
-        source "${POKIDLE_REPO_ROOT}/lib/showdown.bash" 2>/dev/null || return 1
-    fi
     # Species-specific form items (mega stones, primal orbs, signature Z-crystals)
     # drop at a low rate. They sit in item_drops until export matches one to its
     # eligible mon; they are never assigned to a non-matching mon.

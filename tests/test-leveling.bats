@@ -6,14 +6,14 @@ setup() {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/pcache.$$"
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
     POKIDLE_CONFIG_DIR="$BATS_TMPDIR/pcfg.$$"
-    mkdir -p "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR" "$POKEAPI_CACHE_DIR"
-    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKEAPI_CACHE_DIR POKIDLE_CONFIG_DIR
+    mkdir -p "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR" "$POKIDLE_POKEAPI_CACHE_DIR"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKIDLE_POKEAPI_CACHE_DIR POKIDLE_CONFIG_DIR
 
     # Pre-cache pokeapi responses for stats recompute (rattata).
-    mkdir -p "$POKEAPI_CACHE_DIR/pokemon" "$POKEAPI_CACHE_DIR/nature"
-    cat > "$POKEAPI_CACHE_DIR/pokemon/rattata.json" <<'EOF'
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR/pokemon" "$POKIDLE_POKEAPI_CACHE_DIR/nature"
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/pokemon/rattata.json" <<'EOF'
 {"id":19,"sprites":{"front_default":"","front_shiny":""},
  "stats":[
    {"base_stat":30,"stat":{"name":"hp"}},
@@ -23,13 +23,13 @@ setup() {
    {"base_stat":35,"stat":{"name":"special-defense"}},
    {"base_stat":72,"stat":{"name":"speed"}}]}
 EOF
-    cat > "$POKEAPI_CACHE_DIR/nature/hardy.json" <<'EOF'
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/nature/hardy.json" <<'EOF'
 {"increased_stat":null,"decreased_stat":null}
 EOF
 }
 
 teardown() {
-    rm -rf "$POKIDLE_CACHE_DIR" "$POKEAPI_CACHE_DIR" "$POKIDLE_CONFIG_DIR"
+    rm -rf "$POKIDLE_CACHE_DIR" "$POKIDLE_POKEAPI_CACHE_DIR" "$POKIDLE_CONFIG_DIR"
 }
 
 _seed_rattata_in_current_week() {
@@ -69,7 +69,7 @@ _seed_meowth_galar_in_current_week() {
                 10,10,10,10,10,10, 0,0,0,0,0,0,
                 17, 13, 11, 9, 10, 14);"
     # Base stats for the Galar form (distinct from Kanto Meowth).
-    cat > "$POKEAPI_CACHE_DIR/pokemon/meowth-galar.json" <<'EOF'
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/pokemon/meowth-galar.json" <<'EOF'
 {"id":10161,"sprites":{"front_default":"","front_shiny":""},
  "stats":[
    {"base_stat":50,"stat":{"name":"hp"}},

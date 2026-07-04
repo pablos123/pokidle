@@ -7,6 +7,9 @@ setup() {
     export POKIDLE_REPO_ROOT
     load_lib encounter
     stub_pokeapi
+    # build_pool pulls berries from a cached GraphQL query; stub the seam so
+    # tests need no network. Individual tests override this for their own cases.
+    stub_gql_berries
 }
 
 @test "shipped pools: every entry carries varieties, none battle-only, no schema key" {
@@ -27,57 +30,11 @@ setup() {
     done
 }
 
-@test "walk_chain: treecko line yields 3 stages with correct levels" {
-    local chain
-    chain="$(cat "$FIXTURE_DIR/evolution-chain-142.json")"
-    run encounter_walk_chain "$chain"
-    [ "$status" -eq 0 ]
-    local n
-    n="$(jq 'length' <<< "$output")"
-    [ "$n" = "3" ]
-    local treecko_stage grovyle_stage sceptile_stage
-    treecko_stage="$(jq -r '.[] | select(.species=="treecko") | .stage_idx' <<< "$output")"
-    grovyle_stage="$(jq -r '.[] | select(.species=="grovyle") | .stage_idx' <<< "$output")"
-    sceptile_stage="$(jq -r '.[] | select(.species=="sceptile") | .stage_idx' <<< "$output")"
-    [ "$treecko_stage" = "0" ]
-    [ "$grovyle_stage" = "1" ]
-    [ "$sceptile_stage" = "2" ]
-    local grovyle_min sceptile_min
-    grovyle_min="$(jq -r '.[] | select(.species=="grovyle") | .min_level_evo' <<< "$output")"
-    sceptile_min="$(jq -r '.[] | select(.species=="sceptile") | .min_level_evo' <<< "$output")"
-    [ "$grovyle_min" = "16" ]
-    [ "$sceptile_min" = "36" ]
-}
-
-@test "walk_chain: eevee line yields 3 stages with null min_level for non-level evos" {
-    local chain
-    chain="$(cat "$FIXTURE_DIR/evolution-chain-67.json")"
-    run encounter_walk_chain "$chain"
-    [ "$status" -eq 0 ]
-    local n
-    n="$(jq 'length' <<< "$output")"
-    [ "$n" = "3" ]
-    local vaporeon_min
-    vaporeon_min="$(jq -r '.[] | select(.species=="vaporeon") | .min_level_evo // "null"' <<< "$output")"
-    [ "$vaporeon_min" = "null" ]
-}
-
 @test "encounter_pool_path returns biome-specific cache path" {
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
     export POKIDLE_CACHE_DIR
     run encounter_pool_path cave
     [ "$output" = "$POKIDLE_CACHE_DIR/pools/cave.json" ]
-}
-
-@test "encounter_species_for_name: bare species passes through unchanged" {
-    [ "$(encounter_species_for_name treecko)" = "treecko" ]
-    [ "$(encounter_species_for_name caterpie)" = "caterpie" ]
-}
-
-@test "encounter_species_for_name: variety-suffixed name resolves to bare species" {
-    # /pokemon-species/shaymin-land 404s, fallback hits /pokemon/shaymin-land
-    # whose .species.name is "shaymin".
-    [ "$(encounter_species_for_name shaymin-land)" = "shaymin" ]
 }
 
 @test "encounter_pick_variety: returns a name from .varieties[]" {
@@ -99,6 +56,8 @@ setup() {
     load_lib biome
     load_lib encounter
     stub_pokeapi
+    stub_gql_berries
+    stub_gql_pool
     # forest is the grass+bug biome in the hardcoded catalog.
     run encounter_build_pool forest
     [ "$status" -eq 0 ]
@@ -125,6 +84,8 @@ setup() {
     load_lib biome
     load_lib encounter
     stub_pokeapi
+    stub_gql_berries
+    stub_gql_pool
     run encounter_build_pool forest
     [ "$status" -eq 0 ]
     # /type/bug returns wormadam-{plant,sandy,trash}; all collapse to bare "wormadam".
@@ -146,6 +107,8 @@ setup() {
     load_lib biome
     load_lib encounter
     stub_pokeapi
+    stub_gql_berries
+    stub_gql_pool
     run encounter_build_pool forest
     [ "$status" -eq 0 ]
     entry_of() {
@@ -165,6 +128,8 @@ setup() {
     load_lib biome
     load_lib encounter
     stub_pokeapi
+    stub_gql_berries
+    stub_gql_pool
     run encounter_build_pool forest
     [ "$status" -eq 0 ]
 
@@ -194,16 +159,35 @@ setup() {
     load_lib biome
     load_lib encounter
     stub_pokeapi
-    # Wrap the fixture stub so only the berry index fetch fails, mimicking a
-    # transient network error. build_pool must surface that, not ship a pool
-    # with zero berries.
-    eval "$(declare -f pokeapi_get | sed '1s/^pokeapi_get/_fixture_pokeapi_get/')"
-    pokeapi_get() {
-        if [[ "$1" == "berry?limit=100" ]]; then return 1; fi
-        _fixture_pokeapi_get "$@"
-    }
-    run encounter_build_pool forest
+    stub_gql_berries
+    stub_gql_pool
+    # Make only the GraphQL berry index fetch fail, mimicking a transient network
+    # error. With method=graphql (no REST fallback) the build must surface that,
+    # not ship a pool with zero berries.
+    encounter_gql_berries() { return 1; }
+    export -f encounter_gql_berries
+    run encounter_build_pool forest graphql
     [ "$status" -ne 0 ]
+}
+
+@test "build_pool: auto method falls back to REST when GraphQL fails" {
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib biome
+    load_lib encounter
+    stub_pokeapi
+    # GraphQL unavailable: every gql fetcher fails. The default (auto) method must
+    # fall back to the REST path (fixture-backed here) and still produce a pool.
+    encounter_gql_type_species() { return 1; }
+    encounter_gql_chain_stages() { return 1; }
+    encounter_gql_berries() { return 1; }
+    export -f encounter_gql_type_species encounter_gql_chain_stages encounter_gql_berries
+    # Capture stdout only (the fallback notice goes to stderr).
+    local pool
+    pool="$(encounter_build_pool forest 2>/dev/null)"
+    [ "$(jq 'has("tiers")' <<<"$pool")" = "true" ]
+    [ "$(jq '[.tiers[][].species] | index("caterpie")' <<<"$pool")" != "null" ]
 }
 
 @test "encounter_pool_save writes the biome/tiers wrapper without a schema key" {
@@ -309,8 +293,10 @@ EOF
     load_lib biome
     load_lib encounter
     stub_pokeapi
+    stub_gql_berries
+    stub_gql_pool
     # tide-pool is water+bug; chesto (water natural_gift) qualifies, cheri
-    # (fire) does not.
+    # (fire) does not. Berry index stubbed in setup (chesto=water, cheri=fire).
     run encounter_build_pool tide-pool
     [ "$status" -eq 0 ]
     local has_b
@@ -324,6 +310,64 @@ EOF
     [ "$has_cheri" = "false" ]
 }
 
+@test "encounter_gql_berries: shapes the GraphQL response to name<TAB>gift-type rows" {
+    load_lib encounter
+    pokeapi_graphql() {
+        printf '%s' '{"data":{"berry":[{"name":"cheri","type":{"name":"fire"}},{"name":"chesto","type":{"name":"water"}}]}}'
+    }
+    export -f pokeapi_graphql
+    run encounter_gql_berries
+    [ "$status" -eq 0 ]
+    [ "${lines[0]}" = $'cheri\tfire' ]
+    [ "${lines[1]}" = $'chesto\twater' ]
+}
+
+@test "encounter_gql_type_species: shapes rows and defaults a null capture_rate to 45" {
+    load_lib encounter
+    # meowth has a capture_rate; a hypothetical null-cr mon must default to 45
+    # (matching the old REST path's `.capture_rate // 45`), so it tiers as rare
+    # rather than falling through to very_rare (jq: null >= 25 is false).
+    pokeapi_graphql() {
+        printf '%s' '{"data":{"pokemontype":[
+          {"pokemon":{"name":"meowth","pokemonforms":[{"is_default":true,"is_battle_only":false}],
+            "pokemonspecy":{"name":"meowth","capture_rate":255,"is_legendary":false,"is_mythical":false}}},
+          {"pokemon":{"name":"nullmon","pokemonforms":[{"is_default":true,"is_battle_only":false}],
+            "pokemonspecy":{"name":"nullmon","capture_rate":null,"is_legendary":false,"is_mythical":false}}}
+        ]}}'
+    }
+    export -f pokeapi_graphql
+    run encounter_gql_type_species normal
+    [ "$status" -eq 0 ]
+    [ "$(printf '%s\n' "$output" | jq -c 'select(.species=="nullmon") | .cr')" = "45" ]
+    [ "$(printf '%s\n' "$output" | jq -c 'select(.species=="meowth") | .cr')" = "255" ]
+}
+
+@test "encounter_gql_chain_stages: maps species to stage depth + evolve min_level" {
+    load_lib encounter
+    # treecko(252) -> grovyle(253, L16) -> sceptile(254, L36)
+    pokeapi_graphql() {
+        printf '%s' '{"data":{"evolutionchain":[{"pokemonspecies":[
+          {"name":"treecko","id":252,"evolves_from_species_id":null,"pokemonevolutions":[]},
+          {"name":"grovyle","id":253,"evolves_from_species_id":252,"pokemonevolutions":[{"min_level":16}]},
+          {"name":"sceptile","id":254,"evolves_from_species_id":253,"pokemonevolutions":[{"min_level":36}]}
+        ]}]}}'
+    }
+    export -f pokeapi_graphql
+    run encounter_gql_chain_stages
+    [ "$status" -eq 0 ]
+    [ "$(jq -c '.treecko' <<<"$output")"  = '{"stage":0,"ml":null}' ]
+    [ "$(jq -c '.grovyle' <<<"$output")"  = '{"stage":1,"ml":16}' ]
+    [ "$(jq -c '.sceptile' <<<"$output")" = '{"stage":2,"ml":36}' ]
+}
+
+@test "encounter_gql_berries: returns 1 when the query fails" {
+    load_lib encounter
+    pokeapi_graphql() { return 1; }
+    export -f pokeapi_graphql
+    run encounter_gql_berries
+    [ "$status" -ne 0 ]
+}
+
 @test "build_pool: legendaries collected into .legendaries, not .tiers" {
     POKIDLE_REPO_ROOT="$REPO_ROOT"
     POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
@@ -331,6 +375,8 @@ EOF
     load_lib biome
     load_lib encounter
     stub_pokeapi
+    stub_gql_berries
+    stub_gql_pool
     run encounter_build_pool forest
     [ "$status" -eq 0 ]
     # shaymin is grass + is_legendary: must land in .legendaries with its formes.

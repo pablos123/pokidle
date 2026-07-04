@@ -26,7 +26,7 @@ setup() {
     [[ "$output" == *"SHINY"* ]]
     [[ "$output" == *"Sceptile"* ]]
     [[ "$output" == *"• leaf-blade"* ]]
-    [[ "$output" == *"sitrus"* ]]
+    [[ "$output" == *"Held: Sitrus Berry"* ]]
 }
 
 @test "notify_pokemon: not shiny -> no SHINY tag" {

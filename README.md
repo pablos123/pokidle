@@ -53,13 +53,12 @@ git -C <pokidle_repo_path> pull && pokidle setup
 pokidle help
 ```
 
-`pokidle pokeapi` is a cache-aware PokeAPI client, and `pokidle showdown` queries
-the cached Pokémon Showdown legality data:
+Every command carries its own help, e.g. `pokidle tick --help`.
 
-```
-pokidle pokeapi help
-pokidle showdown help
-```
+pokidle reads its world data from PokeAPI's GraphQL endpoint (with the REST
+helpers in `lib/api.bash` as a fallback) and Pokémon Showdown legality data. The
+standalone cache-aware PokeAPI REST client that used to ship here as
+`pokidle pokeapi` now lives as its own tool in a sibling `pokeapi/` project.
 
 ## Configuration
 

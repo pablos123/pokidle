@@ -11,9 +11,9 @@ setup() {
     mkdir -p "$POKIDLE_CACHE_DIR"
     POKIDLE_DATA_DIR="$BATS_TMPDIR/data.$$"
     mkdir -p "$POKIDLE_DATA_DIR"
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    mkdir -p "$POKEAPI_CACHE_DIR"
-    export POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR POKIDLE_DATA_DIR POKEAPI_CACHE_DIR
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR"
+    export POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR POKIDLE_DATA_DIR POKIDLE_POKEAPI_CACHE_DIR
     export POKIDLE_NO_NOTIFY=1 POKIDLE_SOUND_DIR="$BATS_TMPDIR/nosound.$$"
     # Seed the Showdown holdable-items cache so export's showdown_item_is_holdable
     # gate works without network access. Must come after env vars are exported.
@@ -22,7 +22,7 @@ setup() {
 
 teardown() {
     rm -f  "$POKIDLE_DB_PATH"
-    rm -rf "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR" "$POKIDLE_DATA_DIR" "$POKEAPI_CACHE_DIR" "$POKIDLE_SHOWDOWN_CACHE_DIR"
+    rm -rf "$POKIDLE_CONFIG_DIR" "$POKIDLE_CACHE_DIR" "$POKIDLE_DATA_DIR" "$POKIDLE_POKEAPI_CACHE_DIR" "$POKIDLE_SHOWDOWN_CACHE_DIR"
 }
 
 _seed_schema() { sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"; }
@@ -191,6 +191,22 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     [[ "$output" == *"Lv.12 meowth-galar"* ]]
 }
 
+@test "pokidle encounters shows the held berry as its full display name" {
+    _seed_schema
+    local sid; sid="$(_mk_session crystal-cavern)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'zigzagoon', NULL, 263, 5, 'hardy', 'pickup', 0, 'M', 0, 'sitrus',
+            31,31,31,31,31,31, 0,0,0,0,0,0, 50,50,50,50,50,50, '[\"tackle\"]', NULL);"
+    run "$REPO_ROOT/pokidle" encounters --no-images
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Lv.5 zigzagoon @ Sitrus Berry"* ]]
+}
+
 @test "pokidle encounters falls back to species when variety is NULL (legacy rows)" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
@@ -199,6 +215,26 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     run "$REPO_ROOT/pokidle" encounters --no-images
     [ "$status" -eq 0 ]
     [[ "$output" == *"Lv.50 zubat"* ]]
+}
+
+@test "encounters distinguishes an unknown option from an unexpected argument" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" encounters --asdf
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"encounters: unknown option --asdf"* ]]
+    run "$REPO_ROOT/pokidle" encounters asdf
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"encounters: unexpected argument asdf"* ]]
+}
+
+@test "items distinguishes an unknown option from an unexpected argument" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" items --asdf
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"items: unknown option --asdf"* ]]
+    run "$REPO_ROOT/pokidle" items asdf
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"items: unexpected argument asdf"* ]]
 }
 
 @test "export renders the regional form as a Showdown species name" {
@@ -418,19 +454,19 @@ EOF
 @test "pokidle current rejects the removed --items flag" {
     run "$REPO_ROOT/pokidle" current --items
     [ "$status" -eq 2 ]
-    [[ "$output" == *"unknown flag"* ]]
+    [[ "$output" == *"unknown option"* ]]
 }
 
 @test "pokidle current rejects the removed --no-image alias" {
     run "$REPO_ROOT/pokidle" current --no-image
     [ "$status" -eq 2 ]
-    [[ "$output" == *"unknown flag"* ]]
+    [[ "$output" == *"unknown option"* ]]
 }
 
-@test "pokidle current rejects unknown flag" {
+@test "pokidle current rejects unknown option" {
     run "$REPO_ROOT/pokidle" current --bogus
     [ "$status" -eq 2 ]
-    [[ "$output" == *"unknown flag"* ]]
+    [[ "$output" == *"unknown option"* ]]
 }
 
 @test "pokidle clean pools --yes purges pools dir" {
@@ -499,13 +535,13 @@ EOF
 @test "pokidle clean pokeapi --yes purges the pokeapi cache" {
     local tmp
     tmp="$(mktemp -d)"
-    POKEAPI_CACHE_DIR="$tmp/pokeapi"
-    export POKEAPI_CACHE_DIR
-    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
-    : > "$POKEAPI_CACHE_DIR/pokemon/treecko.json"
+    POKIDLE_POKEAPI_CACHE_DIR="$tmp/pokeapi"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR/pokemon"
+    : > "$POKIDLE_POKEAPI_CACHE_DIR/pokemon/treecko.json"
     run "$REPO_ROOT/pokidle" clean pokeapi --yes
     [ "$status" -eq 0 ]
-    [ ! -d "$POKEAPI_CACHE_DIR" ]
+    [ ! -d "$POKIDLE_POKEAPI_CACHE_DIR" ]
 }
 
 @test "pokidle clean all --yes also wipes showdown + pokeapi caches" {
@@ -513,20 +549,20 @@ EOF
     tmp="$(mktemp -d)"
     POKIDLE_CACHE_DIR="$tmp/cache"
     POKIDLE_SHOWDOWN_CACHE_DIR="$tmp/showdown"
-    POKEAPI_CACHE_DIR="$tmp/pokeapi"
+    POKIDLE_POKEAPI_CACHE_DIR="$tmp/pokeapi"
     POKIDLE_DB_PATH="$tmp/x.db"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
-    export POKIDLE_CACHE_DIR POKIDLE_SHOWDOWN_CACHE_DIR POKEAPI_CACHE_DIR POKIDLE_DB_PATH POKIDLE_REPO_ROOT
-    mkdir -p "$POKIDLE_CACHE_DIR/pools" "$POKIDLE_SHOWDOWN_CACHE_DIR" "$POKEAPI_CACHE_DIR"
+    export POKIDLE_CACHE_DIR POKIDLE_SHOWDOWN_CACHE_DIR POKIDLE_POKEAPI_CACHE_DIR POKIDLE_DB_PATH POKIDLE_REPO_ROOT
+    mkdir -p "$POKIDLE_CACHE_DIR/pools" "$POKIDLE_SHOWDOWN_CACHE_DIR" "$POKIDLE_POKEAPI_CACHE_DIR"
     : > "$POKIDLE_CACHE_DIR/pools/forest.json"
     : > "$POKIDLE_SHOWDOWN_CACHE_DIR/pokedex.json"
-    : > "$POKEAPI_CACHE_DIR/x.json"
+    : > "$POKIDLE_POKEAPI_CACHE_DIR/x.json"
     sqlite3 "$POKIDLE_DB_PATH" "CREATE TABLE x(a INTEGER);"
     run "$REPO_ROOT/pokidle" clean all --yes
     [ "$status" -eq 0 ]
     [ ! -d "$POKIDLE_CACHE_DIR/pools" ]
     [ ! -d "$POKIDLE_SHOWDOWN_CACHE_DIR" ]
-    [ ! -d "$POKEAPI_CACHE_DIR" ]
+    [ ! -d "$POKIDLE_POKEAPI_CACHE_DIR" ]
     [ ! -f "$POKIDLE_DB_PATH" ]
 }
 
@@ -536,7 +572,7 @@ EOF
     [[ "$output" == *"usage:"* ]]
 }
 
-# Helper for tick tests: seed POKEAPI_CACHE_DIR with proper layout
+# Helper for tick tests: seed POKIDLE_POKEAPI_CACHE_DIR with proper layout
 # (cache_path = $dir/$endpoint.json, slashes preserved as subdirs).
 _seed_pokeapi_cache() {
     local d="$1"
@@ -648,9 +684,9 @@ _seed_pokeapi_cache() {
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
 
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --json
     [ "$status" -eq 0 ]
@@ -672,17 +708,17 @@ _seed_pokeapi_cache() {
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
 
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --no-images
     [ "$status" -eq 0 ]
     [[ "$output" == *"treecko"* ]]
     [[ "$output" =~ (overgrow|unburden) ]]
-    [[ "$output" == *"moves:"* ]]
-    [[ "$output" == *"ivs:"* ]]
-    [[ "$output" == *"evs:"* ]]
+    [[ "$output" == *"Moves:"* ]]
+    [[ "$output" == *"IVs:"* ]]
+    [[ "$output" == *"EVs:"* ]]
 }
 
 @test "pokidle tick encounter --no-output: succeeds and prints nothing" {
@@ -694,13 +730,22 @@ _seed_pokeapi_cache() {
     mkdir -p "$POKIDLE_CACHE_DIR/pools"
     printf '%s' "$pool" > "$POKIDLE_CACHE_DIR/pools/cave.json"
 
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --no-output
     [ "$status" -eq 0 ]
     [ -z "$output" ]
+}
+
+@test "tick distinguishes an unknown option from an unexpected argument" {
+    run "$REPO_ROOT/pokidle" tick encounter --bad
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"tick: unknown option --bad"* ]]
+    run "$REPO_ROOT/pokidle" tick encounter bad
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"tick: unexpected argument bad"* ]]
 }
 
 @test "pokidle tick pokemon: rejected as an unknown kind" {
@@ -721,9 +766,9 @@ _seed_pokeapi_cache() {
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
 
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick pickup --dry-run --no-notify --json
     [ "$status" -eq 0 ]
@@ -742,9 +787,9 @@ _seed_pokeapi_cache() {
     sqlite3 "$POKIDLE_DB_PATH" \
         "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
 
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKEAPI_CACHE_DIR"
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick pickup --no-dry-run --no-notify --no-output
     [ "$status" -eq 0 ]
@@ -811,10 +856,10 @@ _seed_pokeapi_cache() {
     run "$REPO_ROOT/pokidle" items --since @1700000000 --until @1700000300
     [ "$status" -eq 0 ]
     grep -qi "leftovers" <<< "$output"
-    ! grep -qi "ice-stone" <<< "$output"
+    ! grep -qi "Ice Stone" <<< "$output"
     run "$REPO_ROOT/pokidle" items --all --since @1700000000 --until @1700000300
     [ "$status" -eq 0 ]
-    grep -qi "ice-stone" <<< "$output"
+    grep -qi "Ice Stone" <<< "$output"
     grep -qi "(used)" <<< "$output"
 }
 
@@ -831,7 +876,7 @@ _seed_pokeapi_cache() {
             31,31,31,31,31,31, 1,2,3,4,5,6, 50,51,52,53,54,55, '[\"scratch\",\"bite\"]', NULL);"
     run "$REPO_ROOT/pokidle" encounters --no-images
     [ "$status" -eq 0 ]
-    [ "${lines[0]}" = "$(printf '%s   crystal-cavern   Lv.12 meowth-galar' "$(date -d "@$now" '+%F %H:%M')")" ]
+    [ "${lines[0]}" = "$(printf '%s   [crystal-cavern]   Lv.12 meowth-galar' "$(date -d "@$now" '+%F %H:%M')")" ]
     [ "${lines[1]}" = "   adamant · pickup · M" ]
     [ "${lines[2]}" = "   Stats: 50/51/52/53/54/55" ]
     [ "${lines[3]}" = "   IVs:   31/31/31/31/31/31" ]
@@ -866,8 +911,8 @@ _seed_pokeapi_cache() {
     run "$REPO_ROOT/pokidle" items --all --no-images
     [ "$status" -eq 0 ]
     local l1 l2
-    l1="$(printf '%s   %s   %s' "$(date -d "@$((now - 200))" '+%F %H:%M')" 'cave' 'everstone')"
-    l2="$(printf '%s   %s   %s%s' "$(date -d "@$((now - 100))" '+%F %H:%M')" 'cave' 'leftovers' '   (used)')"
+    l1="$(printf '%s   [%s]   %s   (%s)' "$(date -d "@$((now - 200))" '+%F %H:%M')" 'cave' 'Everstone' 'item')"
+    l2="$(printf '%s   [%s]   %s   (%s)%s' "$(date -d "@$((now - 100))" '+%F %H:%M')" 'cave' 'Leftovers' 'item' '   (used)')"
     [ "${lines[0]}" = "$l1" ]
     [[ "${output}" == *"$l2"* ]]
 }
@@ -891,10 +936,10 @@ _seed_pokeapi_cache() {
     [ "$(jq '[.[] | select(.types | length != 2)] | length' <<< "$output")" -eq 0 ]
 }
 
-@test "biomes rejects an unknown flag" {
+@test "biomes rejects an unknown option" {
     run "$REPO_ROOT/pokidle" biomes --bogus
     [ "$status" -eq 2 ]
-    grep -qi "unknown flag" <<< "$output"
+    grep -qi "unknown option" <<< "$output"
 }
 
 @test "log renders one formatted line per event, oldest first" {
@@ -924,6 +969,27 @@ _seed_pokeapi_cache() {
     [ "$status" -eq 0 ]
     [[ "${lines[0]}" == *"newer"* ]]
     [[ "${lines[1]}" == *"older"* ]]
+}
+
+@test "log includes the held berry in an encounter summary" {
+    _seed_schema
+    POKIDLE_TEST_SOURCE_ONLY=1 source "$REPO_ROOT/pokidle"
+    _pokidle_log_encounter encounter \
+        '{"species":"zigzagoon","level":5,"gender":"M","shiny":0,"held_berry":"sitrus"}' orchard
+    run "$REPO_ROOT/pokidle" log
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"zigzagoon Lv.5 M [orchard] @sitrus-berry"* ]]
+}
+
+@test "log omits the held berry when the encounter has none" {
+    _seed_schema
+    POKIDLE_TEST_SOURCE_ONLY=1 source "$REPO_ROOT/pokidle"
+    _pokidle_log_encounter encounter \
+        '{"species":"zubat","level":7,"gender":"F","shiny":0,"held_berry":null}' cave
+    run "$REPO_ROOT/pokidle" log
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"zubat Lv.7 F [cave]"* ]]
+    [[ "$output" != *"@"* ]]
 }
 
 @test "rebuild-pool --items writes items-holdable.tsv and no pool files" {
@@ -1005,47 +1071,12 @@ _seed_pokeapi_cache() {
     run env POKIDLE_TEST_SOURCE_ONLY=1 bash -c '
         source "'"${REPO_ROOT}"'/pokidle"
         enc='"'"'{"species":"meowth","variety":"meowth-galar","level":12,"nature":"jolly","ability":"pickup","gender":"M","shiny":0,"held_berry":null,"biome_label":"City","ivs":[1,2,3,4,5,6],"evs":[0,0,0,0,0,0],"moves":["scratch"]}'"'"'
-        _pokidle_print_encounter encounter "$enc"
+        _pokidle_print_encounter "$enc"
     '
     [ "$status" -eq 0 ]
     [[ "$output" == *"meowth-galar"* ]]
 }
 
-@test "pokidle pokeapi: id subcommand reads the cache and prints the id" {
-    mkdir -p "$POKEAPI_CACHE_DIR/pokemon"
-    printf '%s' '{"id":252,"name":"treecko"}' > "$POKEAPI_CACHE_DIR/pokemon/treecko.json"
-    run "$REPO_ROOT/pokidle" pokeapi id treecko
-    [ "$status" -eq 0 ]
-    [ "$output" = "252" ]
-}
-
-@test "pokidle pokeapi: help lists subcommands" {
-    run "$REPO_ROOT/pokidle" pokeapi help
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"get <endpoint>"* ]]
-}
-
-@test "pokidle showdown: name resolves the Showdown display name" {
-    run "$REPO_ROOT/pokidle" showdown name iron-hands
-    [ "$status" -eq 0 ]
-    [ "$output" = "Iron Hands" ]
-}
-
-@test "pokidle showdown: abilities lists the legal ability set" {
-    run "$REPO_ROOT/pokidle" showdown abilities corviknight
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"pressure"* ]]
-}
-
-@test "pokidle showdown: help lists subcommands" {
-    run "$REPO_ROOT/pokidle" showdown help
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"abilities"* ]]
-}
-
-@test "standalone pokeapi executable is gone" {
-    [ ! -e "$REPO_ROOT/pokeapi" ]
-}
 
 @test "export skips a mon whose Showdown name cannot resolve, keeps the rest" {
     _seed_schema

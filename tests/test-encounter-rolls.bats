@@ -269,13 +269,6 @@ EOF
     ! _encounter_variety_is_non_wild lycanroc-midnight
 }
 
-@test "_encounter_form_is_battle_only: reads is_battle_only from /pokemon-form" {
-    _encounter_form_is_battle_only aegislash-blade
-    ! _encounter_form_is_battle_only meowth-galar
-    # Unknown form (no fixture / 404) is treated as wild (not battle-only).
-    ! _encounter_form_is_battle_only made-up-form
-}
-
 @test "encounter_pick_variety: never selects a battle-only form" {
     pokeapi_get() {
         case "$1" in

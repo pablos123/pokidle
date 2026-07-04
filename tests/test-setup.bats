@@ -113,7 +113,7 @@ EOF
 @test "pokidle setup rejects the removed --force flag" {
     run "$REPO_ROOT/pokidle" setup --force
     [ "$status" -eq 2 ]
-    [[ "$output" == *"unknown flag"* ]]
+    [[ "$output" == *"unknown option"* ]]
 }
 
 @test "pokidle setup re-points a stale asset symlink" {

@@ -31,7 +31,7 @@ if ((!keep_cache)); then
     rm -rf -- "${CACHE_DIR}/pools"
 fi
 
-printf 'building pools (this can take ~2 hours due to PokeAPI rate-limit sleep)\n'
+printf 'building pools (a few minutes: pool data now comes from cached GraphQL queries)\n'
 "${REPO_ROOT}/pokidle" rebuild-pool --yes
 
 printf 'copying %s/pools/*.json -> %s/\n' "${CACHE_DIR}" "${SHIP_DIR}"
@@ -41,8 +41,8 @@ printf 'copying Showdown artifacts -> %s/\n' "${REPO_ROOT}/share"
 mkdir -p -- "${REPO_ROOT}/share"
 # Sort on copy so the shipped artifacts are deterministic (the builders emit in
 # items.js order); keeps git diffs to real content changes across rebuilds.
-sort -- "${CACHE_DIR}/showdown/items-holdable.tsv" > "${REPO_ROOT}/share/items-holdable.tsv"
-sort -- "${CACHE_DIR}/showdown/form-items.tsv" > "${REPO_ROOT}/share/form-items.tsv"
+sort -- "${CACHE_DIR}/showdown/items-holdable.tsv" >"${REPO_ROOT}/share/items-holdable.tsv"
+sort -- "${CACHE_DIR}/showdown/form-items.tsv" >"${REPO_ROOT}/share/form-items.tsv"
 
 shipped=("${SHIP_DIR}"/*.json)
 printf 'done: %d pool(s) in %s\n' "${#shipped[@]}" "${SHIP_DIR}"

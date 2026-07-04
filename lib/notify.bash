@@ -128,7 +128,11 @@ function notify_pokemon {
     local title="${prefix}Lv.${level} ${sp_title}"
     local body="${nat_title}  ·  ${abil_title}"$'\n\n'"${stat_block}${moves}"
     if [[ -n "${held}" && "${held}" != "null" ]]; then
-        body+=$'\n\n'"Held: ${held}"
+        # held_berry is a bare berry name (e.g. "sitrus"); render it as the full
+        # display name "Sitrus Berry", matching the export/found-item wording.
+        local held_t
+        held_t="$(titlecase_words "${held}")"
+        body+=$'\n\n'"Held: ${held_t} Berry"
     fi
 
     local icon

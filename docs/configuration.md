@@ -174,7 +174,7 @@ The XDG roots; sound, sprite, and DB paths all derive from these.
 |----------|---------|---------|
 | `POKIDLE_CONFIG_DIR` | `$XDG_CONFIG_HOME/pokidle` (`~/.config/pokidle`) | Holds `biomes.json`. |
 | `POKIDLE_DATA_DIR` | `$XDG_DATA_HOME/pokidle` (`~/.local/share/pokidle`) | Holds the SQLite DB and the asset symlinks (`biomes/`, `notify/`, `sounds/`). |
-| `POKIDLE_CACHE_DIR` | `$XDG_CACHE_HOME/pokidle` (`~/.cache/pokidle`) | Encounter pools (`pools/`). Sprites live under `POKEAPI_CACHE_DIR` instead. |
+| `POKIDLE_CACHE_DIR` | `$XDG_CACHE_HOME/pokidle` (`~/.cache/pokidle`) | Encounter pools (`pools/`). Sprites and API responses live under `POKIDLE_POKEAPI_CACHE_DIR` instead. |
 
 ## Database
 
@@ -182,14 +182,22 @@ The XDG roots; sound, sprite, and DB paths all derive from these.
 |----------|---------|---------|
 | `POKIDLE_DB_PATH` | `$POKIDLE_DATA_DIR/pokidle.db` | SQLite database file. |
 
-## PokeAPI client
+## PokeAPI data source
 
-Used by the daemon and the `pokidle pokeapi` subcommand.
+pokidle builds encounter pools from PokeAPI's GraphQL endpoint, automatically
+falling back to the REST endpoints if GraphQL fails. Force one path with
+`rebuild-pool --graphql|--rest` or the `POKIDLE_POOL_METHOD` variable. (The
+standalone `pokeapi` REST CLI is a separate project; these variables configure
+pokidle's internal client.)
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `POKEAPI_CACHE_DIR` | `$POKIDLE_CACHE_DIR/pokeapi` (`~/.cache/pokidle/pokeapi`) | On-disk cache of raw PokeAPI JSON responses. |
-| `POKEAPI_BASE_URL` | `https://pokeapi.co/api/v2` | API base URL. Point at a mirror or local cache if desired. |
-| `POKEAPI_USER_AGENT` | `pokeapi-bash/0.1` | `User-Agent` header sent with every request. |
-| `POKEAPI_RATE_LIMIT_SLEEP` | `0.5` | Seconds to sleep after each live fetch (cache misses only). |
+| `POKIDLE_POOL_METHOD` | `auto` | Pool-build data path: `auto` (GraphQL, fall back to REST), `graphql`, or `rest`. |
+| `POKIDLE_POKEAPI_CACHE_DIR` | `$POKIDLE_CACHE_DIR/pokeapi` (`~/.cache/pokidle/pokeapi`) | On-disk cache of raw PokeAPI JSON + GraphQL responses. |
+| `POKIDLE_POKEAPI_BASE_URL` | `https://pokeapi.co/api/v2` | REST API base URL. Point at a mirror or local cache if desired. |
+| `POKIDLE_POKEAPI_GRAPHQL_URL` | `https://graphql.pokeapi.co/v1beta2` | GraphQL endpoint used for pool builds. |
+| `POKIDLE_POKEAPI_USER_AGENT` | `pokidle-bash/0.1` | `User-Agent` header sent with every request. |
+| `POKIDLE_POKEAPI_RATE_LIMIT_SLEEP` | `0.5` | Seconds to sleep after each live fetch (cache misses only). |
+| `POKIDLE_HTTP_CONNECT_TIMEOUT` | `10` | Max seconds curl waits to establish a connection before failing the fetch. |
+| `POKIDLE_HTTP_MAX_TIME` | `30` | Max seconds curl allows for a whole fetch before failing. Keeps a stalled network from wedging the daemon. |
 

@@ -226,6 +226,69 @@ setup() {
     [ "$variety" = "linoone" ]
 }
 
+@test "evolution_apply: caches the evolved sprite under the variety, not the bare species" {
+    # A form evolution (e.g. linoone-galar) has its own sprite; caching it under
+    # the bare species would collide with the base form's PNG and show the wrong
+    # sprite. The stored sprite_path must be keyed by the resolved variety.
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/ecache.$$"
+    mkdir -p "$POKIDLE_CACHE_DIR"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR
+    load_lib db
+    load_lib encounter
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('orchard', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json, friendship,
+            iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
+            ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe)
+            VALUES (1, 1700000000, 'zigzagoon', 'zigzagoon-galar', 263, 20, 'hardy', 'pickup', 0, 'M', 0, '[]',
+                70, 10,10,10,10,10,10, 0,0,0,0,0,0);"
+
+    # Pin the (otherwise random) variety pick to the regional form.
+    encounter_pick_variety() { printf 'linoone-galar'; }
+    export -f encounter_pick_variety
+    # Make the sprite download succeed by creating the --output target.
+    curl() {
+        local a out="" next=""
+        for a in "$@"; do
+            if [[ "$next" == "1" ]]; then out="$a"; next=""; fi
+            [[ "$a" == "--output" ]] && next=1
+        done
+        [[ -n "$out" ]] && printf 'PNG' >"$out"
+        return 0
+    }
+    export -f curl
+
+    pokeapi_get() {
+        case "$1" in
+            pokemon/linoone-galar)
+                printf '%s' '{"id":264,"sprites":{"front_default":"http://x/lg.png","front_shiny":""},
+                  "stats":[
+                    {"base_stat":78,"stat":{"name":"hp"}},
+                    {"base_stat":70,"stat":{"name":"attack"}},
+                    {"base_stat":61,"stat":{"name":"defense"}},
+                    {"base_stat":50,"stat":{"name":"special-attack"}},
+                    {"base_stat":61,"stat":{"name":"special-defense"}},
+                    {"base_stat":100,"stat":{"name":"speed"}}]}'
+                ;;
+            nature/hardy) printf '{"increased_stat":null,"decreased_stat":null}' ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+
+    local path='{"species":"linoone","kind":"synthetic","evo":{"min_level":20}}'
+    run evolution_apply 1 "$path"
+    [ "$status" -eq 0 ]
+    [ "$output" = "linoone-galar" ]
+    local sp
+    sp="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT sprite_path FROM encounters WHERE id=1;")"
+    [[ "$sp" == *"/sprites/linoone-galar.png" ]]
+}
+
 @test "evolution_apply: prints the resolved result variety on stdout" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_REPO_ROOT="$REPO_ROOT"
@@ -296,19 +359,19 @@ EOF
             VALUES (1, $now, 'zigzagoon', 263, 20, 'hardy', 'pickup', 0, 'M', 0, '[]',
                 70, 10,10,10,10,10,10, 0,0,0,0,0,0);"
 
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    mkdir -p "$POKEAPI_CACHE_DIR/pokemon-species" "$POKEAPI_CACHE_DIR/pokemon"
-    cat > "$POKEAPI_CACHE_DIR/pokemon-species/zigzagoon.json" <<'EOF'
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR/pokemon-species" "$POKIDLE_POKEAPI_CACHE_DIR/pokemon"
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/pokemon-species/zigzagoon.json" <<'EOF'
 {"evolution_chain":{"url":"https://x/evolution-chain/64/"},"base_happiness":70}
 EOF
-    mkdir -p "$POKEAPI_CACHE_DIR/evolution-chain"
-    cat > "$POKEAPI_CACHE_DIR/evolution-chain/64.json" <<'EOF'
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR/evolution-chain"
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/evolution-chain/64.json" <<'EOF'
 {"chain":{"species":{"name":"zigzagoon"},"evolution_details":[],
   "evolves_to":[{"species":{"name":"linoone"},"evolution_details":[
     {"min_level":20,"trigger":{"name":"level-up"}}],"evolves_to":[]}]}}
 EOF
-    cat > "$POKEAPI_CACHE_DIR/pokemon/linoone.json" <<'EOF'
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/pokemon/linoone.json" <<'EOF'
 {"id":264,"sprites":{"front_default":"lin.png","front_shiny":""},
   "stats":[
     {"base_stat":78,"stat":{"name":"hp"}},
@@ -318,8 +381,8 @@ EOF
     {"base_stat":61,"stat":{"name":"special-defense"}},
     {"base_stat":100,"stat":{"name":"speed"}}]}
 EOF
-    mkdir -p "$POKEAPI_CACHE_DIR/nature"
-    cat > "$POKEAPI_CACHE_DIR/nature/hardy.json" <<'EOF'
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR/nature"
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/nature/hardy.json" <<'EOF'
 {"increased_stat":null,"decreased_stat":null}
 EOF
 
@@ -370,19 +433,19 @@ EOF
             VALUES (1, $now, 'zigzagoon', 'zigzagoon-galar', 263, 20, 'hardy', 'pickup', 0, 'M', 0, '[]',
                 70, 10,10,10,10,10,10, 0,0,0,0,0,0);"
 
-    POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
-    export POKEAPI_CACHE_DIR
-    mkdir -p "$POKEAPI_CACHE_DIR/pokemon-species" "$POKEAPI_CACHE_DIR/pokemon" \
-        "$POKEAPI_CACHE_DIR/evolution-chain" "$POKEAPI_CACHE_DIR/nature"
-    cat > "$POKEAPI_CACHE_DIR/pokemon-species/zigzagoon.json" <<'EOF'
+    POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
+    export POKIDLE_POKEAPI_CACHE_DIR
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR/pokemon-species" "$POKIDLE_POKEAPI_CACHE_DIR/pokemon" \
+        "$POKIDLE_POKEAPI_CACHE_DIR/evolution-chain" "$POKIDLE_POKEAPI_CACHE_DIR/nature"
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/pokemon-species/zigzagoon.json" <<'EOF'
 {"evolution_chain":{"url":"https://x/evolution-chain/64/"},"base_happiness":70}
 EOF
-    cat > "$POKEAPI_CACHE_DIR/evolution-chain/64.json" <<'EOF'
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/evolution-chain/64.json" <<'EOF'
 {"chain":{"species":{"name":"zigzagoon"},"evolution_details":[],
   "evolves_to":[{"species":{"name":"linoone"},"evolution_details":[
     {"min_level":20,"trigger":{"name":"level-up"}}],"evolves_to":[]}]}}
 EOF
-    cat > "$POKEAPI_CACHE_DIR/pokemon/linoone.json" <<'EOF'
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/pokemon/linoone.json" <<'EOF'
 {"id":264,"sprites":{"front_default":"lin.png","front_shiny":""},
   "stats":[
     {"base_stat":78,"stat":{"name":"hp"}},
@@ -392,7 +455,7 @@ EOF
     {"base_stat":61,"stat":{"name":"special-defense"}},
     {"base_stat":100,"stat":{"name":"speed"}}]}
 EOF
-    cat > "$POKEAPI_CACHE_DIR/nature/hardy.json" <<'EOF'
+    cat > "$POKIDLE_POKEAPI_CACHE_DIR/nature/hardy.json" <<'EOF'
 {"increased_stat":null,"decreased_stat":null}
 EOF
 

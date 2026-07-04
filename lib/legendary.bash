@@ -3,15 +3,16 @@
 # by encounter_build_pool and shipped inside each pool file's .legendaries[];
 # there is no static species list here.
 
+# Dependencies: sourced once at load, guarded so standalone/test re-sourcing is
+# a no-op. POKIDLE_REPO_ROOT is set by the entrypoint and by the tests.
+# shellcheck source=lib/encounter.bash disable=SC2154
+command -v encounter_pool_load >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
+
 # legendary_roll_species_for_biome <biome_id>
 # Print a random {species, varieties} entry from the biome pool's .legendaries.
 # Returns 1 if the biome has no pool or no legendaries.
 function legendary_roll_species_for_biome {
     local biome="$1"
-    if ! command -v encounter_pool_load >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
-    fi
     local pool
     if ! pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
         printf 'legendary_roll_species_for_biome: no pool for biome %s\n' "${biome}" >&2
@@ -56,10 +57,6 @@ function legendary_roll_importable {
 function legendary_build_encounter {
     local entry="$1"
     local biome="$2"
-    if ! command -v encounter_natures_list >/dev/null; then
-        # shellcheck disable=SC1091,SC2154  # POKIDLE_REPO_ROOT exported by the pokidle entrypoint
-        source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
-    fi
     local sp
     sp="$(jq -r '.species' <<<"${entry}")"
     # Pick the encountered form from the entry's biome-type-coherent, wild-legal
