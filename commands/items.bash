@@ -77,9 +77,9 @@ function pokidle_items {
     # used instead of a tab so read preserves empty fields (e.g. a blank sprite
     # path).
     local US=$'\037'
-    local ts_fmt biome item sprite consumed kind
+    local id ts_fmt biome item sprite consumed kind
     local -i first=1
-    while IFS="${US}" read -r ts_fmt biome item sprite consumed kind; do
+    while IFS="${US}" read -r id ts_fmt biome item sprite consumed kind; do
         if ((first)); then
             first=0
         else
@@ -88,12 +88,19 @@ function pokidle_items {
         if ((!no_images)); then
             if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
                 sprite="$(_pokidle_item_sprite "${item}")"
+                # Persist a freshly-resolved sprite so the row is permanently
+                # repaired: its original drop-time fetch failed transiently (see
+                # the item_sprite retry). No-op when still unresolved.
+                if [[ -n "${sprite}" && -f "${sprite}" ]]; then
+                    db_update_item_drop_sprite "${id}" "${sprite}"
+                fi
             fi
             _pokidle_render_sprite "${sprite}"
         fi
         _pokidle_render_item_row "${ts_fmt}" "${biome}" "${item}" "${kind}" "${consumed}"
         printf '\n'
     done < <(jq -r --arg US "${US}" '.[] | [
+        .id,
         (.encountered_at | strflocaltime("%F %H:%M")),
         .biome_id, .item, (.sprite_path // ""), (.consumed_at // ""), (.kind // "item")
     ] | map(tostring) | join($US)' <<<"${rows}")

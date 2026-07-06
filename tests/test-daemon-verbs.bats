@@ -77,7 +77,10 @@ teardown() {
         "INSERT OR REPLACE INTO daemon_state(key,value) VALUES ('last_pokemon_tick_target','1700001000');"
     run "$REPO_ROOT/pokidle" daemon status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"cave"* ]]
+    # Match case-insensitively: the current-biome line shows the pretty label
+    # ("Cave" via biome_label), falling back to the raw "cave" id only when biome
+    # data is absent.
+    [[ "${output,,}" == *"cave"* ]]
     [[ "$output" == *"last_pokemon_tick_target"* ]] || [[ "$output" == *"1700001000"* ]]
 }
 

@@ -149,6 +149,7 @@ daemon on each loop, and `pokidle log` never displays rows beyond the window.
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `POKIDLE_FETCH_SPRITES` | `1` | `0` = never download sprites (any tick or display); only show already-cached files. |
+| `POKIDLE_SPRITE_DOWNLOAD_TRIES` | `3` | Attempts for an item sprite blob download before giving up, so a transient network blip doesn't drop the sprite. |
 
 ### Sound file paths
 

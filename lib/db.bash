@@ -457,6 +457,37 @@ function db_update_encounter_friendship {
     db_exec "UPDATE encounters SET friendship=${friendship} WHERE id=${id};"
 }
 
+# db_update_item_drop_sprite <id> <sprite>
+# Backfill the sprite_path of item drop <id> after a later successful fetch (the
+# drop's original download failed transiently). No-op on an empty <sprite> so a
+# still-failing resolve never clobbers a stored path with NULL.
+function db_update_item_drop_sprite {
+    local id="$1"
+    local sprite="$2"
+    if ! _db_assert_int "${id}" id; then
+        return 2
+    fi
+    if [[ -z "${sprite}" ]]; then
+        return 0
+    fi
+    db_exec "UPDATE item_drops SET sprite_path='${sprite//\'/\'\'}' WHERE id=${id};"
+}
+
+# db_update_encounter_sprite <id> <sprite>
+# Backfill the sprite_path of encounter <id> after a later successful fetch. As
+# with db_update_item_drop_sprite, an empty <sprite> is a no-op.
+function db_update_encounter_sprite {
+    local id="$1"
+    local sprite="$2"
+    if ! _db_assert_int "${id}" id; then
+        return 2
+    fi
+    if [[ -z "${sprite}" ]]; then
+        return 0
+    fi
+    db_exec "UPDATE encounters SET sprite_path='${sprite//\'/\'\'}' WHERE id=${id};"
+}
+
 # db_update_encounter_evolved <id> <species> <dex_id> <sprite> <stats_str> <variety>
 # Update species/variety/dex_id/sprite_path + the 6 stat columns after an
 # evolution. stats_str is "hp atk def spa spd spe" (space-separated integers).

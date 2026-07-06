@@ -129,7 +129,9 @@ function item_sprite_url {
 
 # item_sprite <name>
 # Download the item sprite (if not already cached) and print its local path.
-# Returns 1 if the sprite URL or download fails.
+# Retries the blob download up to POKIDLE_SPRITE_DOWNLOAD_TRIES (default 3) so a
+# transient failure doesn't drop the sprite. Returns 1 if the sprite URL is
+# missing or every download attempt fails.
 function item_sprite {
     local name="$1"
     local url
@@ -142,10 +144,22 @@ function item_sprite {
     fi
     local path
     path="$(cache_blob_path "sprites/items/${name}" "${ext}")"
-    if [[ ! -f "${path}" ]]; then
-        if ! http_download_url "${url}" "${path}"; then
-            return 1
-        fi
+    if [[ -f "${path}" ]]; then
+        printf '%s\n' "${path}"
+        return 0
     fi
-    printf '%s\n' "${path}"
+    # The blob is a separate GitHub-raw request from the item metadata fetch and
+    # can fail transiently; one failure would drop the sprite and persist an empty
+    # sprite_path (see commands/tick.bash), so retry a few times before giving up.
+    # http_download_url writes atomically (mktemp + mv), so a failed attempt never
+    # leaves a partial file to short-circuit the next one.
+    local -i tries="${POKIDLE_SPRITE_DOWNLOAD_TRIES:-3}"
+    local -i i
+    for ((i = 0; i < tries; i++)); do
+        if http_download_url "${url}" "${path}"; then
+            printf '%s\n' "${path}"
+            return 0
+        fi
+    done
+    return 1
 }

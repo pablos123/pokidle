@@ -244,6 +244,42 @@ teardown() {
     [ "$n" = "2" ]
 }
 
+@test "db_update_item_drop_sprite backfills sprite_path on the row" {
+    db_init
+    local sid
+    sid="$(db_open_biome_session 'cave' 1700000000)"
+    db_insert_item_drop "$sid" 1700000300 "pinap-berry" ""
+    local id
+    id="$(db_query "SELECT id FROM item_drops;")"
+    db_update_item_drop_sprite "$id" "/cache/items/pinap-berry.png"
+    run db_query "SELECT sprite_path FROM item_drops WHERE id=${id};"
+    [ "$output" = "/cache/items/pinap-berry.png" ]
+}
+
+@test "db_update_item_drop_sprite rejects a non-integer id" {
+    db_init
+    run db_update_item_drop_sprite "abc" "/x.png"
+    [ "$status" -eq 2 ]
+}
+
+@test "db_update_encounter_sprite backfills sprite_path on the row" {
+    db_init
+    local sid
+    sid="$(db_open_biome_session 'cave' 1700000000)"
+    db_insert_encounter '{"session_id":'"$sid"',"encountered_at":1700000100,"species":"zubat","dex_id":41,"level":7,"nature":"adamant","ability":"inner-focus","is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"friendship":70,"ivs":[1,2,3,4,5,6],"evs":[0,0,0,0,0,0],"stats":[10,10,10,10,10,10],"moves":["bite"],"sprite_path":null}'
+    local id
+    id="$(db_query "SELECT id FROM encounters;")"
+    db_update_encounter_sprite "$id" "/cache/sprites/zubat.png"
+    run db_query "SELECT sprite_path FROM encounters WHERE id=${id};"
+    [ "$output" = "/cache/sprites/zubat.png" ]
+}
+
+@test "db_update_encounter_sprite rejects a non-integer id" {
+    db_init
+    run db_update_encounter_sprite "xyz" "/x.png"
+    [ "$status" -eq 2 ]
+}
+
 @test "db_state_set / db_state_get round-trip" {
     db_init
     db_state_set "last_pokemon_tick_target" "1700009999"

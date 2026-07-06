@@ -81,9 +81,9 @@ function pokidle_list {
     # separator (\x1f, non-whitespace) keeps read from collapsing empty fields
     # such as a blank sprite path.
     local US=$'\037'
-    local ts_fmt biome lvl form shiny nat abil gender sprite stats ivs evs moves held
+    local id ts_fmt biome lvl form shiny nat abil gender sprite stats ivs evs moves held
     local -i first=1
-    while IFS="${US}" read -r ts_fmt biome lvl form shiny nat abil gender sprite stats ivs evs moves held; do
+    while IFS="${US}" read -r id ts_fmt biome lvl form shiny nat abil gender sprite stats ivs evs moves held; do
         if ((first)); then
             first=0
         else
@@ -92,6 +92,12 @@ function pokidle_list {
         if ((!no_images)); then
             if [[ -z "${sprite}" || ! -f "${sprite}" ]]; then
                 sprite="$(_pokidle_pokemon_sprite "${form}" "${shiny}")"
+                # Persist a freshly-resolved sprite so the row is permanently
+                # repaired when the original fetch failed transiently. No-op when
+                # still unresolved.
+                if [[ -n "${sprite}" && -f "${sprite}" ]]; then
+                    db_update_encounter_sprite "${id}" "${sprite}"
+                fi
             fi
             _pokidle_render_sprite "${sprite}"
         fi
@@ -99,6 +105,7 @@ function pokidle_list {
             "${nat}" "${abil}" "${gender}" "${stats}" "${ivs}" "${evs}" "${moves}" "${held}"
         printf '\n'
     done < <(jq -r --arg US "${US}" '.[] | [
+        .id,
         (.encountered_at | strflocaltime("%F %H:%M")),
         .biome_id, .level, (.variety // .species), .shiny, .nature, .ability, .gender,
         (.sprite_path // ""),
