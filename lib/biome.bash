@@ -2,119 +2,110 @@
 # Biome registry, lookup, rotation. The 36 biomes below are the fixed catalog —
 # there is no config file. To change the catalog, edit this file.
 
-# Ordered list of biome ids. Guarded so the readonly globals survive the
-# repeated re-sourcing the test harness does.
-if [[ -z "${BIOME_IDS[*]:-}" ]]; then
-    declare -gra BIOME_IDS=(
-        forest jungle meadow orchard
-        mountain cave crystal-cavern cliffside
-        desert badlands savanna
-        volcano forge wildfire
-        ocean reef marsh tide-pool
-        tundra glacier frozen-crypt
-        sky storm-coast
-        dragons-nest
-        power-plant cyber-lab live-wire
-        ruins mind-temple
-        graveyard haunted-manor
-        wasteland dojo
-        farm urban cathedral
-    )
-fi
+# Ordered list of biome ids.
+declare -ga BIOME_IDS=(
+    forest jungle meadow orchard
+    mountain cave crystal-cavern cliffside
+    desert badlands savanna
+    volcano forge wildfire
+    ocean reef marsh tide-pool
+    tundra glacier frozen-crypt
+    sky storm-coast
+    dragons-nest
+    power-plant cyber-lab live-wire
+    ruins mind-temple
+    graveyard haunted-manor
+    wasteland dojo
+    farm urban cathedral
+)
 
 # Display label per biome id.
-if [[ -z "${BIOME_LABELS[*]:-}" ]]; then
-    declare -grA BIOME_LABELS=(
-        [forest]="Forest"
-        [jungle]="Jungle"
-        [meadow]="Meadow"
-        [orchard]="Orchard"
-        [mountain]="Mountain"
-        [cave]="Cave"
-        ["crystal-cavern"]="Crystal Cavern"
-        [cliffside]="Cliffside"
-        [desert]="Desert"
-        [badlands]="Badlands"
-        [savanna]="Savanna"
-        [volcano]="Volcano"
-        [forge]="Forge"
-        [wildfire]="Wildfire"
-        [ocean]="Ocean"
-        [reef]="Reef"
-        [marsh]="Marsh"
-        ["tide-pool"]="Tide Pool"
-        [tundra]="Tundra"
-        [glacier]="Glacier"
-        ["frozen-crypt"]="Frozen Crypt"
-        [sky]="Sky"
-        ["storm-coast"]="Storm Coast"
-        ["dragons-nest"]="Dragon's Nest"
-        ["power-plant"]="Power Plant"
-        ["cyber-lab"]="Cyber Lab"
-        ["live-wire"]="Live Wire"
-        [ruins]="Ruins"
-        ["mind-temple"]="Mind Temple"
-        [graveyard]="Graveyard"
-        ["haunted-manor"]="Haunted Manor"
-        [wasteland]="Wasteland"
-        [dojo]="Dojo"
-        [farm]="Farm"
-        [urban]="Urban"
-        [cathedral]="Cathedral"
-    )
-fi
+declare -gA BIOME_LABELS=(
+    [forest]="Forest"
+    [jungle]="Jungle"
+    [meadow]="Meadow"
+    [orchard]="Orchard"
+    [mountain]="Mountain"
+    [cave]="Cave"
+    ["crystal-cavern"]="Crystal Cavern"
+    [cliffside]="Cliffside"
+    [desert]="Desert"
+    [badlands]="Badlands"
+    [savanna]="Savanna"
+    [volcano]="Volcano"
+    [forge]="Forge"
+    [wildfire]="Wildfire"
+    [ocean]="Ocean"
+    [reef]="Reef"
+    [marsh]="Marsh"
+    ["tide-pool"]="Tide Pool"
+    [tundra]="Tundra"
+    [glacier]="Glacier"
+    ["frozen-crypt"]="Frozen Crypt"
+    [sky]="Sky"
+    ["storm-coast"]="Storm Coast"
+    ["dragons-nest"]="Dragon's Nest"
+    ["power-plant"]="Power Plant"
+    ["cyber-lab"]="Cyber Lab"
+    ["live-wire"]="Live Wire"
+    [ruins]="Ruins"
+    ["mind-temple"]="Mind Temple"
+    [graveyard]="Graveyard"
+    ["haunted-manor"]="Haunted Manor"
+    [wasteland]="Wasteland"
+    [dojo]="Dojo"
+    [farm]="Farm"
+    [urban]="Urban"
+    [cathedral]="Cathedral"
+)
 
 # Space-separated PokeAPI types per biome id. Used by the pool builder
 # (encounter_build_pool) and the berry-natural-gift-type intersection.
-if [[ -z "${BIOME_TYPES[*]:-}" ]]; then
-    declare -grA BIOME_TYPES=(
-        [forest]="grass bug"
-        [jungle]="grass poison"
-        [meadow]="grass fairy"
-        [orchard]="grass normal"
-        [mountain]="rock ground"
-        [cave]="rock dark"
-        ["crystal-cavern"]="rock steel"
-        [cliffside]="rock flying"
-        [desert]="ground fire"
-        [badlands]="ground dark"
-        [savanna]="ground normal"
-        [volcano]="fire dragon"
-        [forge]="fire steel"
-        [wildfire]="fire fighting"
-        [ocean]="water ice"
-        [reef]="water dragon"
-        [marsh]="water poison"
-        ["tide-pool"]="water bug"
-        [tundra]="ice flying"
-        [glacier]="ice fairy"
-        ["frozen-crypt"]="ice ghost"
-        [sky]="flying dragon"
-        ["storm-coast"]="flying electric"
-        ["dragons-nest"]="dragon psychic"
-        ["power-plant"]="electric steel"
-        ["cyber-lab"]="electric psychic"
-        ["live-wire"]="electric fairy"
-        [ruins]="psychic ghost"
-        ["mind-temple"]="psychic fighting"
-        [graveyard]="ghost dark"
-        ["haunted-manor"]="ghost poison"
-        [wasteland]="dark fighting"
-        [dojo]="fighting bug"
-        [farm]="normal bug"
-        [urban]="normal poison"
-        [cathedral]="steel fairy"
-    )
-fi
+declare -gA BIOME_TYPES=(
+    [forest]="grass bug"
+    [jungle]="grass poison"
+    [meadow]="grass fairy"
+    [orchard]="grass normal"
+    [mountain]="rock ground"
+    [cave]="rock dark"
+    ["crystal-cavern"]="rock steel"
+    [cliffside]="rock flying"
+    [desert]="ground fire"
+    [badlands]="ground dark"
+    [savanna]="ground normal"
+    [volcano]="fire dragon"
+    [forge]="fire steel"
+    [wildfire]="fire fighting"
+    [ocean]="water ice"
+    [reef]="water dragon"
+    [marsh]="water poison"
+    ["tide-pool"]="water bug"
+    [tundra]="ice flying"
+    [glacier]="ice fairy"
+    ["frozen-crypt"]="ice ghost"
+    [sky]="flying dragon"
+    ["storm-coast"]="flying electric"
+    ["dragons-nest"]="dragon psychic"
+    ["power-plant"]="electric steel"
+    ["cyber-lab"]="electric psychic"
+    ["live-wire"]="electric fairy"
+    [ruins]="psychic ghost"
+    ["mind-temple"]="psychic fighting"
+    [graveyard]="ghost dark"
+    ["haunted-manor"]="ghost poison"
+    [wasteland]="dark fighting"
+    [dojo]="fighting bug"
+    [farm]="normal bug"
+    [urban]="normal poison"
+    [cathedral]="steel fairy"
+)
 
 # Hardcoded PokeAPI primary types. The validator asserts every entry here
 # appears in ≥1 biome's types[].
-if [[ -z "${BIOME_PRIMARY_TYPES:-}" ]]; then
-    declare -gra BIOME_PRIMARY_TYPES=(
-        normal fighting flying poison ground rock bug ghost steel
-        fire water grass electric psychic ice dragon dark fairy
-    )
-fi
+declare -ga BIOME_PRIMARY_TYPES=(
+    normal fighting flying poison ground rock bug ghost steel
+    fire water grass electric psychic ice dragon dark fairy
+)
 
 # biome_exists <id>
 # True (exit 0) if <id> is a known biome.

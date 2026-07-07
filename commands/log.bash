@@ -51,12 +51,12 @@ function pokidle_log {
                 return 0
                 ;;
             -*)
-                printf 'log: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_log_help 'log: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'log: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_log_help 'log: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done

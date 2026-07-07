@@ -37,12 +37,12 @@ function pokidle_biomes {
                 return 0
                 ;;
             -*)
-                printf 'biomes: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_biomes_help 'biomes: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'biomes: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_biomes_help 'biomes: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done

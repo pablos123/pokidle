@@ -330,19 +330,16 @@ function pokidle_daemon {
             return 0
             ;;
         '')
-            printf 'daemon: a verb is required\n' >&2
-            usage >&2
-            return 2
+            _pokidle_usage_error pokidle_daemon_help 'daemon: a verb is required'
+            return
             ;;
         -*)
-            printf 'daemon: unknown option %s\n' "${verb}" >&2
-            usage >&2
-            return 2
+            _pokidle_usage_error pokidle_daemon_help 'daemon: unknown option %s' "${verb}"
+            return
             ;;
         *)
-            printf 'daemon: unknown verb: %s\n' "${verb}" >&2
-            usage >&2
-            return 2
+            _pokidle_usage_error pokidle_daemon_help 'daemon: unknown verb: %s' "${verb}"
+            return
             ;;
     esac
 }

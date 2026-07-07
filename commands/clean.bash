@@ -42,12 +42,12 @@ function pokidle_clean {
                 shift
                 ;;
             -*)
-                printf 'clean: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_clean_help 'clean: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'clean: unknown target %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_clean_help 'clean: unknown target %s' "$1"
+                return
                 ;;
         esac
     done

@@ -47,21 +47,21 @@ function pokidle_current {
                 return 0
                 ;;
             -*)
-                printf 'current: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_current_help 'current: unknown option %s' "$1"
+                return
                 ;;
             items | berries | encounters)
                 if ((kind_set)); then
-                    printf 'current: only one of items|berries|encounters\n' >&2
-                    return 2
+                    _pokidle_usage_error pokidle_current_help 'current: only one of items|berries|encounters'
+                    return
                 fi
                 mode="$1"
                 kind_set=1
                 shift
                 ;;
             *)
-                printf 'current: unknown subcommand %s (want items|berries|encounters)\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_current_help 'current: unknown subcommand %s (want items|berries|encounters)' "$1"
+                return
                 ;;
         esac
     done

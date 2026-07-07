@@ -30,12 +30,12 @@ function pokidle_switch_biome {
     esac
     local biome="${1-}"
     if [[ -z "${biome}" ]]; then
-        printf 'switch-biome: missing biome id\n' >&2
-        return 2
+        _pokidle_usage_error pokidle_switch_biome_help 'switch-biome: missing biome id'
+        return
     fi
     if [[ "${biome}" == -* ]]; then
-        printf 'switch-biome: unknown option %s\n' "${biome}" >&2
-        return 2
+        _pokidle_usage_error pokidle_switch_biome_help 'switch-biome: unknown option %s' "${biome}"
+        return
     fi
     if ! biome_exists "${biome}"; then
         printf 'switch-biome: unknown biome %s\n' "${biome}" >&2

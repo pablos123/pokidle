@@ -15,32 +15,18 @@ export POKIDLE_REPO_ROOT
 : "${POKIDLE_POKEAPI_RATE_LIMIT_SLEEP:=0.5}"
 export POKIDLE_CONFIG_DIR POKIDLE_CACHE_DIR POKIDLE_DATA_DIR POKIDLE_DB_PATH POKIDLE_POKEAPI_RATE_LIMIT_SLEEP
 
-# shellcheck source=lib/helpers.bash
-source "${POKIDLE_REPO_ROOT}/lib/helpers.bash"
-# shellcheck source=lib/cache.bash
-source "${POKIDLE_REPO_ROOT}/lib/cache.bash"
-# shellcheck source=lib/http.bash
-source "${POKIDLE_REPO_ROOT}/lib/http.bash"
-# shellcheck source=lib/showdown.bash
-source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
-# shellcheck source=lib/api.bash
-source "${POKIDLE_REPO_ROOT}/lib/api.bash"
-# shellcheck source=lib/db.bash
-source "${POKIDLE_REPO_ROOT}/lib/db.bash"
-# shellcheck source=lib/biome.bash
-source "${POKIDLE_REPO_ROOT}/lib/biome.bash"
-# shellcheck source=lib/encounter.bash
-source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
-# shellcheck source=lib/evolution.bash
-source "${POKIDLE_REPO_ROOT}/lib/evolution.bash"
-# shellcheck source=lib/legendary.bash
-source "${POKIDLE_REPO_ROOT}/lib/legendary.bash"
-# shellcheck source=lib/notify.bash
-source "${POKIDLE_REPO_ROOT}/lib/notify.bash"
-# shellcheck source=lib/export.bash
-source "${POKIDLE_REPO_ROOT}/lib/export.bash"
-# shellcheck source=lib/render.bash
-source "${POKIDLE_REPO_ROOT}/lib/render.bash"
+# Shared libraries under lib/. Sourced by glob, same as commands/ below. Load
+# order is alphabetical and does not matter: every lib body is functions
+# (resolved at call time) or self-contained file-scope (env-var defaults,
+# array literals). The few real cross-lib dependencies self-heal via a
+# `command -v <fn> || source <lib>` guard at the top of the dependent lib, so
+# they load their prerequisite regardless of glob order.
+for _lib_file in "${POKIDLE_REPO_ROOT}"/lib/*.bash; do
+    [[ -e "${_lib_file}" ]] || continue
+    # shellcheck source=/dev/null
+    source "${_lib_file}"
+done
+unset _lib_file
 
 # Each subcommand lives in its own file under commands/, defining pokidle_<cmd>
 # (the implementation, which parses its own flags and handles -h/--help via

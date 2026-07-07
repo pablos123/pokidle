@@ -64,13 +64,13 @@ function pokidle_rebuild_pool {
                 return 0
                 ;;
             -*)
-                printf 'rebuild-pool: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_rebuild_pool_help 'rebuild-pool: unknown option %s' "$1"
+                return
                 ;;
             *)
                 if [[ -n "${target}" ]]; then
-                    printf 'rebuild-pool: unexpected argument %s (one biome at most)\n' "$1" >&2
-                    return 2
+                    _pokidle_usage_error pokidle_rebuild_pool_help 'rebuild-pool: unexpected argument %s (one biome at most)' "$1"
+                    return
                 fi
                 target="$1"
                 shift

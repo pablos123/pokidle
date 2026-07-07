@@ -216,10 +216,12 @@ teardown() {
 
 @test "db_list_encounters --min-level/--max-level reject non-integer" {
     db_init
+    # db_list_* signal a bad caller option/argument with POKIDLE_RC_USAGE so the
+    # forwarding command can distinguish it from a runtime (sqlite) failure.
     run db_list_encounters --min-level "abc"
-    [ "$status" -eq 2 ]
+    [ "$status" -eq "$POKIDLE_RC_USAGE" ]
     run db_list_encounters --max-level "1; DROP TABLE encounters"
-    [ "$status" -eq 2 ]
+    [ "$status" -eq "$POKIDLE_RC_USAGE" ]
 }
 
 @test "db_insert_item_drop persists" {

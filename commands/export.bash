@@ -62,8 +62,8 @@ function pokidle_export {
             --force-level)
                 force_level="$2"
                 if ! [[ "${force_level}" =~ ^[0-9]+$ ]]; then
-                    printf 'export: --force-level needs an integer\n' >&2
-                    return 2
+                    _pokidle_usage_error pokidle_export_help 'export: --force-level needs an integer'
+                    return
                 fi
                 shift 2
                 ;;
@@ -118,8 +118,12 @@ function pokidle_export {
     if [[ -n "${until_ts}" ]]; then
         enc_args+=(--until "@${until_ts}")
     fi
-    local rows
-    rows="$(db_list_encounters "${enc_args[@]}")"
+    local rows rc=0
+    rows="$(db_list_encounters "${enc_args[@]}")" || rc=$?
+    if ((rc != 0)); then
+        ((rc == POKIDLE_RC_USAGE)) && { pokidle_export_help >&2; return 2; }
+        return "${rc}"
+    fi
 
     local -a all_species=()
     mapfile -t all_species < <(jq -r '[.[].species] | unique | .[]' <<<"${rows}")

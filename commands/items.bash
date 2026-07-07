@@ -57,10 +57,12 @@ function pokidle_items {
                 ;;
         esac
     done
-    local rows
+    local rows rc=0
     local _db_list_errctx="items"
-    if ! rows="$(db_list_item_drops "${args[@]}")"; then
-        return 2
+    rows="$(db_list_item_drops "${args[@]}")" || rc=$?
+    if ((rc != 0)); then
+        ((rc == POKIDLE_RC_USAGE)) && { pokidle_items_help >&2; return 2; }
+        return "${rc}"
     fi
     if ((json_mode)); then
         printf '%s\n' "${rows}"

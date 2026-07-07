@@ -220,21 +220,42 @@ _ins_item() { # $1 sid  $2 item  $3 ts
 @test "encounters distinguishes an unknown option from an unexpected argument" {
     _seed_schema
     run "$REPO_ROOT/pokidle" encounters --asdf
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *"encounters: unknown option --asdf"* ]]
+    [[ "$output" == *"Usage:"* ]]
     run "$REPO_ROOT/pokidle" encounters asdf
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *"encounters: unexpected argument asdf"* ]]
+    [[ "$output" == *"Usage:"* ]]
 }
 
 @test "items distinguishes an unknown option from an unexpected argument" {
     _seed_schema
     run "$REPO_ROOT/pokidle" items --asdf
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *"items: unknown option --asdf"* ]]
+    [[ "$output" == *"Usage:"* ]]
     run "$REPO_ROOT/pokidle" items asdf
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *"items: unexpected argument asdf"* ]]
+    [[ "$output" == *"Usage:"* ]]
+}
+
+@test "export shows usage when a forwarded filter is a bad option" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" export --asdf
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"export: unknown option --asdf"* ]]
+    [[ "$output" == *"Usage:"* ]]
+}
+
+@test "a command-level reject prints the error and the command usage" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" stats --bogus
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"stats: unknown option --bogus"* ]]
+    [[ "$output" == *"Usage:"* ]]
+    [[ "$output" == *"pokidle stats"* ]]
 }
 
 @test "export renders the regional form as a Showdown species name" {

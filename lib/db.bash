@@ -6,6 +6,12 @@
 
 : "${POKIDLE_DB_PATH:?POKIDLE_DB_PATH must be set before sourcing lib/db.bash}"
 
+# Exit code the db_list_* functions return for a caller-supplied bad option or
+# argument, as opposed to a runtime (sqlite) failure. 64 == sysexits EX_USAGE,
+# a value sqlite3 never emits, so a forwarding command (encounters/items/export)
+# can tell "your flag is wrong, show my usage" from "the query failed".
+declare -gi POKIDLE_RC_USAGE=64
+
 # _db_assert_int <value> [name=arg]
 # Return 2 with a diagnostic if value is not an integer. Guards against SQL
 # injection via raw interpolation of numeric arguments.
@@ -176,14 +182,14 @@ function db_list_encounters {
                 ;;
             --since)
                 if ! ts="$(date -d "$2" +%s)"; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("e.encountered_at >= ${ts}")
                 shift 2
                 ;;
             --until)
                 if ! ts="$(date -d "$2" +%s)"; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("e.encountered_at <= ${ts}")
                 shift 2
@@ -202,28 +208,28 @@ function db_list_encounters {
                 ;;
             --min-iv-total)
                 if ! _db_assert_int "$2" --min-iv-total; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("(e.iv_hp+e.iv_atk+e.iv_def+e.iv_spa+e.iv_spd+e.iv_spe) >= $2")
                 shift 2
                 ;;
             --min-level)
                 if ! _db_assert_int "$2" --min-level; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("e.level >= $2")
                 shift 2
                 ;;
             --max-level)
                 if ! _db_assert_int "$2" --max-level; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("e.level <= $2")
                 shift 2
                 ;;
             --limit)
                 if ! _db_assert_int "$2" --limit; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 limit="$2"
                 shift 2
@@ -235,7 +241,7 @@ function db_list_encounters {
                         ;;
                     *)
                         printf '%s: invalid --sort: %s (date|name|level)\n' "${errctx}" "$2" >&2
-                        return 2
+                        return "${POKIDLE_RC_USAGE}"
                         ;;
                 esac
                 shift 2
@@ -246,11 +252,11 @@ function db_list_encounters {
                 ;;
             -*)
                 printf '%s: unknown option %s\n' "${errctx}" "$1" >&2
-                return 2
+                return "${POKIDLE_RC_USAGE}"
                 ;;
             *)
                 printf '%s: unexpected argument %s\n' "${errctx}" "$1" >&2
-                return 2
+                return "${POKIDLE_RC_USAGE}"
                 ;;
         esac
     done
@@ -318,14 +324,14 @@ function db_list_item_drops {
         case "$1" in
             --since)
                 if ! ts="$(date -d "$2" +%s)"; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("d.encountered_at >= ${ts}")
                 shift 2
                 ;;
             --until)
                 if ! ts="$(date -d "$2" +%s)"; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("d.encountered_at <= ${ts}")
                 shift 2
@@ -340,7 +346,7 @@ function db_list_item_drops {
                 ;;
             --limit)
                 if ! _db_assert_int "$2" --limit; then
-                    return 2
+                    return "${POKIDLE_RC_USAGE}"
                 fi
                 limit="$2"
                 shift 2
@@ -352,7 +358,7 @@ function db_list_item_drops {
                         ;;
                     *)
                         printf '%s: invalid --sort: %s (date|name)\n' "${errctx}" "$2" >&2
-                        return 2
+                        return "${POKIDLE_RC_USAGE}"
                         ;;
                 esac
                 shift 2
@@ -367,11 +373,11 @@ function db_list_item_drops {
                 ;;
             -*)
                 printf '%s: unknown option %s\n' "${errctx}" "$1" >&2
-                return 2
+                return "${POKIDLE_RC_USAGE}"
                 ;;
             *)
                 printf '%s: unexpected argument %s\n' "${errctx}" "$1" >&2
-                return 2
+                return "${POKIDLE_RC_USAGE}"
                 ;;
         esac
     done

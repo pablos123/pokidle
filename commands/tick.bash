@@ -84,19 +84,16 @@ function pokidle_tick {
             return 0
             ;;
         '')
-            printf 'tick: a kind is required\n' >&2
-            usage >&2
-            return 2
+            _pokidle_usage_error pokidle_tick_help 'tick: a kind is required'
+            return
             ;;
         -*)
-            printf 'tick: unknown option %s\n' "${kind}" >&2
-            usage >&2
-            return 2
+            _pokidle_usage_error pokidle_tick_help 'tick: unknown option %s' "${kind}"
+            return
             ;;
         *)
-            printf 'tick: unknown kind: %s\n' "${kind}" >&2
-            usage >&2
-            return 2
+            _pokidle_usage_error pokidle_tick_help 'tick: unknown kind: %s' "${kind}"
+            return
             ;;
     esac
 
@@ -132,12 +129,12 @@ function pokidle_tick {
                 shift
                 ;;
             -*)
-                printf 'tick: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'tick: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done
@@ -309,12 +306,12 @@ function pokidle_tick_level {
                 shift
                 ;;
             -*)
-                printf 'tick level: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick level: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'tick level: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick level: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done
@@ -439,12 +436,12 @@ function pokidle_tick_friendship {
                 shift
                 ;;
             -*)
-                printf 'tick friendship: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick friendship: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'tick friendship: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick friendship: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done
@@ -543,12 +540,12 @@ function pokidle_tick_evolve {
                 shift
                 ;;
             -*)
-                printf 'tick evolve: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick evolve: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'tick evolve: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick evolve: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done
@@ -727,12 +724,12 @@ function pokidle_tick_legendary {
                 shift
                 ;;
             -*)
-                printf 'tick legendary: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick legendary: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'tick legendary: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_tick_help 'tick legendary: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done

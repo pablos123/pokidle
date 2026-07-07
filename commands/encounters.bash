@@ -58,10 +58,12 @@ function pokidle_list {
         esac
     done
 
-    local rows
+    local rows rc=0
     local _db_list_errctx="encounters"
-    if ! rows="$(db_list_encounters "${args[@]}")"; then
-        return 2
+    rows="$(db_list_encounters "${args[@]}")" || rc=$?
+    if ((rc != 0)); then
+        ((rc == POKIDLE_RC_USAGE)) && { pokidle_encounters_help >&2; return 2; }
+        return "${rc}"
     fi
 
     if ((json_mode)); then

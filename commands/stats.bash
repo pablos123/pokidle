@@ -29,12 +29,12 @@ function pokidle_stats {
             ;;
         "") ;;
         -*)
-            printf 'stats: unknown option %s\n' "$1" >&2
-            return 2
+            _pokidle_usage_error pokidle_stats_help 'stats: unknown option %s' "$1"
+            return
             ;;
         *)
-            printf 'stats: unexpected argument %s\n' "$1" >&2
-            return 2
+            _pokidle_usage_error pokidle_stats_help 'stats: unexpected argument %s' "$1"
+            return
             ;;
     esac
     db_init

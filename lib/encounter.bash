@@ -9,18 +9,13 @@ command -v biome_types_for >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/b
 # shellcheck source=lib/showdown.bash disable=SC2154
 command -v showdown_typed_holdable_items >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
 
-# All 6 stats in canonical order. Guarded so the readonly global survives the
-# repeated re-sourcing the test harness does.
-if [[ -z "${ENCOUNTER_STATS:-}" ]]; then
-    declare -gra ENCOUNTER_STATS=(hp attack defense special-attack special-defense speed)
-fi
+# All 6 stats in canonical order.
+declare -ga ENCOUNTER_STATS=(hp attack defense special-attack special-defense speed)
 
 # Rarity tier definitions. Tiers listed common-first; ENCOUNTER_TIER_ROLL_WEIGHT[i]
 # is the roll weight of ENCOUNTER_TIERS[i] in encounter_roll_pool_entry.
-if [[ -z "${ENCOUNTER_TIERS:-}" ]]; then
-    declare -gra ENCOUNTER_TIERS=(common uncommon rare very_rare)
-    declare -gra ENCOUNTER_TIER_ROLL_WEIGHT=(60 25 12 3)
-fi
+declare -ga ENCOUNTER_TIERS=(common uncommon rare very_rare)
+declare -ga ENCOUNTER_TIER_ROLL_WEIGHT=(60 25 12 3)
 
 # _json_int_array <space-separated-ints>
 # Print a JSON array literal from space-separated integers.

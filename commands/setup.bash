@@ -43,12 +43,12 @@ function pokidle_setup {
                 return 0
                 ;;
             -*)
-                printf 'setup: unknown option %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_setup_help 'setup: unknown option %s' "$1"
+                return
                 ;;
             *)
-                printf 'setup: unexpected argument %s\n' "$1" >&2
-                return 2
+                _pokidle_usage_error pokidle_setup_help 'setup: unexpected argument %s' "$1"
+                return
                 ;;
         esac
     done

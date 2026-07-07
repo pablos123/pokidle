@@ -38,6 +38,23 @@ function species_display_name {
     titlecase_words "${slug}"
 }
 
+# _pokidle_usage_error <help_fn> <fmt> [args...]
+# Print a one-line usage error to stderr, follow it with the command's full
+# help on stderr, and return 2. <fmt> is a printf format without the trailing
+# newline. Use it as a rejecting case arm's action, followed by a bare return
+# so the 2 propagates out of the command function:
+#   -*) _pokidle_usage_error pokidle_stats_help 'stats: unknown option %s' "$1"
+#       return ;;
+function _pokidle_usage_error {
+    local help_fn="$1"
+    local fmt="$2"
+    shift 2
+    # shellcheck disable=SC2059  # fmt is a caller-supplied printf template
+    printf "${fmt}\n" "$@" >&2
+    "${help_fn}" >&2
+    return 2
+}
+
 # strip_slashes <path>
 # Print path with one leading and one trailing slash removed.
 function strip_slashes {
