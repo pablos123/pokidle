@@ -17,6 +17,8 @@ Options:
   --force-perfect   31 IVs across the board
   --force-mega      Pull mons you hold a mega stone for first
   --force-z         Pull mons you hold a Z-crystal for first
+  --force-legendary Pull legendary/mythical mons first
+  --force-evolved   Prefer mons you hold in a more-evolved form
   -h, --help        Show this help
 EOF
 }
@@ -57,6 +59,8 @@ function pokidle_export {
     local -i force_perfect=0
     local -i force_mega=0
     local -i force_z=0
+    local -i force_legendary=0
+    local -i force_evolved=0
     while (($# > 0)); do
         case "$1" in
             --force-level)
@@ -77,6 +81,14 @@ function pokidle_export {
                 ;;
             --force-z)
                 force_z=1
+                shift
+                ;;
+            --force-legendary)
+                force_legendary=1
+                shift
+                ;;
+            --force-evolved)
+                force_evolved=1
                 shift
                 ;;
             --since)
@@ -189,11 +201,24 @@ function pokidle_export {
             jq -R . | jq -s 'unique')"
     fi
 
-    # Selection: forced-eligible species first (shuffled), then random fill to 6.
+    # Selection: forced-eligible species first (shuffled), then fill to 6.
     local -a forced_species=()
     if [[ "${wanted_el}" != "[]" ]]; then
         mapfile -t forced_species < <(jq -r --argjson el "${wanted_el}" \
             '[.[] | select(((.species) as $s | $el | index($s)) or ((.variety) as $v | $v != null and ($el | index($v)))) | .species] | unique | .[]' <<<"${rows}")
+    fi
+    # --force-legendary: pull legendary/mythical species first, alongside any
+    # held-item eligibles. Union (deduped) into the same pull-first set.
+    if ((force_legendary)); then
+        local leg_sp
+        for leg_sp in "${all_species[@]}"; do
+            if [[ " ${forced_species[*]} " == *" ${leg_sp} "* ]]; then
+                continue
+            fi
+            if legendary_species_is "${leg_sp}"; then
+                forced_species+=("${leg_sp}")
+            fi
+        done
     fi
     _pokidle_shuffle forced_species
     local -a species=("${forced_species[@]:0:6}")
@@ -204,7 +229,26 @@ function pokidle_export {
             rest+=("${s}")
         fi
     done
-    _pokidle_shuffle rest
+    if ((force_evolved)); then
+        # Prefer more-evolved mons in the fill: bucket by stage tier (1=final,
+        # 2=mid, 3=base/unknown), shuffle within each, then concatenate.
+        local -a evo_t1=() evo_t2=() evo_t3=()
+        local rs tier
+        for rs in "${rest[@]}"; do
+            tier="$(evolution_species_tier "${rs}")"
+            case "${tier}" in
+                1) evo_t1+=("${rs}") ;;
+                2) evo_t2+=("${rs}") ;;
+                *) evo_t3+=("${rs}") ;;
+            esac
+        done
+        _pokidle_shuffle evo_t1
+        _pokidle_shuffle evo_t2
+        _pokidle_shuffle evo_t3
+        rest=("${evo_t1[@]}" "${evo_t2[@]}" "${evo_t3[@]}")
+    else
+        _pokidle_shuffle rest
+    fi
     local -i need=$((6 - ${#species[@]}))
     if ((need > 0 && ${#rest[@]} > 0)); then
         species+=("${rest[@]:0:need}")
