@@ -79,6 +79,33 @@ function evolution_stage_tier {
     printf '%s' "${out}"
 }
 
+# evolution_species_tier <species>
+# Resolve <species>'s evolution chain from PokeAPI and classify its stage via
+# evolution_stage_tier. Prints 1/2/3; prints 3 when the species or its chain
+# cannot be fetched (so an unconfirmed mon never outranks a confirmed one).
+function evolution_species_tier {
+    local species="$1"
+    local spec
+    if ! spec="$(pokeapi_get "pokemon-species/${species}" 2>/dev/null)"; then
+        printf '3'
+        return
+    fi
+    local chain_url
+    chain_url="$(jq -r '.evolution_chain.url // ""' <<<"${spec}")"
+    if [[ -z "${chain_url}" || "${chain_url}" == "null" ]]; then
+        printf '3'
+        return
+    fi
+    local chain_id="${chain_url%/}"
+    chain_id="${chain_id##*/}"
+    local chain
+    if ! chain="$(pokeapi_get "evolution-chain/${chain_id}" 2>/dev/null)"; then
+        printf '3'
+        return
+    fi
+    evolution_stage_tier "${chain}" "${species}"
+}
+
 # _evolution_gender_required <code>
 # Map a PokeAPI evolution_details.gender code to an encounter gender label.
 # Canonical PokeAPI: 1=female, 2=male, 3=genderless. Empty for "no requirement".

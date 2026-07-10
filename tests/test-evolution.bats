@@ -812,3 +812,15 @@ EOF
     [ "$status" -eq 0 ]
     [ "$output" = "3" ]
 }
+
+@test "evolution_species_tier: fetches chain and classifies base/mid/final" {
+    stub_pokeapi
+    [ "$(evolution_species_tier caterpie)" = "3" ]
+    [ "$(evolution_species_tier metapod)" = "2" ]
+    [ "$(evolution_species_tier butterfree)" = "1" ]
+}
+
+@test "evolution_species_tier: missing species fixture -> tier 3" {
+    stub_pokeapi
+    [ "$(evolution_species_tier nosuchmon 2>/dev/null)" = "3" ]
+}
