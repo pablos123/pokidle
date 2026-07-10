@@ -55,10 +55,12 @@ function evolution_next_stages {
 #   2 = mid-stage     (node found, still evolves, depth >= 1)
 #   3 = base/unknown  (node found, still evolves, depth 0; or not in chain)
 # Depth is the number of evolution steps from the chain root.
+# Always exits 0.
 function evolution_stage_tier {
     local chain_json="$1"
     local species="$2"
-    jq -r --arg sp "${species}" '
+    local out
+    if ! out="$(jq -r --arg sp "${species}" '
         def find($node; $d):
             if $node.species.name == $sp then
                 {terminal: (($node.evolves_to | length) == 0), depth: $d}
@@ -70,7 +72,11 @@ function evolution_stage_tier {
           elif $r.terminal then 1
           elif $r.depth == 0 then 3
           else 2 end
-    ' <<<"${chain_json}"
+    ' <<<"${chain_json}" 2>/dev/null)"; then
+        printf '3'
+        return 0
+    fi
+    printf '%s' "${out}"
 }
 
 # _evolution_gender_required <code>

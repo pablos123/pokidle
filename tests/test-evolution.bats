@@ -806,3 +806,9 @@ EOF
     chain="$(cat "$FIXTURE_DIR/evolution-chain-3.json")"
     [ "$(evolution_stage_tier "$chain" pidgey)" = "3" ]
 }
+
+@test "evolution_stage_tier: malformed chain JSON -> tier 3, exits 0" {
+    run evolution_stage_tier 'not json' foo
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
+}
