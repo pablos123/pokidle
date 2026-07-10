@@ -229,3 +229,21 @@ EOF
     count="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COUNT(*) FROM encounters;")"
     [ "$count" = "0" ]
 }
+
+@test "legendary_species_is: true for a legendary species" {
+    stub_pokeapi
+    run legendary_species_is articuno
+    [ "$status" -eq 0 ]
+}
+
+@test "legendary_species_is: false for a non-legendary species" {
+    stub_pokeapi
+    run legendary_species_is caterpie
+    [ "$status" -ne 0 ]
+}
+
+@test "legendary_species_is: false when the species fetch fails" {
+    stub_pokeapi
+    run legendary_species_is nosuchmon
+    [ "$status" -ne 0 ]
+}

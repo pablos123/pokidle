@@ -157,3 +157,15 @@ function legendary_build_encounter {
             is_legendary: true
         }'
 }
+
+# legendary_species_is <species>
+# True (exit 0) when PokeAPI marks <species> is_legendary or is_mythical.
+# Non-zero on a fetch failure or an ordinary species.
+function legendary_species_is {
+    local species="$1"
+    local spec
+    if ! spec="$(pokeapi_get "pokemon-species/${species}" 2>/dev/null)"; then
+        return 1
+    fi
+    jq -e '(.is_legendary // false) or (.is_mythical // false)' <<<"${spec}" >/dev/null
+}
