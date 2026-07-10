@@ -49,6 +49,30 @@ function evolution_next_stages {
     ' <<<"${chain_json}"
 }
 
+# evolution_stage_tier <chain_json> <species>
+# Classify <species>'s position in <chain_json>. Prints:
+#   1 = fully evolved (chain node is terminal — no evolves_to)
+#   2 = mid-stage     (node found, still evolves, depth >= 1)
+#   3 = base/unknown  (node found, still evolves, depth 0; or not in chain)
+# Depth is the number of evolution steps from the chain root.
+function evolution_stage_tier {
+    local chain_json="$1"
+    local species="$2"
+    jq -r --arg sp "${species}" '
+        def find($node; $d):
+            if $node.species.name == $sp then
+                {terminal: (($node.evolves_to | length) == 0), depth: $d}
+            else
+                ($node.evolves_to[]? | find(.; $d + 1))
+            end;
+        [ find(.chain; 0) ] | (.[0] // null) as $r
+        | if $r == null then 3
+          elif $r.terminal then 1
+          elif $r.depth == 0 then 3
+          else 2 end
+    ' <<<"${chain_json}"
+}
+
 # _evolution_gender_required <code>
 # Map a PokeAPI evolution_details.gender code to an encounter gender label.
 # Canonical PokeAPI: 1=female, 2=male, 3=genderless. Empty for "no requirement".

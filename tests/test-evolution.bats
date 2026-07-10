@@ -784,3 +784,25 @@ EOF
     [ "$status" -eq 0 ]
     [ "$(jq -r '.[0]' <<< "$output")" = "sentinel-move" ]
 }
+
+@test "evolution_stage_tier: 3-stage line classifies base/mid/final" {
+    local chain
+    chain="$(cat "$FIXTURE_DIR/evolution-chain-3.json")"
+    [ "$(evolution_stage_tier "$chain" caterpie)" = "3" ]
+    [ "$(evolution_stage_tier "$chain" metapod)" = "2" ]
+    [ "$(evolution_stage_tier "$chain" butterfree)" = "1" ]
+}
+
+@test "evolution_stage_tier: 2-stage branch — both final forms are tier 1, base is tier 3" {
+    local chain
+    chain="$(cat "$FIXTURE_DIR/evolution-chain-67.json")"
+    [ "$(evolution_stage_tier "$chain" eevee)" = "3" ]
+    [ "$(evolution_stage_tier "$chain" vaporeon)" = "1" ]
+    [ "$(evolution_stage_tier "$chain" jolteon)" = "1" ]
+}
+
+@test "evolution_stage_tier: species absent from chain -> tier 3" {
+    local chain
+    chain="$(cat "$FIXTURE_DIR/evolution-chain-3.json")"
+    [ "$(evolution_stage_tier "$chain" pidgey)" = "3" ]
+}
