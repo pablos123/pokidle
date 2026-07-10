@@ -211,7 +211,6 @@ function pokidle_export {
     fi
 
     local used="|"
-    local sep=""
     local sp
     local US=$'\037'
     for sp in "${species[@]}"; do
@@ -293,7 +292,9 @@ function pokidle_export {
             printf 'export: skipping %s — no Showdown name\n' "${sp}" >&2
             continue
         fi
-        printf '%s%s' "${sep}" "${block}"
-        sep=$'\n'
+        # Terminate every set with a blank line: separates each Pokémon and
+        # leaves a trailing blank line at the end (block itself has no trailing
+        # newline — command substitution stripped it).
+        printf '%s\n\n' "${block}"
     done
 }
