@@ -7,6 +7,8 @@
 # a no-op. POKIDLE_REPO_ROOT is set by the entrypoint and by the tests.
 # shellcheck source=lib/encounter.bash disable=SC2154
 command -v encounter_pool_load >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
+# shellcheck source=lib/api.bash disable=SC2154
+command -v species >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/api.bash"
 
 # legendary_roll_species_for_biome <biome_id>
 # Print a random {species, varieties} entry from the biome pool's .legendaries.
@@ -164,7 +166,7 @@ function legendary_build_encounter {
 function legendary_species_is {
     local species="$1"
     local spec
-    if ! spec="$(pokeapi_get "pokemon-species/${species}" 2>/dev/null)"; then
+    if ! spec="$(species "${species}" 2>/dev/null)"; then
         return 1
     fi
     jq -e '(.is_legendary // false) or (.is_mythical // false)' <<<"${spec}" >/dev/null

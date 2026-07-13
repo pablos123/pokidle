@@ -133,7 +133,11 @@ function pokidle_export {
     local rows rc=0
     rows="$(db_list_encounters "${enc_args[@]}")" || rc=$?
     if ((rc != 0)); then
-        ((rc == POKIDLE_RC_USAGE)) && { pokidle_export_help >&2; return 2; }
+        # shellcheck disable=SC2154  # POKIDLE_RC_USAGE is defined in lib/db.bash
+        ((rc == POKIDLE_RC_USAGE)) && {
+            pokidle_export_help >&2
+            return 2
+        }
         return "${rc}"
     fi
 
@@ -232,8 +236,11 @@ function pokidle_export {
     if ((force_evolved)); then
         # Prefer more-evolved mons in the fill: bucket by stage tier (1=final,
         # 2=mid, 3=base/unknown), shuffle within each, then concatenate.
-        local -a evo_t1=() evo_t2=() evo_t3=()
-        local rs tier
+        local -a evo_t1=()
+        local -a evo_t2=()
+        local -a evo_t3=()
+        local rs
+        local tier
         for rs in "${rest[@]}"; do
             tier="$(evolution_species_tier "${rs}")"
             case "${tier}" in

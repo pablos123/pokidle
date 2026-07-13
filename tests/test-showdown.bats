@@ -87,6 +87,25 @@ setup() {
     echo "$output" | grep -qx "peck"          # rookidee (grandparent)
 }
 
+@test "showdown_legal_moves: regional forme uses its own learnset, not the Kanto base" {
+    # Graveler-Alola has its own Showdown learnset; it must NOT inherit the
+    # Kanto Graveler/Geodude learnset (which teaches Mimic). Its own Alolan
+    # prevo chain (Geodude-Alola) supplies the electric moves instead.
+    run showdown_legal_moves "graveler-alola"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx "discharge"         # graveler-alola's own learnset
+    echo "$output" | grep -qx "thunder-shock"     # geodude-alola prevo (Alolan chain)
+    echo "$output" | grep -qx "rock-throw"         # shared, present in the Alolan set
+    ! echo "$output" | grep -qx "mimic"           # Kanto-only, must not leak in
+}
+
+@test "showdown_legal_moves: Kanto base keeps its own Mimic learnset" {
+    run showdown_legal_moves "graveler"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx "mimic"
+    echo "$output" | grep -qx "rock-throw"
+}
+
 @test "_showdown_items_meta_transform: TSV with type and isberry, holdable only" {
     # plates via onPlate, gems via isGem+name, enhancers via desc pattern,
     # berries via type field; air-balloon is a false-positive guard (must stay typeless).

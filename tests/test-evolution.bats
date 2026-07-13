@@ -813,6 +813,14 @@ EOF
     [ "$output" = "3" ]
 }
 
+@test "evolution_stage_tier: empty chain JSON -> tier 3, exits 0" {
+    # jq reads empty input as a no-op (exit 0, no output); guard it so the
+    # function still emits a 1/2/3 tier rather than nothing.
+    run evolution_stage_tier '' foo
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
+}
+
 @test "evolution_species_tier: fetches chain and classifies base/mid/final" {
     stub_pokeapi
     [ "$(evolution_species_tier caterpie)" = "3" ]

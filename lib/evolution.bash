@@ -32,20 +32,29 @@ function evolution_tier_lookup {
     printf '%s' "${tier}"
 }
 
+# Shared jq: recursively locate the chain node whose species matches $sp,
+# emitting {node, depth} where depth is the number of evolution steps from the
+# chain root. Emits nothing when $sp is absent from the chain. Both callers
+# below prepend this to their program and read the located node/depth.
+# shellcheck disable=SC2016  # $node/$d/$sp are jq variables, not shell ones
+declare -g _EVOLUTION_JQ_LOCATE='
+    def locate($node; $d):
+        if $node.species.name == $sp then
+            {node: $node, depth: $d}
+        else
+            ($node.evolves_to[]? | locate(.; $d + 1))
+        end;
+'
+
 # evolution_next_stages <chain_json> <species>
 # Print a JSON array of {species, evolution_details} for each direct child of
 # <species> in the evolution chain.
 function evolution_next_stages {
     local chain_json="$1"
     local species="$2"
-    jq -c --arg sp "${species}" '
-        def find($node):
-            if $node.species.name == $sp then
-                [$node.evolves_to[] | {species: .species.name, evolution_details: .evolution_details}]
-            else
-                ($node.evolves_to[] | find(.))
-            end;
-        find(.chain)
+    jq -c --arg sp "${species}" "${_EVOLUTION_JQ_LOCATE}"'
+        [ locate(.chain; 0).node.evolves_to[]?
+          | {species: .species.name, evolution_details: .evolution_details} ]
     ' <<<"${chain_json}"
 }
 
@@ -59,17 +68,17 @@ function evolution_next_stages {
 function evolution_stage_tier {
     local chain_json="$1"
     local species="$2"
+    # An empty chain is not valid JSON but jq reads empty input as a no-op
+    # (exit 0, no output); treat it like any other unresolvable chain -> 3.
+    if [[ -z "${chain_json}" ]]; then
+        printf '3'
+        return 0
+    fi
     local out
-    if ! out="$(jq -r --arg sp "${species}" '
-        def find($node; $d):
-            if $node.species.name == $sp then
-                {terminal: (($node.evolves_to | length) == 0), depth: $d}
-            else
-                ($node.evolves_to[]? | find(.; $d + 1))
-            end;
-        [ find(.chain; 0) ] | (.[0] // null) as $r
+    if ! out="$(jq -r --arg sp "${species}" "${_EVOLUTION_JQ_LOCATE}"'
+        [ locate(.chain; 0) ] | (.[0] // null) as $r
         | if $r == null then 3
-          elif $r.terminal then 1
+          elif ($r.node.evolves_to | length) == 0 then 1
           elif $r.depth == 0 then 3
           else 2 end
     ' <<<"${chain_json}" 2>/dev/null)"; then
@@ -79,27 +88,30 @@ function evolution_stage_tier {
     printf '%s' "${out}"
 }
 
+# _evolution_chain_for_species <species>
+# Print the evolution-chain JSON for <species>, or return 1 when the species or
+# its chain URL cannot be resolved from PokeAPI. Centralizes the fetch so the
+# tier classifier has a single unknown -> 3 exit.
+function _evolution_chain_for_species {
+    local species="$1"
+    local spec
+    spec="$(pokeapi_get "pokemon-species/${species}" 2>/dev/null)" || return 1
+    local chain_url
+    chain_url="$(jq -r '.evolution_chain.url // ""' <<<"${spec}")"
+    [[ -n "${chain_url}" && "${chain_url}" != "null" ]] || return 1
+    local chain_id="${chain_url%/}"
+    chain_id="${chain_id##*/}"
+    pokeapi_get "evolution-chain/${chain_id}" 2>/dev/null
+}
+
 # evolution_species_tier <species>
 # Resolve <species>'s evolution chain from PokeAPI and classify its stage via
 # evolution_stage_tier. Prints 1/2/3; prints 3 when the species or its chain
 # cannot be fetched (so an unconfirmed mon never outranks a confirmed one).
 function evolution_species_tier {
     local species="$1"
-    local spec
-    if ! spec="$(pokeapi_get "pokemon-species/${species}" 2>/dev/null)"; then
-        printf '3'
-        return
-    fi
-    local chain_url
-    chain_url="$(jq -r '.evolution_chain.url // ""' <<<"${spec}")"
-    if [[ -z "${chain_url}" || "${chain_url}" == "null" ]]; then
-        printf '3'
-        return
-    fi
-    local chain_id="${chain_url%/}"
-    chain_id="${chain_id##*/}"
     local chain
-    if ! chain="$(pokeapi_get "evolution-chain/${chain_id}" 2>/dev/null)"; then
+    if ! chain="$(_evolution_chain_for_species "${species}")"; then
         printf '3'
         return
     fi

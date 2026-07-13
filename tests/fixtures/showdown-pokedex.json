@@ -153,5 +153,23 @@
   },
   "raichu": {
     "name": "Raichu"
+  },
+  "geodude": {
+    "name": "Geodude"
+  },
+  "graveler": {
+    "name": "Graveler",
+    "prevo": "Geodude"
+  },
+  "geodudealola": {
+    "name": "Geodude-Alola",
+    "baseSpecies": "Geodude",
+    "forme": "Alola"
+  },
+  "graveleralola": {
+    "name": "Graveler-Alola",
+    "baseSpecies": "Graveler",
+    "prevo": "Geodude-Alola",
+    "forme": "Alola"
   }
 }

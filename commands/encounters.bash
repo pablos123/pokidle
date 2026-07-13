@@ -62,7 +62,11 @@ function pokidle_list {
     local _db_list_errctx="encounters"
     rows="$(db_list_encounters "${args[@]}")" || rc=$?
     if ((rc != 0)); then
-        ((rc == POKIDLE_RC_USAGE)) && { pokidle_encounters_help >&2; return 2; }
+        # shellcheck disable=SC2154  # POKIDLE_RC_USAGE is defined in lib/db.bash
+        ((rc == POKIDLE_RC_USAGE)) && {
+            pokidle_encounters_help >&2
+            return 2
+        }
         return "${rc}"
     fi
 

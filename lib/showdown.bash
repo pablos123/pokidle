@@ -136,9 +136,9 @@ function showdown_legal_abilities {
 }
 
 # showdown_legal_moves <variety-slug>
-# Print one hyphenated move slug per legal move. Moves live under the base
-# species (formes carry no learnset); union the base learnset up the prevo
-# chain. Returns 1 if nothing resolves.
+# Print one hyphenated move slug per legal move. Walk the forme's own evolution
+# chain, unioning each node's learnset; a node without its own learnset inherits
+# its base species'. Returns 1 if nothing resolves.
 function showdown_legal_moves {
     local pokedex learn moves
     if ! pokedex="$(showdown_get pokedex)"; then return 1; fi
@@ -147,21 +147,23 @@ function showdown_legal_moves {
     local id
     id="$(_showdown_resolve_id "$1" "${pokedex}")"
 
-    local base
-    base="$(jq -r --arg id "${id}" '.[$id].baseSpecies // empty' <<<"${pokedex}")"
-    if [[ -n "${base}" ]]; then
-        base="$(showdown_id "${base}")"
-    else
-        base="${id}"
-    fi
-
-    local cur="${base}"
+    local cur="${id}"
     local -a ids=()
     local -A seen=()
     local -i guard=0
     while [[ -n "${cur}" ]] && ((guard++ < 20)); do
+        # A forme with its own learnset (regional forms: Alola/Galar/Hisui/Paldea)
+        # keeps it; one without (mega/gmax/cosmetic default formes) inherits the
+        # base species'. Redirecting every forme to baseSpecies would give an
+        # Alolan mon its Kanto moves (e.g. Graveler-Alola learning Mimic).
+        local src="${cur}"
+        if [[ "$(jq -r --arg c "${cur}" 'if (.[$c].learnset | type) == "object" then "y" else "" end' <<<"${learn}")" != "y" ]]; then
+            local b
+            b="$(jq -r --arg c "${cur}" '.[$c].baseSpecies // empty' <<<"${pokedex}")"
+            [[ -n "${b}" ]] && src="$(showdown_id "${b}")"
+        fi
         local keys
-        keys="$(jq -r --arg c "${cur}" '(.[$c].learnset // {}) | keys[]' <<<"${learn}")"
+        keys="$(jq -r --arg c "${src}" '(.[$c].learnset // {}) | keys[]' <<<"${learn}")"
         local k
         while IFS= read -r k; do
             if [[ -n "${k}" && -z "${seen[${k}]:-}" ]]; then

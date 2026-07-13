@@ -49,5 +49,20 @@
   },
   "seedflare": {
     "name": "Seed Flare"
+  },
+  "mimic": {
+    "name": "Mimic"
+  },
+  "tackle": {
+    "name": "Tackle"
+  },
+  "rockthrow": {
+    "name": "Rock Throw"
+  },
+  "discharge": {
+    "name": "Discharge"
+  },
+  "thundershock": {
+    "name": "Thunder Shock"
   }
 }

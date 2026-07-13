@@ -80,5 +80,45 @@
         "9L50"
       ]
     }
+  },
+  "geodude": {
+    "learnset": {
+      "mimic": [
+        "3T"
+      ],
+      "tackle": [
+        "9L1"
+      ]
+    }
+  },
+  "graveler": {
+    "learnset": {
+      "mimic": [
+        "3T"
+      ],
+      "rockthrow": [
+        "9L1"
+      ]
+    }
+  },
+  "geodudealola": {
+    "learnset": {
+      "tackle": [
+        "9L1"
+      ],
+      "thundershock": [
+        "9L1"
+      ]
+    }
+  },
+  "graveleralola": {
+    "learnset": {
+      "rockthrow": [
+        "9L1"
+      ],
+      "discharge": [
+        "9L1"
+      ]
+    }
   }
 }
