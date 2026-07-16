@@ -142,3 +142,19 @@ _complete() {
     [[ "$output" != *pokeapi* ]]
     [[ "$output" != *showdown* ]]
 }
+
+@test "pokidle: setup dash completes its flags" {
+    run _complete _pokidle pokidle setup --
+    [[ "$output" == *--no-enable* ]]
+    [[ "$output" == *--no-pull* ]]
+}
+
+@test "pokidle: encounters dash completes --sort" {
+    run _complete _pokidle pokidle encounters --
+    [[ "$output" == *--sort* ]]
+}
+
+@test "pokidle: items dash completes --sort" {
+    run _complete _pokidle pokidle items --
+    [[ "$output" == *--sort* ]]
+}

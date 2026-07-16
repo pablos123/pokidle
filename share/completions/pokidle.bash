@@ -59,7 +59,7 @@ run start stop restart status logs enable disable" -- "${cur}")
                 mapfile -t COMPREPLY < <(compgen -W "\
 --shiny --legendary --since --until --biome --species --nature --min-iv-total \
 --max-iv-total --ability --gender --move --berry \
---min-level --max-level --limit --reverse --no-images --json" -- "${cur}")
+--min-level --max-level --limit --sort --reverse --no-images --json" -- "${cur}")
             fi
             ;;
         export)
@@ -76,7 +76,7 @@ run start stop restart status logs enable disable" -- "${cur}")
         items)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
---since --until --biome --item --kind --limit --all --reverse --no-images --json" -- "${cur}")
+--since --until --biome --item --kind --limit --sort --all --reverse --no-images --json" -- "${cur}")
             fi
             ;;
         stats)
@@ -122,7 +122,7 @@ run start stop restart status logs enable disable" -- "${cur}")
             ;;
         setup)
             if [[ "${cur}" == -* ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "--no-enable" -- "${cur}")
+                mapfile -t COMPREPLY < <(compgen -W "--no-enable --no-pull" -- "${cur}")
             fi
             ;;
         *) ;;
