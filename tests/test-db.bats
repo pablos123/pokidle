@@ -171,6 +171,113 @@ teardown() {
     [ "$output" = "zubat" ]
 }
 
+@test "db_init adds is_legendary to a pre-existing encounters table" {
+    # Old-shape DB: a realistic legacy encounters table (current schema.sql
+    # minus only the is_legendary column), then migrate.
+    sqlite3 "$POKIDLE_DB_PATH" "CREATE TABLE encounters (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id      INTEGER NOT NULL REFERENCES biome_sessions(id),
+        encountered_at  INTEGER NOT NULL,
+        species         TEXT NOT NULL,
+        variety         TEXT,
+        dex_id          INTEGER NOT NULL,
+        level           INTEGER NOT NULL,
+        nature          TEXT NOT NULL,
+        ability         TEXT NOT NULL,
+        is_hidden_ability INTEGER NOT NULL,
+        gender          TEXT NOT NULL,
+        shiny           INTEGER NOT NULL,
+        held_berry      TEXT,
+        friendship      INTEGER NOT NULL DEFAULT 70,
+        iv_hp INTEGER, iv_atk INTEGER, iv_def INTEGER,
+        iv_spa INTEGER, iv_spd INTEGER, iv_spe INTEGER,
+        ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER,
+        ev_spa INTEGER, ev_spd INTEGER, ev_spe INTEGER,
+        stat_hp INTEGER, stat_atk INTEGER, stat_def INTEGER,
+        stat_spa INTEGER, stat_spd INTEGER, stat_spe INTEGER,
+        moves_json      TEXT NOT NULL,
+        sprite_path     TEXT
+    );"
+    db_init
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' 'PRAGMA table_info(encounters);' | cut -d'|' -f2"
+    [[ "$output" == *"is_legendary"* ]]
+}
+
+@test "db_init backfills is_legendary for existing legendary rows" {
+    # Pre-load legendary_species_is (and its transitive deps, incl. the real
+    # pokeapi_get) BEFORE stubbing pokeapi_get, so _db_backfill_is_legendary's
+    # own lazy-source guard (command -v legendary_species_is) is already
+    # satisfied and never re-sources lib/legendary.bash — which would source
+    # lib/api.bash again and clobber the stub below with the real fetcher.
+    load_lib legendary
+    stub_pokeapi
+    # Old-shape encounters table (current schema.sql minus is_legendary), same
+    # shape as the migration test above, with one legendary + one ordinary row.
+    sqlite3 "$POKIDLE_DB_PATH" "CREATE TABLE encounters (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id      INTEGER NOT NULL REFERENCES biome_sessions(id),
+        encountered_at  INTEGER NOT NULL,
+        species         TEXT NOT NULL,
+        variety         TEXT,
+        dex_id          INTEGER NOT NULL,
+        level           INTEGER NOT NULL,
+        nature          TEXT NOT NULL,
+        ability         TEXT NOT NULL,
+        is_hidden_ability INTEGER NOT NULL,
+        gender          TEXT NOT NULL,
+        shiny           INTEGER NOT NULL,
+        held_berry      TEXT,
+        friendship      INTEGER NOT NULL DEFAULT 70,
+        iv_hp INTEGER, iv_atk INTEGER, iv_def INTEGER,
+        iv_spa INTEGER, iv_spd INTEGER, iv_spe INTEGER,
+        ev_hp INTEGER, ev_atk INTEGER, ev_def INTEGER,
+        ev_spa INTEGER, ev_spd INTEGER, ev_spe INTEGER,
+        stat_hp INTEGER, stat_atk INTEGER, stat_def INTEGER,
+        stat_spa INTEGER, stat_spd INTEGER, stat_spe INTEGER,
+        moves_json      TEXT NOT NULL,
+        sprite_path     TEXT
+    );
+    INSERT INTO encounters
+        (session_id, encountered_at, species, dex_id, level, nature, ability,
+         is_hidden_ability, gender, shiny, moves_json)
+        VALUES (1, 100, 'articuno', 144, 50, 'timid', 'pressure', 0, 'genderless', 0, '[\"ice-beam\"]');
+    INSERT INTO encounters
+        (session_id, encountered_at, species, dex_id, level, nature, ability,
+         is_hidden_ability, gender, shiny, moves_json)
+        VALUES (1, 200, 'caterpie', 10, 5, 'hardy', 'shield-dust', 0, 'M', 0, '[\"tackle\"]');"
+    db_init
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' \"SELECT species FROM encounters WHERE is_legendary=1;\""
+    [[ "$output" == "articuno" ]]
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' \"SELECT species FROM encounters WHERE is_legendary=0;\""
+    [[ "$output" == "caterpie" ]]
+}
+
+@test "db_insert_encounter persists is_legendary=1 from the JSON" {
+    db_init
+    local sid; sid="$(db_open_biome_session cave 100)"
+    db_insert_encounter "$(jq -nc --argjson sid "$sid" '{
+        session_id:$sid, encountered_at:100, species:"mewtwo", dex_id:150, level:70,
+        nature:"timid", ability:"pressure", is_hidden_ability:0, gender:"genderless",
+        shiny:0, held_berry:null, friendship:70, is_legendary:true,
+        ivs:[31,31,31,31,31,31], evs:[0,0,0,0,0,0], stats:[1,1,1,1,1,1],
+        moves:["psychic"], sprite_path:null }')"
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' 'SELECT is_legendary FROM encounters WHERE species=\"mewtwo\";'"
+    [ "$output" -eq 1 ]
+}
+
+@test "db_insert_encounter defaults is_legendary to 0 when absent" {
+    db_init
+    local sid; sid="$(db_open_biome_session cave 100)"
+    db_insert_encounter "$(jq -nc --argjson sid "$sid" '{
+        session_id:$sid, encountered_at:100, species:"pidgey", dex_id:16, level:5,
+        nature:"hardy", ability:"keen-eye", is_hidden_ability:0, gender:"M",
+        shiny:0, held_berry:null, friendship:70,
+        ivs:[1,1,1,1,1,1], evs:[0,0,0,0,0,0], stats:[1,1,1,1,1,1],
+        moves:["tackle"], sprite_path:null }')"
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' 'SELECT is_legendary FROM encounters WHERE species=\"pidgey\";'"
+    [ "$output" -eq 0 ]
+}
+
 @test "db_list_encounters supports filters" {
     db_init
     local sid
@@ -185,6 +292,76 @@ teardown() {
     n="$(jq 'length' <<< "$output")"
     [ "$n" = "1" ]
     [[ "$output" == *"pidgey"* ]]
+}
+
+@test "db_list_encounters --legendary returns only legendary rows" {
+    db_init
+    local sid; sid="$(db_open_biome_session cave 100)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id,encountered_at,species,dex_id,level,nature,ability,
+            is_hidden_ability,gender,shiny,held_berry,is_legendary,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe,ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe,moves_json,sprite_path)
+        VALUES
+        ($sid,100,'mewtwo',150,70,'timid','pressure',0,'genderless',0,NULL,1,
+            31,31,31,31,31,31,0,0,0,0,0,0,1,1,1,1,1,1,'[\"psychic\"]',NULL),
+        ($sid,100,'pidgey',16,5,'hardy','keen-eye',0,'M',0,NULL,0,
+            1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,'[\"tackle\"]',NULL);"
+    run db_list_encounters --legendary
+    [ "$status" -eq 0 ]
+    local species
+    species="$(jq -r '.[].species' <<<"$output")"
+    [[ "$species" == "mewtwo" ]]
+}
+
+_seed_filter_rows() {
+    db_init
+    local sid; sid="$(db_open_biome_session cave 100)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id,encountered_at,species,dex_id,level,nature,ability,
+            is_hidden_ability,gender,shiny,held_berry,is_legendary,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe,ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe,moves_json,sprite_path)
+        VALUES
+        ($sid,100,'gengar',94,50,'timid','levitate',0,'M',0,'sitrus',0,
+            31,31,31,31,31,31,0,0,0,0,0,0,1,1,1,1,1,1,'[\"shadow-ball\",\"sludge-bomb\"]',NULL),
+        ($sid,100,'pidgey',16,5,'hardy','keen-eye',0,'F',0,NULL,0,
+            2,2,2,2,2,2,0,0,0,0,0,0,1,1,1,1,1,1,'[\"tackle\"]',NULL);"
+}
+
+@test "db_list_encounters --max-iv-total keeps only rows at/under the cap" {
+    _seed_filter_rows
+    run db_list_encounters --max-iv-total 30
+    [ "$status" -eq 0 ]
+    [[ "$(jq -r '.[].species' <<<"$output")" == "pidgey" ]]
+}
+
+@test "db_list_encounters --ability matches exactly" {
+    _seed_filter_rows
+    run db_list_encounters --ability levitate
+    [ "$status" -eq 0 ]
+    [[ "$(jq -r '.[].species' <<<"$output")" == "gengar" ]]
+}
+
+@test "db_list_encounters --gender matches exactly" {
+    _seed_filter_rows
+    run db_list_encounters --gender F
+    [ "$status" -eq 0 ]
+    [[ "$(jq -r '.[].species' <<<"$output")" == "pidgey" ]]
+}
+
+@test "db_list_encounters --move matches a move slug without partial hits" {
+    _seed_filter_rows
+    run db_list_encounters --move shadow-ball
+    [ "$status" -eq 0 ]
+    [[ "$(jq -r '.[].species' <<<"$output")" == "gengar" ]]
+}
+
+@test "db_list_encounters --berry matches the held berry" {
+    _seed_filter_rows
+    run db_list_encounters --berry sitrus
+    [ "$status" -eq 0 ]
+    [[ "$(jq -r '.[].species' <<<"$output")" == "gengar" ]]
 }
 
 @test "db_list_encounters --min-level/--max-level filter by level (inclusive)" {
@@ -729,6 +906,21 @@ seed_sort_encounters() {
     db_init
     run db_list_item_drops --newest-first
     [ "$status" -ne 0 ]
+}
+
+@test "db_list_item_drops --kind filters by drop kind" {
+    db_init
+    local sid; sid="$(db_open_biome_session cave 100)"
+    db_insert_item_drop "$sid" 100 rare-candy "" item
+    db_insert_item_drop "$sid" 100 fire-stone "" pickup
+    run db_list_item_drops --kind pickup
+    [ "$(jq -r '[.[].item] | join(",")' <<< "$output")" = "fire-stone" ]
+}
+
+@test "db_list_item_drops --kind rejects an unknown kind" {
+    db_init
+    run db_list_item_drops --kind bogus
+    [ "$status" -eq 64 ]
 }
 
 @test "db_log_event inserts and db_list_log returns it" {

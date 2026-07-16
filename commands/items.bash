@@ -15,6 +15,7 @@ Options:
   --until DATE   Drops at/before DATE
   --biome ID     Filter by biome
   --item NAME    Substring match on item
+  --kind KIND    item|pickup
   --limit N      Cap rows (default: 50)
   --all          Include used (consumed) drops
   --sort KEY     date|name (default: date)

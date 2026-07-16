@@ -59,6 +59,31 @@ function db_init {
     if ! _db_column_exists encounters variety; then
         db_exec "ALTER TABLE encounters ADD COLUMN variety TEXT;"
     fi
+    # is_legendary marks a captured legendary/mythical so lists/stats/export can
+    # single them out. Rows predating this column default to 0; a one-time
+    # backfill (below) flips known legendaries. See _db_backfill_is_legendary.
+    if ! _db_column_exists encounters is_legendary; then
+        db_exec "ALTER TABLE encounters ADD COLUMN is_legendary INTEGER NOT NULL DEFAULT 0;"
+        _db_backfill_is_legendary
+    fi
+}
+
+# _db_backfill_is_legendary
+# One-time: flip is_legendary=1 for existing rows whose species PokeAPI marks
+# legendary/mythical. Best-effort — a fetch failure leaves a row at 0 rather
+# than aborting db_init. Sourced lazily to avoid a load-time dependency cycle.
+function _db_backfill_is_legendary {
+    if ! command -v legendary_species_is >/dev/null 2>&1; then
+        # shellcheck source=lib/legendary.bash disable=SC2154
+        source "${POKIDLE_REPO_ROOT}/lib/legendary.bash" 2>/dev/null || return 0
+    fi
+    local sp
+    while IFS= read -r sp; do
+        [[ -z "${sp}" ]] && continue
+        if legendary_species_is "${sp}" 2>/dev/null; then
+            db_exec "UPDATE encounters SET is_legendary=1 WHERE species='${sp//\'/\'\'}';"
+        fi
+    done < <(db_query "SELECT DISTINCT species FROM encounters;")
 }
 
 # db_exec <sql>...
@@ -116,6 +141,7 @@ function db_active_biome_session {
 # ability, is_hidden_ability, gender, shiny, held_berry, ivs[6], evs[6],
 # stats[6], moves[], sprite_path.
 # Optional: variety (the specific form, e.g. meowth-galar); defaults to species.
+# Optional: is_legendary (truthy); defaults to 0 (false) when absent.
 function db_insert_encounter {
     local enc="$1"
     # jq filter emits SQL literals: NULL for null, single-quoted with doubled
@@ -126,7 +152,7 @@ function db_insert_encounter {
 def sqstr: if . == null then "NULL" else "'" + (tostring | gsub("'"; "''")) + "'" end;
 "INSERT INTO encounters (
     session_id, encountered_at, species, variety, dex_id, level,
-    nature, ability, is_hidden_ability, gender, shiny, held_berry,
+    nature, ability, is_hidden_ability, gender, shiny, is_legendary, held_berry,
     friendship,
     iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
     ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe,
@@ -144,6 +170,7 @@ def sqstr: if . == null then "NULL" else "'" + (tostring | gsub("'"; "''")) + "'
     \(.is_hidden_ability),
     \(.gender | sqstr),
     \(.shiny),
+    \(if (.is_legendary // false) then 1 else 0 end),
     \(.held_berry | sqstr),
     \(.friendship),
     \(.ivs[0]), \(.ivs[1]), \(.ivs[2]), \(.ivs[3]), \(.ivs[4]), \(.ivs[5]),
@@ -160,9 +187,10 @@ JQ
 
 # db_list_encounters [options...]
 # List encounters as JSON. Options parsed from argv:
-#   --shiny --since YYYY-MM-DD --until YYYY-MM-DD --biome <id>
-#   --species <name> --nature <name> --min-iv-total N --limit N
-#   --sort date|name|level --reverse
+#   --shiny --legendary --since YYYY-MM-DD --until YYYY-MM-DD --biome <id>
+#   --species <name> --nature <name> --min-iv-total N --max-iv-total N
+#   --ability <slug> --gender <M|F|genderless> --move <slug> --berry <slug>
+#   --limit N --sort date|name|level --reverse
 # Always selects the newest N rows (--limit), then orders that window by the
 # chosen key. Ascending by default (date=oldest-first); --reverse flips it.
 function db_list_encounters {
@@ -178,6 +206,10 @@ function db_list_encounters {
         case "$1" in
             --shiny)
                 where+=("e.shiny=1")
+                shift
+                ;;
+            --legendary)
+                where+=("e.is_legendary=1")
                 shift
                 ;;
             --since)
@@ -211,6 +243,29 @@ function db_list_encounters {
                     return "${POKIDLE_RC_USAGE}"
                 fi
                 where+=("(e.iv_hp+e.iv_atk+e.iv_def+e.iv_spa+e.iv_spd+e.iv_spe) >= $2")
+                shift 2
+                ;;
+            --max-iv-total)
+                if ! _db_assert_int "$2" --max-iv-total; then
+                    return "${POKIDLE_RC_USAGE}"
+                fi
+                where+=("(e.iv_hp+e.iv_atk+e.iv_def+e.iv_spa+e.iv_spd+e.iv_spe) <= $2")
+                shift 2
+                ;;
+            --ability)
+                where+=("e.ability='${2//\'/\'\'}'")
+                shift 2
+                ;;
+            --gender)
+                where+=("e.gender='${2//\'/\'\'}'")
+                shift 2
+                ;;
+            --move)
+                where+=("e.moves_json LIKE '%\"${2//\'/\'\'}\"%'")
+                shift 2
+                ;;
+            --berry)
+                where+=("e.held_berry='${2//\'/\'\'}'")
                 shift 2
                 ;;
             --min-level)
@@ -308,6 +363,7 @@ function db_insert_item_drop {
 # List item drops as JSON. Options parsed from argv:
 #   --since YYYY-MM-DD --until YYYY-MM-DD --biome <id> --item <name>
 #   --limit N --sort date|name --reverse --include-consumed
+#   --kind item|pickup
 # Always selects the newest N rows (--limit), then orders that window by the
 # chosen key. Ascending by default (date=oldest-first); --reverse flips it.
 # --sort level is accepted but treated as date (items have no level).
@@ -370,6 +426,18 @@ function db_list_item_drops {
             --include-consumed)
                 include_consumed=1
                 shift
+                ;;
+            --kind)
+                case "$2" in
+                    item | pickup)
+                        where+=("d.kind='$2'")
+                        ;;
+                    *)
+                        printf '%s: invalid --kind: %s (item|pickup)\n' "${errctx}" "$2" >&2
+                        return "${POKIDLE_RC_USAGE}"
+                        ;;
+                esac
+                shift 2
                 ;;
             -*)
                 printf '%s: unknown option %s\n' "${errctx}" "$1" >&2

@@ -41,40 +41,8 @@ function pokeapi_graphql {
 
 # Resource fetchers: each takes <name-or-id> and prints the raw endpoint JSON.
 function pokemon { pokeapi_get "pokemon/$1"; }
-function move { pokeapi_get "move/$1"; }
-function ability { pokeapi_get "ability/$1"; }
-function type_ { pokeapi_get "type/$1"; }
 function species { pokeapi_get "pokemon-species/$1"; }
 function item { pokeapi_get "item/$1"; }
-function nature { pokeapi_get "nature/$1"; }
-
-# natures
-# Print all nature names, one per line.
-function natures { pokeapi_get "nature?limit=100" | jq -r '.results[].name'; }
-
-# Field extractors: each takes <name-or-id> and prints the named field(s).
-function pokemon_types { pokemon "$1" | jq -r '.types[].type.name'; }
-function pokemon_stats { pokemon "$1" | jq -r '.stats[] | "\(.stat.name): \(.base_stat)"'; }
-function pokemon_moves { pokemon "$1" | jq -r '.moves[].move.name'; }
-function pokemon_id { pokemon "$1" | jq -r '.id'; }
-function pokemon_name { pokemon "$1" | jq -r '.name'; }
-
-# pokemon_forms <name-or-id>
-# Print every variety (form) name in the species, one per line. Accepts either
-# a species key or a pokemon key; returns 1 if neither resolves.
-function pokemon_forms {
-    local key="$1"
-    local sp_json
-    if sp_json="$(species "${key}" 2>/dev/null)"; then
-        printf '%s' "${sp_json}" | jq -r '.varieties[].pokemon.name'
-        return
-    fi
-    local sp
-    if ! sp="$(pokemon "${key}" | jq -r '.species.name')"; then
-        return 1
-    fi
-    species "${sp}" | jq -r '.varieties[].pokemon.name'
-}
 
 # pokemon_sprite_url <name> [variant=front_default]
 # Print the sprite URL for variant; return 1 if that variant has no sprite.

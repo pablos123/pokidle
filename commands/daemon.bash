@@ -307,11 +307,7 @@ function pokidle_daemon {
         run)
             _pokidle_daemon_run "$@"
             ;;
-        start | stop | restart)
-            _pokidle_require_systemctl || return 1
-            systemctl --user "${verb}" pokidle.service
-            ;;
-        enable | disable)
+        start | stop | restart | enable | disable)
             _pokidle_require_systemctl || return 1
             systemctl --user "${verb}" pokidle.service
             ;;

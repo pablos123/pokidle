@@ -19,8 +19,60 @@ Options:
   --force-z         Pull mons you hold a Z-crystal for first
   --force-legendary Pull legendary/mythical mons first
   --force-evolved   Prefer mons you hold in a more-evolved form
+  --force-shiny     Pull species you own a shiny of first
+  --force-hidden    Pull species you own a hidden-ability form of first
+  --force-nature    Set every mon's nature (one of the 25)
+  --force-best-ivs  Prefer higher total-IV mons when filling the team
   -h, --help        Show this help
 EOF
+}
+
+# _export_valid_nature <name>
+# True (exit 0) when <name> is one of the 25 canonical natures (lowercase slug).
+# Static list keeps the export path offline — the roller's network nature list
+# is not consulted here.
+function _export_valid_nature {
+    case "$1" in
+        hardy | lonely | brave | adamant | naughty | bold | docile | relaxed | impish | lax | \
+            timid | hasty | serious | jolly | naive | modest | mild | quiet | bashful | rash | \
+            calm | gentle | sassy | careful | quirky)
+            return 0
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+# _export_mark_forced <rows_json> <jq_predicate> <forced_array_nameref>
+# Append the species (deduped against what's already there) whose rows match the
+# jq predicate to the pull-first forced set. Predicate is a trusted literal.
+function _export_mark_forced {
+    local rows="$1"
+    local pred="$2"
+    local -n _forced="$3"
+    local -a cand=()
+    mapfile -t cand < <(jq -r "[.[] | select(${pred}) | .species] | unique | .[]" <<<"${rows}")
+    local c
+    for c in "${cand[@]}"; do
+        [[ " ${_forced[*]} " == *" ${c} "* ]] && continue
+        _forced+=("${c}")
+    done
+}
+
+# _export_sort_by_iv_desc <array_nameref>
+# Reorder the named species array by best available summed-IV-total, descending.
+# Reads the caller-scoped `best_iv` assoc (species -> best IV total). Ties keep
+# sort(1)'s order; that's fine — the caller only needs highest-first.
+function _export_sort_by_iv_desc {
+    local -n _sortarr="$1"
+    ((${#_sortarr[@]} == 0)) && return 0
+    local -a sorted=()
+    local x
+    mapfile -t sorted < <(
+        for x in "${_sortarr[@]}"; do
+            printf '%s\t%s\n' "${best_iv[${x}]:-0}" "${x}"
+        done | sort -rn -k1,1 | cut -f2
+    )
+    _sortarr=("${sorted[@]}")
 }
 
 # _pokidle_shuffle <array_name>
@@ -61,6 +113,10 @@ function pokidle_export {
     local -i force_z=0
     local -i force_legendary=0
     local -i force_evolved=0
+    local -i force_shiny=0
+    local -i force_hidden=0
+    local force_nature=""
+    local -i force_best_ivs=0
     while (($# > 0)); do
         case "$1" in
             --force-level)
@@ -90,6 +146,26 @@ function pokidle_export {
             --force-evolved)
                 force_evolved=1
                 shift
+                ;;
+            --force-shiny)
+                force_shiny=1
+                shift
+                ;;
+            --force-hidden)
+                force_hidden=1
+                shift
+                ;;
+            --force-best-ivs)
+                force_best_ivs=1
+                shift
+                ;;
+            --force-nature)
+                force_nature="$2"
+                if ! _export_valid_nature "${force_nature}"; then
+                    _pokidle_usage_error pokidle_export_help 'export: --force-nature: unknown nature'
+                    return
+                fi
+                shift 2
                 ;;
             --since)
                 if ! since_ts="$(date -d "$2" +%s)"; then
@@ -212,17 +288,17 @@ function pokidle_export {
             '[.[] | select(((.species) as $s | $el | index($s)) or ((.variety) as $v | $v != null and ($el | index($v)))) | .species] | unique | .[]' <<<"${rows}")
     fi
     # --force-legendary: pull legendary/mythical species first, alongside any
-    # held-item eligibles. Union (deduped) into the same pull-first set.
+    # held-item eligibles. Union (deduped) into the same pull-first set. Reads
+    # the stored is_legendary column (rows already carry it via SELECT e.*) —
+    # no PokeAPI lookup needed.
     if ((force_legendary)); then
-        local leg_sp
-        for leg_sp in "${all_species[@]}"; do
-            if [[ " ${forced_species[*]} " == *" ${leg_sp} "* ]]; then
-                continue
-            fi
-            if legendary_species_is "${leg_sp}"; then
-                forced_species+=("${leg_sp}")
-            fi
-        done
+        _export_mark_forced "${rows}" '.is_legendary==1' forced_species
+    fi
+    if ((force_shiny)); then
+        _export_mark_forced "${rows}" '.shiny==1' forced_species
+    fi
+    if ((force_hidden)); then
+        _export_mark_forced "${rows}" '.is_hidden_ability==1' forced_species
     fi
     _pokidle_shuffle forced_species
     local -a species=("${forced_species[@]:0:6}")
@@ -233,9 +309,20 @@ function pokidle_export {
             rest+=("${s}")
         fi
     done
+    local -A best_iv=()
+    if ((force_best_ivs)); then
+        local _sp _tot
+        while IFS=$'\t' read -r _sp _tot; do
+            [[ -n "${_sp}" ]] && best_iv["${_sp}"]="${_tot}"
+        done < <(jq -r '
+            group_by(.species)[]
+            | [ .[0].species,
+                ([.[] | (.iv_hp + .iv_atk + .iv_def + .iv_spa + .iv_spd + .iv_spe)] | max) ]
+            | @tsv' <<<"${rows}")
+    fi
     if ((force_evolved)); then
         # Prefer more-evolved mons in the fill: bucket by stage tier (1=final,
-        # 2=mid, 3=base/unknown), shuffle within each, then concatenate.
+        # 2=mid, 3=base/unknown), then order within each, then concatenate.
         local -a evo_t1=()
         local -a evo_t2=()
         local -a evo_t3=()
@@ -249,10 +336,18 @@ function pokidle_export {
                 *) evo_t3+=("${rs}") ;;
             esac
         done
-        _pokidle_shuffle evo_t1
-        _pokidle_shuffle evo_t2
-        _pokidle_shuffle evo_t3
+        if ((force_best_ivs)); then
+            _export_sort_by_iv_desc evo_t1
+            _export_sort_by_iv_desc evo_t2
+            _export_sort_by_iv_desc evo_t3
+        else
+            _pokidle_shuffle evo_t1
+            _pokidle_shuffle evo_t2
+            _pokidle_shuffle evo_t3
+        fi
         rest=("${evo_t1[@]}" "${evo_t2[@]}" "${evo_t3[@]}")
+    elif ((force_best_ivs)); then
+        _export_sort_by_iv_desc rest
     else
         _pokidle_shuffle rest
     fi
@@ -274,10 +369,15 @@ function pokidle_export {
         # species at random.
         local enc
         enc="$(jq -c --arg s "${sp}" --argjson rnd "${RANDOM}" --argjson el "${wanted_el}" \
-            '[.[] | select(.species==$s)] as $g
-             | [$g[] | select(((.variety // .species)) as $v | ($el | index($v)))] as $pref
-             | (if ($pref | length) > 0 then $pref else $g end) as $pick
-             | $pick[$rnd % ($pick | length)]' <<<"${rows}")"
+            --argjson fshiny "${force_shiny}" --argjson fhidden "${force_hidden}" '
+             [.[] | select(.species==$s)] as $g
+             | ([$g[] | . + {"_score":
+                   ((if (($el | length) > 0 and (((.variety // .species)) as $v | ($el | index($v)))) then 3 else 0 end)
+                  + (if ($fshiny == 1 and .shiny == 1) then 1 else 0 end)
+                  + (if ($fhidden == 1 and .is_hidden_ability == 1) then 1 else 0 end))}]) as $scored
+             | ($scored | map(._score) | max) as $mx
+             | [$scored[] | select(._score == $mx)] as $best
+             | ($best[$rnd % ($best | length)] | del(._score))' <<<"${rows}")"
 
         # One jq read pulls the fields the loop needs: form name, the stored
         # moveset (.moves_json is already a JSON-array string, usable as-is via
@@ -329,10 +429,11 @@ function pokidle_export {
 
         local norm
         norm="$(jq -c --arg item "${chosen}" --argjson moves "${moves_json}" \
-            --arg fl "${force_level}" --argjson fp "${force_perfect}" '{
+            --arg fl "${force_level}" --argjson fp "${force_perfect}" --arg fn "${force_nature}" '{
             species: (.variety // .species),
             level: (if $fl != "" then ($fl | tonumber) else .level end),
-            nature, ability, is_hidden_ability, shiny,
+            nature: (if $fn != "" then $fn else .nature end),
+            ability, is_hidden_ability, shiny,
             held_item: ($item | select(. != "") // null),
             ivs: (if $fp == 1 then [31,31,31,31,31,31]
                   else [.iv_hp,.iv_atk,.iv_def,.iv_spa,.iv_spd,.iv_spe] end),

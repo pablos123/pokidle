@@ -287,6 +287,22 @@ _ins_item() { # $1 sid  $2 item  $3 ts
     [[ "$output" == *"no active biome"* ]]
 }
 
+@test "current --json emits the active-biome summary as an object" {
+    _seed_schema
+    sqlite3 "$POKIDLE_DB_PATH" "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('cave', $(date +%s));"
+    run "$REPO_ROOT/pokidle" current --json
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.biome' <<<"$output")" = "cave" ]
+    jq -e '.time_left_seconds | numbers' <<<"$output"
+}
+
+@test "current --json with no active biome emits null-ish object" {
+    _seed_schema
+    run "$REPO_ROOT/pokidle" current --json
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.biome' <<<"$output")" = "null" ]
+}
+
 @test "pokidle current bare shows possible counts on the second line + this-session counts" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
@@ -708,6 +724,31 @@ _seed_pokeapi_cache() {
     [[ "$output" == *"Pidgey"* ]]
     # Raw slugs no longer leak into the By-biome / Top-species tables.
     [[ "$output" != *"crystal-cavern"* ]]
+}
+
+@test "stats --json emits parseable aggregates honoring a filter" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" pidgey "$now"
+    _ins_enc "$sid" snorlax "$now" 1     # shiny
+    sqlite3 "$POKIDLE_DB_PATH" "UPDATE encounters SET is_legendary=1 WHERE species='snorlax';"
+    run "$REPO_ROOT/pokidle" stats --json
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.total' <<<"$output")" -eq 2 ]
+    [ "$(jq -r '.shinies' <<<"$output")" -eq 1 ]
+    [ "$(jq -r '.legendaries' <<<"$output")" -eq 1 ]
+}
+
+@test "stats --shiny filter narrows the totals" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    _ins_enc "$sid" pidgey "$now"
+    _ins_enc "$sid" snorlax "$now" 1
+    run "$REPO_ROOT/pokidle" stats --json --shiny
+    [ "$status" -eq 0 ]
+    [ "$(jq -r '.total' <<<"$output")" -eq 1 ]
 }
 
 @test "pokidle switch-biome reports the biome label" {
@@ -1169,6 +1210,24 @@ _seed_pokeapi_cache() {
     [[ "$output" != *"Level: 50"* ]]
 }
 
+@test "export --force-nature overrides nature on every mon" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    _ins_enc "$sid" snorlax "$(date +%s)"   # seeded as 'adamant'
+    run "$REPO_ROOT/pokidle" export --force-nature jolly
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Jolly Nature"* ]]
+    [[ "$output" != *"Adamant Nature"* ]]
+}
+
+@test "export rejects an unknown --force-nature" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    _ins_enc "$sid" snorlax "$(date +%s)"
+    run "$REPO_ROOT/pokidle" export --force-nature notanature
+    [ "$status" -ne 0 ]
+}
+
 @test "export --force-perfect sets all IVs to 31" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
@@ -1211,6 +1270,24 @@ _seed_pokeapi_cache() {
     done
 }
 
+@test "export --force-legendary uses the stored flag with no network" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    local sp
+    for sp in pidgey zubat gengar bulbasaur charmander squirtle rattata; do
+        _ins_enc "$sid" "$sp" "$now"
+    done
+    sqlite3 "$POKIDLE_DB_PATH" "UPDATE encounters SET is_legendary=1 WHERE species='gengar';"
+    # No stub_pokeapi on purpose: the column read must not hit the network.
+    local i
+    for i in 1 2 3 4 5 6; do
+        run "$REPO_ROOT/pokidle" export --force-legendary
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"Gengar"* ]]
+    done
+}
+
 @test "export --force-z pulls the Z-eligible regional form with its crystal" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"
@@ -1227,4 +1304,127 @@ _seed_pokeapi_cache() {
     run "$REPO_ROOT/pokidle" export --force-z
     [ "$status" -eq 0 ]
     [[ "$output" == *"Raichu-Alola @ Aloraichium Z"* ]]
+}
+
+@test "export --force-evolved keeps the fully-evolved mons when filling" {
+    _seed_schema
+    local sid; sid="$(_mk_session forest)"
+    local now; now="$(date +%s)"
+    stub_pokeapi
+    # 7 species -> team caps at 6, one base gets dropped. butterfree + sceptile
+    # are final-stage (tier 1) and must survive the fill every time.
+    local sp
+    for sp in caterpie metapod butterfree treecko grovyle sceptile wormadam; do
+        _ins_enc "$sid" "$sp" "$now"
+    done
+    local i
+    for i in 1 2 3 4 5 6; do
+        run "$REPO_ROOT/pokidle" export --force-evolved
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"Sceptile"* ]]
+        [[ "$output" == *"Butterfree"* ]]
+    done
+}
+
+@test "export --force-best-ivs fills with the higher-IV species first" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    # 7 base species so the team caps at 6 and one gets dropped. Give 'snorlax'
+    # a perfect IV total and everyone else a low one; snorlax must survive.
+    _low() { sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, '$1', 1, 50, 'adamant', 'overgrow', 0, 'M', 0, NULL,
+            1,1,1,1,1,1, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"tackle\"]', NULL);"; }
+    local sp
+    for sp in pidgey zubat gengar bulbasaur charmander squirtle; do _low "$sp"; done
+    _ins_enc "$sid" snorlax "$now"   # helper inserts 31s across the board
+    local i
+    for i in 1 2 3 4 5 6; do
+        run "$REPO_ROOT/pokidle" export --force-best-ivs
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"Snorlax"* ]]
+    done
+}
+
+@test "export --force-shiny pulls a shiny-owning species and exports its shiny form" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    local sp
+    for sp in pidgey zubat gengar bulbasaur charmander squirtle rattata; do
+        _ins_enc "$sid" "$sp" "$now"          # shiny=0
+    done
+    _ins_enc "$sid" snorlax "$now" 1           # 4th arg shiny=1
+    local i
+    for i in 1 2 3 4 5 6; do
+        run "$REPO_ROOT/pokidle" export --force-shiny
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"Snorlax"* ]]
+        [[ "$output" == *"Shiny: Yes"* ]]
+    done
+}
+
+@test "export --force-hidden pulls a hidden-ability owner and exports that encounter" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    local sp
+    for sp in pidgey zubat gengar bulbasaur charmander squirtle rattata; do
+        _ins_enc "$sid" "$sp" "$now"
+    done
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'snorlax', 143, 50, 'adamant', 'immunity', 1, 'M', 0, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"tackle\"]', NULL);
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'snorlax', 143, 50, 'adamant', 'thick-fat', 0, 'M', 0, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"tackle\"]', NULL);"
+    local i
+    for i in 1 2 3 4 5 6; do
+        run "$REPO_ROOT/pokidle" export --force-hidden
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"Snorlax"* ]]
+        [[ "$output" == *"Ability: Immunity"* ]]
+        [[ "$output" != *"Thick Fat"* ]]
+    done
+}
+
+@test "export --force-mega --force-shiny --force-hidden: form-match beats shiny+hidden" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'raichu', 'raichu-alola', 10026, 50, 'timid', 'surge-surfer', 0, 'M', 0, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"thunderbolt\"]', NULL);
+        INSERT INTO encounters(session_id, encountered_at, species, variety, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'raichu', NULL, 26, 50, 'jolly', 'lightning-rod', 1, 'F', 1, NULL,
+            31,31,31,31,31,31, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"quick-attack\"]', NULL);"
+    _ins_item "$sid" aloraichium-z "$now"
+    printf 'aloraichium-z\traichu-alola\tmega\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
+    local i
+    for i in 1 2 3 4 5 6; do
+        run "$REPO_ROOT/pokidle" export --force-mega --force-shiny --force-hidden
+        [ "$status" -eq 0 ]
+        [[ "$output" == *"Raichu-Alola @ Aloraichium Z"* ]]
+        [[ "$output" == *"Ability: Surge Surfer"* ]]
+        [[ "$output" != *"Shiny: Yes"* ]]
+        [[ "$output" != *"Lightning Rod"* ]]
+    done
 }

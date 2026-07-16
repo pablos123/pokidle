@@ -53,6 +53,13 @@ Set to `0` to skip that tick in the daemon loop; the timer still advances, so it
 | `POKIDLE_EVOLVE_ENABLED` | `1` | Evolution pass. |
 | `POKIDLE_LEGENDARY_ENABLED` | `1` | Legendary spawn roll. |
 
+## Daemon scheduling
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `POKIDLE_SLEEP_CHUNK` | `60` | Max seconds the daemon sleeps before re-reading the clock. The loop wakes at least this often so it notices wall-clock jumps (suspend/resume, NTP step) even when the next tick is much further away. |
+| `POKIDLE_TICK_FAST` | `0` | `1` = cadence-based scheduling for smoke tests — the next tick target becomes `[now, now + interval)` instead of `[next clock hour, next clock hour + interval)`. |
+
 ## Odds and rolls
 
 | Variable | Default | Meaning |
@@ -80,6 +87,15 @@ Per-tick evolution chance is tier-derived. Each eligible catch with a viable evo
 | `POKIDLE_EVOLVE_CHANCE_VERY_RARE` | `3` | Very rare (capture_rate < 25) |
 
 Item-based evolutions require a matching item in `item_drops`, which is consumed on use. Enable/disable the whole tick with `POKIDLE_EVOLVE_ENABLED`.
+
+## Pickup drops
+
+The pickup tick (`POKIDLE_PICKUP_INTERVAL`) rolls a biome-agnostic item drop: first a chance at a form item, then a choice between evolution-trigger items and typeless holdable items.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `POKIDLE_FORM_ITEM_RATE` | `3` | Percent chance the pickup roll drops a form item (mega stone / Z-crystal) before falling back to the evolution/typeless item pools. |
+| `POKIDLE_EVOLUTION_ITEM_RATE` | `15` | Percent chance the pickup roll (when no form item drops) picks from evolution-trigger items instead of typeless holdable items. |
 
 ## Legendaries
 
@@ -176,6 +192,7 @@ The XDG roots; sound, sprite, and DB paths all derive from these.
 | `POKIDLE_CONFIG_DIR` | `$XDG_CONFIG_HOME/pokidle` (`~/.config/pokidle`) | Holds `biomes.json`. |
 | `POKIDLE_DATA_DIR` | `$XDG_DATA_HOME/pokidle` (`~/.local/share/pokidle`) | Holds the SQLite DB and the asset symlinks (`biomes/`, `notify/`, `sounds/`). |
 | `POKIDLE_CACHE_DIR` | `$XDG_CACHE_HOME/pokidle` (`~/.cache/pokidle`) | Encounter pools (`pools/`). Sprites and API responses live under `POKIDLE_POKEAPI_CACHE_DIR` instead. |
+| `POKIDLE_RUNTIME_DIR` | `$POKIDLE_CACHE_DIR` (falls back if unset) | Directory for the daemon's single-instance lock file (`pokidle.daemon.lock`). |
 
 ## Database
 
@@ -201,4 +218,14 @@ pokidle's internal client.)
 | `POKIDLE_POKEAPI_RATE_LIMIT_SLEEP` | `0.5` | Seconds to sleep after each live fetch (cache misses only). |
 | `POKIDLE_HTTP_CONNECT_TIMEOUT` | `10` | Max seconds curl waits to establish a connection before failing the fetch. |
 | `POKIDLE_HTTP_MAX_TIME` | `30` | Max seconds curl allows for a whole fetch before failing. Keeps a stalled network from wedging the daemon. |
+
+## Showdown data source
+
+pokidle fetches item and form-item metadata (holdable items, mega stones, Z-crystals) from Pokémon Showdown's data files, caching them on disk.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `POKIDLE_SHOWDOWN_BASE_URL` | `https://play.pokemonshowdown.com/data` | Base URL for fetching Showdown data files. |
+| `POKIDLE_SHOWDOWN_CACHE_DIR` | `$POKIDLE_CACHE_DIR/showdown` (`~/.cache/pokidle/showdown`) | Cache dir for fetched Showdown data and derived TSV registries (holdable items, form items). |
+| `POKIDLE_SHOWDOWN_TTL` | `604800` (7 days) | Seconds before cached Showdown data is considered stale and refetched. |
 

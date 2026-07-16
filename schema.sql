@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS encounters (
     is_hidden_ability INTEGER NOT NULL,
     gender          TEXT NOT NULL,
     shiny           INTEGER NOT NULL,
+    is_legendary    INTEGER NOT NULL DEFAULT 0,
     held_berry      TEXT,
     friendship      INTEGER NOT NULL DEFAULT 70,
     iv_hp INTEGER, iv_atk INTEGER, iv_def INTEGER,

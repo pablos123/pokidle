@@ -57,27 +57,39 @@ run start stop restart status logs enable disable" -- "${cur}")
         encounters)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
---shiny --since --until --biome --species --nature --min-iv-total \
+--shiny --legendary --since --until --biome --species --nature --min-iv-total \
+--max-iv-total --ability --gender --move --berry \
 --min-level --max-level --limit --reverse --no-images --json" -- "${cur}")
             fi
             ;;
         export)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
---shiny --since --until --biome --species --nature --min-iv-total \
---min-level --max-level --limit --reverse \
---force-level --force-perfect --force-mega --force-z" -- "${cur}")
+--shiny --legendary --since --until --biome --species --nature --min-iv-total \
+--max-iv-total --ability --gender --move --berry \
+--min-level --max-level \
+--force-level --force-perfect --force-mega --force-z \
+--force-legendary --force-evolved --force-shiny --force-hidden --force-nature \
+--force-best-ivs" -- "${cur}")
             fi
             ;;
         items)
             if [[ "${cur}" == -* ]]; then
                 mapfile -t COMPREPLY < <(compgen -W "\
---since --until --biome --item --limit --all --reverse --no-images --json" -- "${cur}")
+--since --until --biome --item --kind --limit --all --reverse --no-images --json" -- "${cur}")
+            fi
+            ;;
+        stats)
+            if [[ "${cur}" == -* ]]; then
+                mapfile -t COMPREPLY < <(compgen -W "\
+--shiny --since --until --biome --species --nature --min-iv-total \
+--min-level --max-level --max-iv-total --ability --gender --move --berry \
+--legendary --json" -- "${cur}")
             fi
             ;;
         current)
             if [[ "${cur}" == -* ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "--no-images" -- "${cur}")
+                mapfile -t COMPREPLY < <(compgen -W "--no-images --json" -- "${cur}")
             else
                 mapfile -t COMPREPLY < <(compgen -W "items berries encounters" -- "${cur}")
             fi

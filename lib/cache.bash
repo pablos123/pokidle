@@ -47,13 +47,3 @@ function cache_blob_path {
     local ext="${2:-bin}"
     printf '%s/%s.%s' "${POKIDLE_POKEAPI_CACHE_DIR}" "${key}" "${ext}"
 }
-
-# cache_clear [endpoint]
-# Remove one endpoint's cache entry, or the entire cache dir if no arg.
-function cache_clear {
-    if [[ -n "${1-}" ]]; then
-        rm -f -- "$(cache_path "$1")"
-    else
-        rm -rf -- "${POKIDLE_POKEAPI_CACHE_DIR}"
-    fi
-}

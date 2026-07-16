@@ -8,7 +8,7 @@ function pokidle_current_help {
 pokidle current — active biome status.
 
 Usage:
-  pokidle current [items|berries|encounters] [--no-images]
+  pokidle current [items|berries|encounters] [--no-images] [--json]
 
 Bare: active biome, time remaining, session + all-time counts, with the biome
 image above it.
@@ -20,6 +20,7 @@ Modes:
 
 Options:
   --no-images   Skip the biome image (summary only).
+  --json        Emit machine-readable JSON instead of text.
   -h, --help    Show this help
 EOF
 }
@@ -36,10 +37,15 @@ function pokidle_current {
     local mode="summary"
     local -i no_images=0
     local -i kind_set=0
+    local -i json_mode=0
     while (($# > 0)); do
         case "$1" in
             --no-images)
                 no_images=1
+                shift
+                ;;
+            --json)
+                json_mode=1
                 shift
                 ;;
             -h | --help | help)
@@ -69,6 +75,10 @@ function pokidle_current {
     local row
     row="$(db_active_biome_session)"
     if [[ -z "${row}" ]]; then
+        if ((json_mode)); then
+            printf '{"biome":null}\n'
+            return 0
+        fi
         printf 'no active biome\n'
         return 0
     fi
@@ -76,6 +86,20 @@ function pokidle_current {
     local biome
     local started_at
     IFS=$'\t' read -r id biome started_at <<<"${row}"
+
+    if ((json_mode)); then
+        case "${mode}" in
+            summary) _pokidle_current_summary_json "${id}" "${biome}" "${started_at}" ;;
+            items) encounter_pool_load "${biome}" 2>/dev/null | jq -c '(.items // []) | sort' ;;
+            berries) encounter_pool_load "${biome}" 2>/dev/null | jq -c '[(.berries // [])[] | . + "-berry"] | sort' ;;
+            encounters) encounter_pool_load "${biome}" 2>/dev/null | jq -c '.tiers // {}' ;;
+            *)
+                printf 'current: unknown mode %s\n' "${mode}" >&2
+                return 2
+                ;;
+        esac
+        return 0
+    fi
 
     case "${mode}" in
         items)
@@ -167,6 +191,40 @@ function _pokidle_current_summary {
     printf 'Started: %s\n' "$(date -d "@${started_at}")"
     printf 'Time remaining: %s\n' "$(_pokidle_biome_time_left "${started_at}" "${now}")"
     printf 'Encounters: %s   Items: %s\n' "${enc_count}" "${item_count}"
+}
+
+# _pokidle_current_summary_json <session_id> <biome> <started_at>
+# Emit the active-biome summary as a JSON object (same data as the text summary,
+# minus the image).
+function _pokidle_current_summary_json {
+    local id="$1" biome="$2" started_at="$3"
+    local now
+    now="$(date +%s)"
+    local pool poss_enc=0 poss_item=0 poss_berry=0
+    if pool="$(encounter_pool_load "${biome}" 2>/dev/null)"; then
+        poss_enc="$(jq '[.tiers[] | length] | add // 0' <<<"${pool}")"
+        poss_item="$(jq -r '(.items // []) | length' <<<"${pool}")"
+        poss_berry="$(jq -r '(.berries // []) | length' <<<"${pool}")"
+    fi
+    local enc_count item_count
+    enc_count="$(db_query "SELECT COUNT(*) FROM encounters WHERE session_id=${id};")"
+    item_count="$(db_query "SELECT COUNT(*) FROM item_drops WHERE session_id=${id};")"
+    local -a btypes=()
+    mapfile -t btypes < <(biome_types_for "${biome}" 2>/dev/null)
+    local -i remaining=$((${POKIDLE_BIOME_HOURS:-3} * 3600 - (now - started_at)))
+    ((remaining < 0)) && remaining=0
+    jq -nc \
+        --arg biome "${biome}" --argjson id "${id}" \
+        --argjson enc "${poss_enc}" --argjson item "${poss_item}" --argjson berry "${poss_berry}" \
+        --argjson sess_enc "${enc_count}" --argjson sess_item "${item_count}" \
+        --argjson started "${started_at}" --argjson left "${remaining}" \
+        --args '{
+            biome:$biome, session_id:$id,
+            types:$ARGS.positional,
+            possible_encounters:$enc, possible_items:$item, possible_berries:$berry,
+            started_at:$started, time_left_seconds:$left,
+            session_encounters:$sess_enc, session_items:$sess_item
+        }' "${btypes[@]}"
 }
 
 # _pokidle_current_items <biome>

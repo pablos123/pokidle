@@ -12,12 +12,18 @@ Usage:
 
 Options:
   --shiny            Only shinies
+  --legendary        Only legendary/mythical catches
   --since DATE       Encounters at/after DATE (YYYY-MM-DD or any date(1) string)
   --until DATE       Encounters at/before DATE
   --biome ID         Filter by biome
   --species NAME     Substring match on species
   --nature NAME      Exact nature match
   --min-iv-total N   Min summed IVs
+  --max-iv-total N   Max summed IVs
+  --ability SLUG     Exact ability match
+  --gender G         Exact gender match (M|F|genderless)
+  --move SLUG        Exact move slug match (any move slot)
+  --berry SLUG       Exact held-berry match
   --min-level N      Encounters at/above level N
   --max-level N      Encounters at/below level N
   --limit N          Cap rows (default: 50)
