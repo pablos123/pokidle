@@ -850,12 +850,30 @@ seed_sort_encounters() {
     [ "$(jq -r '[.[].level] | join(",")' <<< "$output")" = "30,20,10" ]
 }
 
-@test "db_list_encounters --limit selects newest-N window then sorts" {
+@test "db_list_encounters --sort name sorts the whole set, then limits" {
     seed_sort_encounters
-    # Newest 2 by date are meowth(300) and abra(200); sorted by name -> abra, meowth.
-    run db_list_encounters --limit 2 --sort name
+    # Whole set Z-A is zubat, meowth-galar, abra; limit keeps the head — not
+    # a newest-by-date window (which would be meowth-galar, abra).
+    run db_list_encounters --limit 2 --sort name --reverse
     [ "$(jq 'length' <<< "$output")" = "2" ]
-    [ "$(jq -r '[.[].variety] | join(",")' <<< "$output")" = "abra,meowth-galar" ]
+    [ "$(jq -r '[.[].variety] | join(",")' <<< "$output")" = "zubat,meowth-galar" ]
+}
+
+@test "db_list_encounters --sort level sorts the whole set, then limits" {
+    seed_sort_encounters
+    # Highest levels overall are zubat(30), meowth(20) — zubat is the oldest
+    # row, so a newest-by-date window would miss it.
+    run db_list_encounters --limit 2 --sort level --reverse
+    [ "$(jq 'length' <<< "$output")" = "2" ]
+    [ "$(jq -r '[.[].level] | join(",")' <<< "$output")" = "30,20" ]
+}
+
+@test "db_list_encounters date sort keeps the newest-N window" {
+    seed_sort_encounters
+    # Newest 2 by date are abra(200) and meowth(300), displayed oldest-first.
+    run db_list_encounters --limit 2
+    [ "$(jq 'length' <<< "$output")" = "2" ]
+    [ "$(jq -r '[.[].species] | join(",")' <<< "$output")" = "abra,meowth" ]
 }
 
 @test "db_list_encounters rejects invalid --sort key" {

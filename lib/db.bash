@@ -191,8 +191,9 @@ JQ
 #   --species <name> --nature <name> --min-iv-total N --max-iv-total N
 #   --ability <slug> --gender <M|F|genderless> --move <slug> --berry <slug>
 #   --limit N --sort date|name|level --reverse
-# Always selects the newest N rows (--limit), then orders that window by the
-# chosen key. Ascending by default (date=oldest-first); --reverse flips it.
+# date sort (default) selects the newest N rows (--limit) and displays that
+# window oldest-first (--reverse flips it). name/level sort the whole filtered
+# set by the key first, then limit. Ascending by default; --reverse flips.
 function db_list_encounters {
     # Error prefix. Callers (pokidle_list/pokidle_export) set _db_list_errctx to
     # their command name so messages read "encounters: …" not the lib fn name.
@@ -331,8 +332,17 @@ function db_list_encounters {
         printf -v joined '%s AND ' "${where[@]}"
         sql+=" WHERE ${joined% AND }"
     fi
-    sql+=" ORDER BY e.encountered_at DESC LIMIT ${limit}"
-    sql="SELECT * FROM (${sql}) ORDER BY ${order_expr} ${dir}, encountered_at ${dir}, id ${dir};"
+    if [[ "${sort_key}" == "date" ]]; then
+        # Date sort: the newest N rows (a "recent encounters" window), then
+        # display order — ascending shows the window oldest-first.
+        sql+=" ORDER BY e.encountered_at DESC LIMIT ${limit}"
+        sql="SELECT * FROM (${sql}) ORDER BY encountered_at ${dir}, id ${dir};"
+    else
+        # name/level: sort the whole filtered set by the key, then limit —
+        # e.g. --sort level --reverse gives the N highest-level encounters
+        # overall, not a level-sorted newest window.
+        sql+=" ORDER BY ${order_expr} ${dir}, e.encountered_at ${dir}, e.id ${dir} LIMIT ${limit};"
+    fi
     db_query_json "${sql}"
 }
 

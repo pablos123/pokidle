@@ -19,6 +19,16 @@ echo "stub-systemctl: $*" >> "$HOME/systemctl.log"
 exit 0
 EOF
     chmod +x "$BATS_TMPDIR/bin.$$/systemctl"
+    # Override git: setup pulls the repo by default and the test must never
+    # touch the real checkout or the network. Pull-specific tests overwrite
+    # this stub.
+    cat > "$BATS_TMPDIR/bin.$$/git" <<'EOF'
+#!/bin/bash
+# stub: log args, exit 0
+echo "stub-git: $*" >> "$HOME/git.log"
+exit 0
+EOF
+    chmod +x "$BATS_TMPDIR/bin.$$/git"
 }
 
 teardown() {
@@ -258,3 +268,62 @@ EOF
     [[ "$output" == *"enable failed"* ]]
 }
 
+
+@test "pokidle setup rejects jq older than 1.6" {
+    cat > "$BATS_TMPDIR/bin.$$/jq" <<'STUB'
+#!/bin/bash
+if [[ "$1" == "--version" ]]; then echo "jq-1.5"; exit 0; fi
+exec /usr/bin/jq "$@"
+STUB
+    chmod +x "$BATS_TMPDIR/bin.$$/jq"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"jq >= 1.6"* ]]
+}
+
+@test "pokidle setup accepts jq 1.6+" {
+    cat > "$BATS_TMPDIR/bin.$$/jq" <<'STUB'
+#!/bin/bash
+if [[ "$1" == "--version" ]]; then echo "jq-1.7.1"; exit 0; fi
+exec /usr/bin/jq "$@"
+STUB
+    chmod +x "$BATS_TMPDIR/bin.$$/jq"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    [ "$status" -eq 0 ]
+}
+
+@test "pokidle setup pulls the repo first" {
+    cat > "$BATS_TMPDIR/bin.$$/git" <<'STUB'
+#!/bin/bash
+echo "stub-git: $*" >> "$HOME/git.log"
+exit 0
+STUB
+    chmod +x "$BATS_TMPDIR/bin.$$/git"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    [ "$status" -eq 0 ]
+    grep -q 'pull --ff-only' "$HOME/git.log"
+}
+
+@test "pokidle setup continues when git pull fails" {
+    cat > "$BATS_TMPDIR/bin.$$/git" <<'STUB'
+#!/bin/bash
+if [[ "$*" == *"pull"* ]]; then echo "fatal: no network" >&2; exit 1; fi
+exit 0
+STUB
+    chmod +x "$BATS_TMPDIR/bin.$$/git"
+    run "$REPO_ROOT/pokidle" setup --no-enable
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pull failed"* ]]
+}
+
+@test "pokidle setup --no-pull skips the git pull" {
+    cat > "$BATS_TMPDIR/bin.$$/git" <<'STUB'
+#!/bin/bash
+echo "stub-git: $*" >> "$HOME/git.log"
+exit 0
+STUB
+    chmod +x "$BATS_TMPDIR/bin.$$/git"
+    run "$REPO_ROOT/pokidle" setup --no-enable --no-pull
+    [ "$status" -eq 0 ]
+    ! grep -q 'pull' "$HOME/git.log" 2>/dev/null
+}

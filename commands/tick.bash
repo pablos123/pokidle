@@ -173,9 +173,11 @@ function pokidle_tick {
                 "$(_pokidle_sprite_name "${enc}")" "$(jq -r '.shiny' <<<"${enc}")")"
 
             local enc_with_meta
+            # $blabel because `label` is a jq keyword: jq 1.5 rejects it as a
+            # variable name.
             enc_with_meta="$(jq -c \
-                --arg label "${label}" --arg sp "${sprite_path}" --arg bid "${biome}" '
-                . + {biome_label: $label, sprite_path: $sp, biome_id: $bid}
+                --arg blabel "${label}" --arg sp "${sprite_path}" --arg bid "${biome}" '
+                . + {biome_label: $blabel, sprite_path: $sp, biome_id: $bid}
             ' <<<"${enc}")"
 
             if ((dry_run == 0)); then
@@ -655,8 +657,8 @@ function pokidle_tick_evolve {
             b_label="$(biome_label "${biome}")"
             local notify_obj
             notify_obj="$(jq -n --arg from "${variety}" --arg to "${to_form}" \
-                --arg label "${b_label}" --arg sp "${sprite_meta}" --arg bid "${biome}" \
-                '{from:$from, to:$to, biome_label:$label, sprite_path:$sp, biome_id:$bid}')"
+                --arg blabel "${b_label}" --arg sp "${sprite_meta}" --arg bid "${biome}" \
+                '{from:$from, to:$to, biome_label:$blabel, sprite_path:$sp, biome_id:$bid}')"
             notify_evolution "${notify_obj}"
         fi
         evolved_objs+=("$(jq -n -c \
@@ -784,9 +786,11 @@ function pokidle_tick_legendary {
     local label
     label="$(biome_label "${biome}")"
     local enc_with_meta
+    # $blabel because `label` is a jq keyword: jq 1.5 rejects it as a
+    # variable name.
     enc_with_meta="$(jq -c \
-        --arg label "${label}" --arg sp "${sprite_path}" --arg bid "${biome}" '
-        . + {biome_label: $label, sprite_path: $sp, biome_id: $bid}
+        --arg blabel "${label}" --arg sp "${sprite_path}" --arg bid "${biome}" '
+        . + {biome_label: $blabel, sprite_path: $sp, biome_id: $bid}
     ' <<<"${enc}")"
 
     if ((dry_run == 0)); then

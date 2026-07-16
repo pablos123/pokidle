@@ -20,7 +20,7 @@ setup() {
     }'
     run export_format "$enc"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Sceptile @ Sitrus Berry"* ]]
+    [[ "$output" == *"Sceptile (M) @ Sitrus Berry"* ]]
     [[ "$output" == *"Ability: Overgrow"* ]]
     [[ "$output" == *"Level: 42"* ]]
     [[ "$output" == *"Shiny: Yes"* ]]
@@ -39,7 +39,7 @@ setup() {
     }'
     run export_format "$enc"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Snorlax @ Leftovers"* ]]
+    [[ "$output" == *"Snorlax (M) @ Leftovers"* ]]
     [[ "$output" != *"Leftovers Berry"* ]]
 }
 
@@ -51,7 +51,7 @@ setup() {
     }'
     run export_format "$enc"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Kingdra @ Choice Band"* ]]
+    [[ "$output" == *"Kingdra (F) @ Choice Band"* ]]
 }
 
 @test "export_format: held_item -berry slug gets single Berry word" {
@@ -62,7 +62,7 @@ setup() {
     }'
     run export_format "$enc"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Garchomp @ Occa Berry"* ]]
+    [[ "$output" == *"Garchomp (M) @ Occa Berry"* ]]
     [[ "$output" != *"Berry Berry"* ]]
 }
 
@@ -74,7 +74,7 @@ setup() {
     }'
     run export_format "$enc"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Gengar @ Life Orb"* ]]
+    [[ "$output" == *"Gengar (M) @ Life Orb"* ]]
     [[ "$output" != *"Sitrus"* ]]
 }
 
@@ -157,4 +157,37 @@ setup() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"Meowth-Galar"* ]]
     [[ "$output" != *"Meowth Galar"* ]]
+}
+
+@test "export_format: gender marker after species name, before item" {
+    local enc='{
+        "species":"snorlax","level":50,"nature":"adamant","ability":"thick-fat",
+        "is_hidden_ability":0,"gender":"M","shiny":0,"held_berry":null,"held_item":"leftovers",
+        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["body-slam"]
+    }'
+    run export_format "$enc"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Snorlax (M) @ Leftovers"* ]]
+}
+
+@test "export_format: female gender marker on bare set" {
+    local enc='{
+        "species":"kingdra","level":50,"nature":"modest","ability":"swift-swim",
+        "is_hidden_ability":0,"gender":"F","shiny":0,"held_berry":null,
+        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["surf"]
+    }'
+    run export_format "$enc"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Kingdra (F)"* ]]
+}
+
+@test "export_format: genderless renders no gender marker" {
+    local enc='{
+        "species":"porygon-z","level":50,"nature":"modest","ability":"adaptability",
+        "is_hidden_ability":0,"gender":"genderless","shiny":0,"held_berry":null,
+        "ivs":[31,31,31,31,31,31],"evs":[0,0,0,0,0,0],"moves":["thunderbolt"]
+    }'
+    run export_format "$enc"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"("* ]]
 }

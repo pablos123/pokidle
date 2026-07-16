@@ -51,9 +51,9 @@ function pokidle_biomes {
     if ((emit_json)); then
         local -a objs=()
         for id in "${BIOME_IDS[@]}"; do
-            objs+=("$(jq -n --arg id "${id}" --arg label "${BIOME_LABELS[${id}]}" \
+            objs+=("$(jq -n --arg id "${id}" --arg blabel "${BIOME_LABELS[${id}]}" \
                 --arg types "${BIOME_TYPES[${id}]}" \
-                '{id: $id, label: $label, types: ($types | split(" "))}')")
+                '{id: $id, label: $blabel, types: ($types | split(" "))}')")
         done
         printf '%s\n' "${objs[@]}" | jq -s '.'
         return 0

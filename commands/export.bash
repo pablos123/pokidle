@@ -433,7 +433,7 @@ function pokidle_export {
             species: (.variety // .species),
             level: (if $fl != "" then ($fl | tonumber) else .level end),
             nature: (if $fn != "" then $fn else .nature end),
-            ability, is_hidden_ability, shiny,
+            ability, is_hidden_ability, shiny, gender,
             held_item: ($item | select(. != "") // null),
             ivs: (if $fp == 1 then [31,31,31,31,31,31]
                   else [.iv_hp,.iv_atk,.iv_def,.iv_spa,.iv_spd,.iv_spe] end),

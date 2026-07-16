@@ -683,7 +683,7 @@ _seed_pokeapi_cache() {
 
     run "$REPO_ROOT/pokidle" export
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Sceptile @ Sitrus Berry"* ]]
+    [[ "$output" == *"Sceptile (M) @ Sitrus Berry"* ]]
     [[ "$output" == *"Adamant Nature"* ]]
 }
 
@@ -1184,7 +1184,7 @@ _seed_pokeapi_cache() {
     printf 'charizardite-x\tcharizard\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
     run "$REPO_ROOT/pokidle" export
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Charizard @ Charizardite X"* ]]
+    [[ "$output" == *"Charizard (M) @ Charizardite X"* ]]
 }
 
 @test "export never puts a form-item on a non-matching mon" {
@@ -1266,7 +1266,7 @@ _seed_pokeapi_cache() {
     for i in 1 2 3 4 5 6 7 8; do
         run "$REPO_ROOT/pokidle" export --force-mega
         [ "$status" -eq 0 ]
-        [[ "$output" == *"Charizard @ Charizardite X"* ]]
+        [[ "$output" == *"Charizard (M) @ Charizardite X"* ]]
     done
 }
 
@@ -1303,7 +1303,7 @@ _seed_pokeapi_cache() {
     printf 'aloraichium-z\traichu-alola\tz\n' > "$POKIDLE_SHOWDOWN_CACHE_DIR/form-items.tsv"
     run "$REPO_ROOT/pokidle" export --force-z
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Raichu-Alola @ Aloraichium Z"* ]]
+    [[ "$output" == *"Raichu-Alola (M) @ Aloraichium Z"* ]]
 }
 
 @test "export --force-evolved keeps the fully-evolved mons when filling" {
@@ -1422,9 +1422,18 @@ _seed_pokeapi_cache() {
     for i in 1 2 3 4 5 6; do
         run "$REPO_ROOT/pokidle" export --force-mega --force-shiny --force-hidden
         [ "$status" -eq 0 ]
-        [[ "$output" == *"Raichu-Alola @ Aloraichium Z"* ]]
+        [[ "$output" == *"Raichu-Alola (M) @ Aloraichium Z"* ]]
         [[ "$output" == *"Ability: Surge Surfer"* ]]
         [[ "$output" != *"Shiny: Yes"* ]]
         [[ "$output" != *"Lightning Rod"* ]]
     done
+}
+
+@test "export carries the stored gender into the set block" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    _ins_enc "$sid" pidgey "$(date +%s)"
+    run "$REPO_ROOT/pokidle" export
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Pidgey (M)"* ]]
 }

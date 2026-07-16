@@ -10,10 +10,11 @@ pokidle setup — install config, assets, shipped pools, bin symlinks and the
 systemd user unit, then enable + start it.
 
 Usage:
-  pokidle setup [--no-enable]
+  pokidle setup [--no-enable] [--no-pull]
 
 Options:
   --no-enable   Install only; don't enable/start the service.
+  --no-pull     Skip the git pull that refreshes the repo first.
   -h, --help    Show this help
 EOF
 }
@@ -28,6 +29,7 @@ EOF
 # install the unit (then start it yourself), or `uninstall` to reverse.
 function pokidle_setup {
     local -i enable=1
+    local -i pull=1
     while (($# > 0)); do
         case "$1" in
             --enable)
@@ -36,6 +38,10 @@ function pokidle_setup {
                 ;; # back-compat no-op (default)
             --no-enable)
                 enable=0
+                shift
+                ;;
+            --no-pull)
+                pull=0
                 shift
                 ;;
             -h | --help | help)
@@ -66,6 +72,35 @@ function pokidle_setup {
         printf 'setup: missing required commands: %s\n' "${missing_req[*]}" >&2
         printf 'setup: install them via your package manager and re-run setup\n' >&2
         return 1
+    fi
+
+    # jq >= 1.6 required: list filters use 1.6-only builtins (strflocaltime).
+    # An unparseable version string (e.g. a non-jq implementation) only warns —
+    # blocking on it would break machines where the filters may still work.
+    local jqver
+    jqver="$(jq --version 2>/dev/null)"
+    if [[ "${jqver}" =~ ^jq-([0-9]+)\.([0-9]+) ]]; then
+        if ((BASH_REMATCH[1] == 1 && BASH_REMATCH[2] < 6)); then
+            printf 'setup: jq >= 1.6 required, found %s — upgrade jq and re-run setup\n' "${jqver}" >&2
+            return 1
+        fi
+    else
+        printf 'setup: warning: cannot parse jq version (%s); jq >= 1.6 is required\n' "${jqver}" >&2
+    fi
+
+    # Refresh the repo before installing so one `pokidle setup` both updates
+    # and re-installs. --ff-only never rewrites local work; any failure
+    # (offline, diverged, not a repo clone) is non-fatal — setup proceeds with
+    # the code it already has. The pulled code lands on disk only: this run
+    # keeps executing the already-sourced functions, and the systemd restart
+    # below picks up the new code.
+    if ((pull)) && command -v git >/dev/null &&
+        git -C "${POKIDLE_REPO_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        if git -C "${POKIDLE_REPO_ROOT}" pull --ff-only; then
+            printf 'pulled latest into %s\n' "${POKIDLE_REPO_ROOT}"
+        else
+            printf 'setup: warning: git pull failed — installing the current checkout\n' >&2
+        fi
     fi
     if ! command -v paplay >/dev/null && ! command -v aplay >/dev/null; then
         printf 'setup: optional dep missing: paplay or aplay (sound playback will be skipped)\n'

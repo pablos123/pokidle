@@ -69,3 +69,13 @@ teardown() {
     n="$(jq 'length' <<< "$output")"
     [ "$n" = "1" ]
 }
+
+@test "foundation: no jq variable is named after a jq keyword" {
+    # jq 1.5 rejects $<keyword> variables (e.g. $label -> "unexpected label,
+    # expecting IDENT" compile error); jq 1.6+ tolerates them. Keep sources
+    # clean so filters parse everywhere.
+    run grep -rnE \
+        '\$(as|def|module|import|include|if|then|elif|else|end|reduce|foreach|and|or|try|catch|label)\b' \
+        "$REPO_ROOT/lib" "$REPO_ROOT/commands" "$REPO_ROOT/scripts"
+    [ "$status" -ne 0 ]
+}

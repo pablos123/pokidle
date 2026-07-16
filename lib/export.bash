@@ -46,11 +46,11 @@ function export_format {
     # in bash (pure, no exec). US (\x1f) is non-whitespace so read keeps empty
     # fields (e.g. a blank held item).
     local US=$'\037'
-    local species nature ability level shiny held item evs_raw ivs_raw moves_raw
-    IFS="${US}" read -r species nature ability level shiny held item \
+    local species nature ability level shiny gender held item evs_raw ivs_raw moves_raw
+    IFS="${US}" read -r species nature ability level shiny gender held item \
         evs_raw ivs_raw moves_raw < <(jq -r --arg US "${US}" '[
             .species, .nature, .ability, (.level | tostring), (.shiny | tostring),
-            (.held_berry // ""), (.held_item // ""),
+            (.gender // ""), (.held_berry // ""), (.held_item // ""),
             (.evs | map(tostring) | join(" ")),
             (.ivs | map(tostring) | join(" ")),
             (.moves | join(","))
@@ -64,6 +64,13 @@ function export_format {
     ab_t="$(titlecase_words "${ability}")"
     local nat_t
     nat_t="$(titlecase_words "${nature}")"
+
+    # Showdown gender marker: "Name (M)" / "Name (F)"; genderless (or absent)
+    # mons carry no marker.
+    case "${gender}" in
+        M | F) sp_t+=" (${gender})" ;;
+        *) ;;
+    esac
 
     # held_item is a full item slug (e.g. leftovers, choice-band, occa-berry)
     # rendered as-is; held_berry is a bare berry name needing the "Berry" word.
