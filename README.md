@@ -16,6 +16,9 @@ On Debian/Ubuntu, install the non-core tools pokidle needs:
 sudo apt install jq curl sqlite3 libnotify-bin
 ```
 
+- `bash >= 4`
+- `jq >= 1.6`
+
 Optional extras:
 
 ```
