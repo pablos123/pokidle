@@ -609,32 +609,6 @@ EOF
     [[ "$output" == *"usage:"* ]]
 }
 
-# Helper for tick tests: seed POKIDLE_POKEAPI_CACHE_DIR with proper layout
-# (cache_path = $dir/$endpoint.json, slashes preserved as subdirs).
-_seed_pokeapi_cache() {
-    local d="$1"
-    mkdir -p "$d/pokemon" "$d/pokemon-species" "$d/evolution-chain" "$d/nature" "$d/item" "$d/location-area"
-    cp "$FIXTURE_DIR/pokemon-treecko.json"          "$d/pokemon/treecko.json"
-    cp "$FIXTURE_DIR/pokemon-species-treecko.json"  "$d/pokemon-species/treecko.json"
-    cp "$FIXTURE_DIR/evolution-chain-142.json"      "$d/evolution-chain/142.json"
-    # nature?limit=100 → file with literal ?  in name
-    cp "$FIXTURE_DIR/nature-limit-100.json"         "$d/nature?limit=100.json"
-    local n
-    for n in "$FIXTURE_DIR"/nature-*.json; do
-        local base="${n##*/}"
-        base="${base#nature-}"
-        base="${base%.json}"
-        [[ "$base" == "limit-100" ]] && continue
-        cp "$n" "$d/nature/$base.json"
-    done
-    local i
-    for i in "$FIXTURE_DIR"/item-*.json; do
-        local base="${i##*/}"
-        base="${base#item-}"
-        cp "$i" "$d/item/$base"
-    done
-}
-
 @test "pokidle encounters emits json with --json" {
     sqlite3 "$POKIDLE_DB_PATH" < "$REPO_ROOT/schema.sql"
     local sid
@@ -769,7 +743,7 @@ _seed_pokeapi_cache() {
 
     POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
     export POKIDLE_POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
+    seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --json
     [ "$status" -eq 0 ]
@@ -793,7 +767,7 @@ _seed_pokeapi_cache() {
 
     POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
     export POKIDLE_POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
+    seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --no-images
     [ "$status" -eq 0 ]
@@ -815,7 +789,7 @@ _seed_pokeapi_cache() {
 
     POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
     export POKIDLE_POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
+    seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick encounter --dry-run --no-notify --no-output
     [ "$status" -eq 0 ]
@@ -851,7 +825,7 @@ _seed_pokeapi_cache() {
 
     POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
     export POKIDLE_POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
+    seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick pickup --dry-run --no-notify --json
     [ "$status" -eq 0 ]
@@ -872,7 +846,7 @@ _seed_pokeapi_cache() {
 
     POKIDLE_POKEAPI_CACHE_DIR="$BATS_TMPDIR/papi.$$"
     export POKIDLE_POKEAPI_CACHE_DIR
-    _seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
+    seed_pokeapi_cache "$POKIDLE_POKEAPI_CACHE_DIR"
 
     run "$REPO_ROOT/pokidle" tick pickup --no-dry-run --no-notify --no-output
     [ "$status" -eq 0 ]

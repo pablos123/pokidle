@@ -204,6 +204,37 @@ EOF
     [ "$sp" = "articuno" ]
 }
 
+@test "tick legendary --no-dry-run: sprite comes from the pokeapi sprite store, keyed by variant" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_LEGENDARY_CHANCE=100
+    POKIDLE_NO_NOTIFY=1
+    POKIDLE_SHINY_RATE=1000000000
+    export POKIDLE_DB_PATH POKIDLE_LEGENDARY_CHANCE POKIDLE_NO_NOTIFY POKIDLE_SHINY_RATE
+    load_lib db
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" \
+        "INSERT INTO biome_sessions(biome_id, started_at) VALUES ('forest', 1700000000);"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/cache.$$"
+    export POKIDLE_CACHE_DIR POKIDLE_FETCH_SPRITES=1
+    mkdir -p "$POKIDLE_CACHE_DIR/pools"
+    cat > "$POKIDLE_CACHE_DIR/pools/forest.json" <<'EOF'
+{"biome":"forest","tiers":{"common":[],"uncommon":[],"rare":[],"very_rare":[]},"berries":[],"items":[],
+ "legendaries":[{"species":"articuno","varieties":["articuno"]}]}
+EOF
+    stub_pokeapi
+    seed_showdown
+    # Pre-cached blob in the shared store (the same one `tick encounter` uses);
+    # a raw download would key the sprite elsewhere and fail offline.
+    local blob="$POKIDLE_CACHE_DIR/pokeapi/sprites/articuno-front_default.png"
+    mkdir -p "${blob%/*}"
+    printf 'PNG' > "$blob"
+    run "$REPO_ROOT/pokidle" tick legendary --no-dry-run --json
+    [ "$status" -eq 0 ]
+    local sp
+    sp="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT sprite_path FROM encounters LIMIT 1;")"
+    [ "$sp" = "$blob" ]
+}
+
 @test "tick legendary: no spawn when chance is 0" {
     POKIDLE_DB_PATH="$(make_tmp_db)"
     POKIDLE_LEGENDARY_CHANCE=0

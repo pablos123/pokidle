@@ -177,8 +177,8 @@ setup() {
     local path='{"species":"linoone","kind":"synthetic","evo":{"min_level":20}}'
     run evolution_apply 1 "$path"
     [ "$status" -eq 0 ]
-    # sprite_local is "" because the stub URL "linoone.png" is not a real URL;
-    # curl fails and sprite_local is cleared. Verify species/dex_id only.
+    # sprite_path is "" because the suite runs with POKIDLE_FETCH_SPRITES=0
+    # (see the dedicated sprite tests below). Verify species/dex_id only.
     local row
     row="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT species||','||dex_id FROM encounters WHERE id=1;")"
     [ "$row" = "linoone,264" ]
@@ -250,17 +250,12 @@ setup() {
     # Pin the (otherwise random) variety pick to the regional form.
     encounter_pick_variety() { printf 'linoone-galar'; }
     export -f encounter_pick_variety
-    # Make the sprite download succeed by creating the --output target.
-    curl() {
-        local a out="" next=""
-        for a in "$@"; do
-            if [[ "$next" == "1" ]]; then out="$a"; next=""; fi
-            [[ "$a" == "--output" ]] && next=1
-        done
-        [[ -n "$out" ]] && printf 'PNG' >"$out"
-        return 0
-    }
-    export -f curl
+    # The sprite comes from the shared pokeapi sprite store (pokemon_sprite),
+    # keyed by variety and variant. Pre-cache the blob so no download happens.
+    POKIDLE_POKEAPI_CACHE_DIR="$POKIDLE_CACHE_DIR/pokeapi"
+    export POKIDLE_POKEAPI_CACHE_DIR POKIDLE_FETCH_SPRITES=1
+    mkdir -p "$POKIDLE_POKEAPI_CACHE_DIR/sprites"
+    printf 'PNG' > "$POKIDLE_POKEAPI_CACHE_DIR/sprites/linoone-galar-front_default.png"
 
     pokeapi_get() {
         case "$1" in
@@ -286,7 +281,56 @@ setup() {
     [ "$output" = "linoone-galar" ]
     local sp
     sp="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT sprite_path FROM encounters WHERE id=1;")"
-    [[ "$sp" == *"/sprites/linoone-galar.png" ]]
+    [ "$sp" = "$POKIDLE_POKEAPI_CACHE_DIR/sprites/linoone-galar-front_default.png" ]
+}
+
+@test "evolution_apply: POKIDLE_FETCH_SPRITES=0 stores no sprite and attempts no download" {
+    POKIDLE_DB_PATH="$(make_tmp_db)"
+    POKIDLE_REPO_ROOT="$REPO_ROOT"
+    POKIDLE_CACHE_DIR="$BATS_TMPDIR/ecache.$$"
+    mkdir -p "$POKIDLE_CACHE_DIR"
+    export POKIDLE_DB_PATH POKIDLE_REPO_ROOT POKIDLE_CACHE_DIR POKIDLE_FETCH_SPRITES=0
+    load_lib db
+    load_lib encounter
+    db_init
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO biome_sessions(biome_id, started_at) VALUES ('orchard', 1700000000);
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level,
+            nature, ability, is_hidden_ability, gender, shiny, moves_json, friendship,
+            iv_hp, iv_atk, iv_def, iv_spa, iv_spd, iv_spe,
+            ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe)
+            VALUES (1, 1700000000, 'zigzagoon', 263, 20, 'hardy', 'pickup', 0, 'M', 0, '[]',
+                70, 10,10,10,10,10,10, 0,0,0,0,0,0);"
+    # Any download attempt leaves a marker; the gate must short-circuit before it.
+    marker="$BATS_TEST_TMPDIR/curl-called"
+    export marker
+    curl() { : > "$marker"; return 1; }
+    export -f curl
+    pokeapi_get() {
+        case "$1" in
+            pokemon/linoone)
+                printf '%s' '{"id":264,"sprites":{"front_default":"http://x/l.png","front_shiny":""},
+                  "stats":[
+                    {"base_stat":78,"stat":{"name":"hp"}},
+                    {"base_stat":70,"stat":{"name":"attack"}},
+                    {"base_stat":61,"stat":{"name":"defense"}},
+                    {"base_stat":50,"stat":{"name":"special-attack"}},
+                    {"base_stat":61,"stat":{"name":"special-defense"}},
+                    {"base_stat":100,"stat":{"name":"speed"}}]}'
+                ;;
+            nature/hardy) printf '{"increased_stat":null,"decreased_stat":null}' ;;
+            *) return 1 ;;
+        esac
+    }
+    export -f pokeapi_get
+
+    local path='{"species":"linoone","kind":"synthetic","evo":{"min_level":20}}'
+    run evolution_apply 1 "$path"
+    [ "$status" -eq 0 ]
+    [ ! -e "$marker" ]
+    local sp
+    sp="$(sqlite3 "$POKIDLE_DB_PATH" "SELECT COALESCE(sprite_path, '') FROM encounters WHERE id=1;")"
+    [ -z "$sp" ]
 }
 
 @test "evolution_apply: prints the resolved result variety on stdout" {

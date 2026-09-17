@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
 # Shared CLI rendering helpers: inline sprite preview, sprite/name resolution,
 # and encounter event-log formatting. Used by the encounters/items/current/tick
-# commands. Depends on pokemon_sprite/item_sprite (api.bash),
-# showdown_item_pokeapi_slug (showdown.bash) and db_log_event (db.bash), all
-# resolved at call time via the entrypoint's load order.
+# commands and by lib/evolution.bash. Depends on pokemon_sprite/item_sprite
+# (api.bash, which needs cache.bash and http.bash), showdown_item_pokeapi_slug
+# (showdown.bash) and db_log_event (db.bash, loaded lazily by its callers).
+
+# Dependencies: sourced once at load, guarded so standalone/test re-sourcing is
+# a no-op (POKIDLE_REPO_ROOT is set by the entrypoint and by the tests). The
+# sprite fetchers are the only ones needed outside the entrypoint's load order.
+# shellcheck source=lib/helpers.bash disable=SC2154
+command -v atomic_write >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/helpers.bash"
+# shellcheck source=lib/cache.bash disable=SC2154
+command -v cache_blob_path >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/cache.bash"
+# shellcheck source=lib/http.bash disable=SC2154
+command -v http_download_url >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/http.bash"
+# shellcheck source=lib/api.bash disable=SC2154
+command -v pokemon_sprite >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/api.bash"
 
 # _pokidle_render_sprite <sprite>
 # Render a sprite inline via chafa. chafa auto-detects the terminal's graphics

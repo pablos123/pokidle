@@ -768,19 +768,12 @@ function pokidle_tick_legendary {
     fi
     local species
     species="$(jq -r '.species' <<<"${enc}")"
-    local sprite_url
-    sprite_url="$(jq -r '.sprite_url // ""' <<<"${enc}")"
     local sprite_path=""
-    if [[ -n "${sprite_url}" ]] && { ((no_notify == 0)) || { ((no_output == 0)) && ((!no_images)); }; }; then
-        # Key by the variety (e.g. shaymin-sky), not the bare species, so a form
-        # legendary's sprite never collides with the base form's cached PNG.
-        sprite_path="${POKIDLE_CACHE_DIR}/sprites/$(_pokidle_sprite_name "${enc}").png"
-        mkdir -p -- "${sprite_path%/*}"
-        if [[ ! -f "${sprite_path}" ]]; then
-            if ! curl --silent --show-error --output "${sprite_path}" "${sprite_url}"; then
-                sprite_path=""
-            fi
-        fi
+    if ((no_notify == 0)) || { ((no_output == 0)) && ((!no_images)); }; then
+        # Shared sprite store, keyed by variety (e.g. shaymin-sky, never the
+        # bare species) and shiny variant — same path as `tick encounter`.
+        sprite_path="$(_pokidle_pokemon_sprite \
+            "$(_pokidle_sprite_name "${enc}")" "$(jq -r '.shiny' <<<"${enc}")")"
     fi
 
     local label

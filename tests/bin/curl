@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Network guard for the test suite. tests/helpers.bash puts this directory
+# first on PATH, so any code path that reaches the real network during a test
+# (a subprocess `pokidle` run, a missing fixture, a raw curl) hits this shim
+# instead: it fails fast and names the URL, rather than passing slowly on a
+# live API or hanging without one. In-process tests that stub `curl` as a
+# shell function still win — a function shadows PATH lookup.
+url=""
+for a in "$@"; do
+    [[ "${a}" == http* ]] && url="${a}"
+done
+printf 'tests/bin/curl: network access blocked in tests: %s\n' "${url:-$*}" >&2
+exit 7

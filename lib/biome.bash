@@ -182,33 +182,32 @@ function biome_validate {
 
 : "${BIOME_MIN_POOL_SIZE:=10}"
 
-# _biome_pool_size <id>
-# Print the total entries across all tiers in the cached pool for <id>;
-# 0 if the pool file is missing.
-function _biome_pool_size {
-    local id="$1"
-    local path="${POKIDLE_CACHE_DIR:-${HOME}/.cache/pokidle}/pools/${id}.json"
-    if [[ ! -f "${path}" ]]; then
-        printf '0'
-        return
-    fi
-    jq '[.tiers[] | length] | add // 0' "${path}"
-}
-
 # _biome_eligible_ids
-# Print ids whose pool has more than BIOME_MIN_POOL_SIZE entries, one per line.
+# Print ids whose pool has more than BIOME_MIN_POOL_SIZE entries, one per line,
+# in biome_ids order. A missing pool file counts as size 0. One jq pass sizes
+# every present pool (one line per file, in argument order) rather than a jq
+# fork per biome.
 function _biome_eligible_ids {
+    local dir="${POKIDLE_CACHE_DIR:-${HOME}/.cache/pokidle}/pools"
     local id
+    local -a present=()
+    for id in "${BIOME_IDS[@]}"; do
+        if [[ -f "${dir}/${id}.json" ]]; then
+            present+=("${id}")
+        fi
+    done
+    if ((${#present[@]} == 0)); then
+        return 0
+    fi
+    local -a paths=("${present[@]/#/${dir}/}")
+    local -i i=0
     local -i n
-    while IFS= read -r id; do
-        if [[ -z "${id}" ]]; then
-            continue
-        fi
-        n="$(_biome_pool_size "${id}")"
+    while IFS= read -r n; do
         if ((n > BIOME_MIN_POOL_SIZE)); then
-            printf '%s\n' "${id}"
+            printf '%s\n' "${present[i]}"
         fi
-    done < <(biome_ids)
+        i+=1
+    done < <(jq '[.tiers[] | length] | add // 0' "${paths[@]/%/.json}")
 }
 
 # biome_pick_random

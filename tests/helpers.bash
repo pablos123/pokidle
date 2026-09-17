@@ -8,6 +8,13 @@ REPO_ROOT="$(cd -- "${BATS_TEST_DIRNAME}/.." && pwd)"
 LIB_DIR="${REPO_ROOT}/lib"
 FIXTURE_DIR="${BATS_TEST_DIRNAME}/fixtures"
 
+# No test may reach the network: tests/bin/curl shadows the real curl and fails
+# fast (see the shim). Without this a `run "$REPO_ROOT/pokidle" …` test whose
+# fixture is missing silently passes against the live API — slowly, and only
+# while the network is up. The rate-limit pause is pointless offline.
+export PATH="${REPO_ROOT}/tests/bin:${PATH}"
+export POKIDLE_POKEAPI_RATE_LIMIT_SLEEP=0
+
 # Per-test temp dirs cleaned up by bats automatically when BATS_TMPDIR.
 make_tmp_db() {
     local f
@@ -26,6 +33,12 @@ load_lib() {
 
 # Replace pokeapi_get with a fixture-backed stub.
 # Fixtures live at tests/fixtures/<endpoint-with-slash-as-dash>.json
+#
+# The function stub only covers in-process calls: a `run "$REPO_ROOT/pokidle"`
+# subprocess re-sources lib/api.bash and gets the real pokeapi_get back. So when
+# the test owns a throwaway pokeapi cache dir (under BATS_TMPDIR), the fixtures
+# are also laid out there in the on-disk cache layout the real pokeapi_get reads
+# first — same fixtures, both paths, no network.
 stub_pokeapi() {
     pokeapi_get() {
         local endpoint="$1"
@@ -40,6 +53,41 @@ stub_pokeapi() {
         cat "$f"
     }
     export -f pokeapi_get
+    # Same derivation as lib/cache.bash, so the subprocess reads what we seed.
+    local cache_dir="${POKIDLE_POKEAPI_CACHE_DIR:-${POKIDLE_CACHE_DIR:-}/pokeapi}"
+    if [[ "${cache_dir}" == "${BATS_TMPDIR}/"* ]]; then
+        seed_pokeapi_cache "${cache_dir}"
+    fi
+}
+
+# seed_pokeapi_cache <cache-dir>
+# Copy every fixture whose name starts with a PokeAPI endpoint prefix into
+# <cache-dir> under the path cache_path() derives for that endpoint:
+#   pokemon-species-butterfree.json -> pokemon-species/butterfree.json
+#   nature-limit-100.json           -> nature?limit=100.json
+# Fixtures with no endpoint prefix (showdown-*, items.js, …) are skipped.
+seed_pokeapi_cache() {
+    local dir="$1"
+    mkdir -p -- "${dir}"
+    local -a prefixes=(pokemon-species pokemon-form evolution-chain item-category
+        location-area pokemon item nature type berry)
+    local f name prefix rest
+    for f in "${FIXTURE_DIR}"/*.json; do
+        name="${f##*/}"
+        name="${name%.json}"
+        for prefix in "${prefixes[@]}"; do
+            [[ "${name}" == "${prefix}-"* ]] || continue
+            rest="${name#"${prefix}"-}"
+            if [[ "${rest}" == limit-* ]]; then
+                # List endpoint: nature-limit-100 -> nature?limit=100
+                cp -- "$f" "${dir}/${prefix}?limit=${rest#limit-}.json"
+            else
+                mkdir -p -- "${dir}/${prefix}"
+                cp -- "$f" "${dir}/${prefix}/${rest}.json"
+            fi
+            break
+        done
+    done
 }
 
 # Stub the GraphQL berry index (name<TAB>gift-type) so encounter_build_pool needs
@@ -87,6 +135,10 @@ seed_showdown() {
     cp "${FIXTURE_DIR}/showdown-learnsets.json"      "${POKIDLE_SHOWDOWN_CACHE_DIR}/learnsets.json"
     cp "${FIXTURE_DIR}/showdown-moves.json"          "${POKIDLE_SHOWDOWN_CACHE_DIR}/moves.json"
     cp "${FIXTURE_DIR}/showdown-items-holdable.tsv"  "${POKIDLE_SHOWDOWN_CACHE_DIR}/items-holdable.tsv"
+    # The shipped form-item registry, exactly as `pokidle setup` installs it.
+    # Without it every export rebuilds the registry from Showdown's items.js —
+    # a network fetch per run. Tests that need a specific registry overwrite it.
+    cp "${REPO_ROOT}/share/form-items.tsv"            "${POKIDLE_SHOWDOWN_CACHE_DIR}/form-items.tsv"
     _showdown_fetch() { return 1; }
     _showdown_fetch_items() { return 1; }
     export -f _showdown_fetch _showdown_fetch_items

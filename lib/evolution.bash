@@ -11,6 +11,8 @@
 command -v encounter_pool_load >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/encounter.bash"
 # shellcheck source=lib/showdown.bash disable=SC2154
 command -v showdown_legal_abilities >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/showdown.bash"
+# shellcheck source=lib/render.bash disable=SC2154
+command -v _pokidle_pokemon_sprite >/dev/null 2>&1 || source "${POKIDLE_REPO_ROOT}/lib/render.bash"
 
 # evolution_tier_lookup <biome> <species>
 # Print the pool tier of <species> in <biome>; "common" if it isn't listed.
@@ -494,12 +496,6 @@ function evolution_apply {
     fi
     local dex_id
     dex_id="$(jq -r '.id' <<<"${poke}")"
-    local sprite
-    if [[ "${shiny}" == "1" ]]; then
-        sprite="$(jq -r '.sprites.front_shiny // .sprites.front_default // ""' <<<"${poke}")"
-    else
-        sprite="$(jq -r '.sprites.front_default // ""' <<<"${poke}")"
-    fi
     local base_stats
     base_stats="$(jq -c '.stats' <<<"${poke}")"
     local mods
@@ -511,21 +507,13 @@ function evolution_apply {
         return 1
     fi
 
-    # Cache the sprite under the resolved variety, not the bare species: a
-    # regional/form evolution (e.g. linoone-galar) has a different sprite from
-    # the base form, and keying by species would collide with — or reuse — the
-    # base form's cached PNG, showing the wrong sprite.
-    local sprite_url="${sprite}"
-    local sprite_local=""
-    if [[ -n "${sprite_url}" ]]; then
-        sprite_local="${POKIDLE_CACHE_DIR:-${HOME}/.cache/pokidle}/sprites/${variety}.png"
-        mkdir -p -- "${sprite_local%/*}"
-        if [[ ! -f "${sprite_local}" ]]; then
-            if ! curl --silent --show-error --output "${sprite_local}" "${sprite_url}"; then
-                sprite_local=""
-            fi
-        fi
-    fi
+    # Resolve the sprite through the shared store (same as `tick encounter`):
+    # keyed by the resolved variety and shiny variant, so a regional/form
+    # evolution (e.g. linoone-galar) never reuses the base form's PNG, and
+    # gated by POKIDLE_FETCH_SPRITES with the http layer's timeouts. Empty when
+    # sprites are disabled or the download fails.
+    local sprite_local
+    sprite_local="$(_pokidle_pokemon_sprite "${variety}" "${shiny}")"
 
     # Reconcile the carried ability/moves against the new species: keep what is
     # still legal, re-roll the rest. Stale picks (e.g. meowth-alola -> persian)
