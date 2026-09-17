@@ -1324,6 +1324,28 @@ EOF
     done
 }
 
+@test "export --force-best-ivs picks the highest-IV encounter of a species, not a random one" {
+    _seed_schema
+    local sid; sid="$(_mk_session cave)"
+    local now; now="$(date +%s)"
+    # Two snorlax: one 6x1, one 6x31. Species ranking alone can't tell them
+    # apart; the per-species pick must prefer the 31s every time.
+    sqlite3 "$POKIDLE_DB_PATH" "
+        INSERT INTO encounters(session_id, encountered_at, species, dex_id, level, nature,
+            ability, is_hidden_ability, gender, shiny, held_berry,
+            iv_hp,iv_atk,iv_def,iv_spa,iv_spd,iv_spe, ev_hp,ev_atk,ev_def,ev_spa,ev_spd,ev_spe,
+            stat_hp,stat_atk,stat_def,stat_spa,stat_spd,stat_spe, moves_json, sprite_path)
+        VALUES ($sid, $now, 'snorlax', 1, 50, 'adamant', 'overgrow', 0, 'M', 0, NULL,
+            1,1,1,1,1,1, 0,0,0,0,0,0, 100,100,100,100,100,100, '[\"tackle\"]', NULL);"
+    _ins_enc "$sid" snorlax "$now"   # 31s across the board
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        run "$REPO_ROOT/pokidle" export --force-best-ivs
+        [ "$status" -eq 0 ]
+        [[ "$output" != *"IVs: 1 HP"* ]]
+    done
+}
+
 @test "export --force-shiny pulls a shiny-owning species and exports its shiny form" {
     _seed_schema
     local sid; sid="$(_mk_session cave)"

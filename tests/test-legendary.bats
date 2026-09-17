@@ -276,5 +276,5 @@ EOF
 @test "legendary_species_is: false when the species fetch fails" {
     stub_pokeapi
     run legendary_species_is nosuchmon
-    [ "$status" -ne 0 ]
+    [ "$status" -eq 2 ]   # distinct from 1 (ordinary species)
 }

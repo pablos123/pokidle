@@ -17,10 +17,14 @@ function showdown_id {
 
 # _showdown_fetch <file>
 # Print the raw JSON for a Showdown data file from the network. Returns 1 on
-# failure. Split out so tests can stub it.
+# failure. Split out so tests can stub it. Bounded by the same connect/max-time
+# limits as lib/http.bash (this runs inside the daemon on cache-TTL expiry, so a
+# stalled connection must fail fast rather than wedge the tick loop).
 function _showdown_fetch {
     local file="$1"
     curl --silent --show-error --location --fail \
+        --connect-timeout "${POKIDLE_HTTP_CONNECT_TIMEOUT:-10}" \
+        --max-time "${POKIDLE_HTTP_MAX_TIME:-30}" \
         --user-agent "${POKIDLE_POKEAPI_USER_AGENT:-pokidle-bash/0.1}" \
         -- "${POKIDLE_SHOWDOWN_BASE_URL}/${file}.json"
 }
@@ -173,6 +177,12 @@ function showdown_legal_moves {
         done <<<"${keys}"
         local prevo
         prevo="$(jq -r --arg c "${cur}" '.[$c].prevo // empty' <<<"${pokedex}")"
+        if [[ -z "${prevo}" && "${src}" != "${cur}" ]]; then
+            # A forme that inherited its learnset carries no prevo of its own
+            # (mega/gmax entries have none); continue the walk from the base
+            # species so its prevo chain is still unioned.
+            prevo="$(jq -r --arg c "${src}" '.[$c].prevo // empty' <<<"${pokedex}")"
+        fi
         if [[ -z "${prevo}" ]]; then
             break
         fi
@@ -247,6 +257,8 @@ function _showdown_items_meta_transform {
 # Split out so tests can stub it.
 function _showdown_fetch_items {
     curl --silent --show-error --location --fail \
+        --connect-timeout "${POKIDLE_HTTP_CONNECT_TIMEOUT:-10}" \
+        --max-time "${POKIDLE_HTTP_MAX_TIME:-30}" \
         --user-agent "${POKIDLE_POKEAPI_USER_AGENT:-pokidle-bash/0.1}" \
         -- "${POKIDLE_SHOWDOWN_BASE_URL}/items.js"
 }

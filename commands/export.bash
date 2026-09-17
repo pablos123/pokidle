@@ -366,10 +366,13 @@ function pokidle_export {
         # count fork).
         # Prefer an encounter whose form matches a wanted form-item (so a forced
         # Z-crystal lands on raichu-alola, not base raichu); else any of this
-        # species at random.
+        # species at random. --force-best-ivs breaks the remaining tie by IV
+        # total, so the species' best specimen is the one exported (the species
+        # ordering above only ranks species, not their duplicates).
         local enc
         enc="$(jq -c --arg s "${sp}" --argjson rnd "${RANDOM}" --argjson el "${wanted_el}" \
-            --argjson fshiny "${force_shiny}" --argjson fhidden "${force_hidden}" '
+            --argjson fshiny "${force_shiny}" --argjson fhidden "${force_hidden}" \
+            --argjson fivs "${force_best_ivs}" '
              [.[] | select(.species==$s)] as $g
              | ([$g[] | . + {"_score":
                    ((if (($el | length) > 0 and (((.variety // .species)) as $v | ($el | index($v)))) then 3 else 0 end)
@@ -377,6 +380,11 @@ function pokidle_export {
                   + (if ($fhidden == 1 and .is_hidden_ability == 1) then 1 else 0 end))}]) as $scored
              | ($scored | map(._score) | max) as $mx
              | [$scored[] | select(._score == $mx)] as $best
+             | (if $fivs == 1 then
+                    ([$best[] | . + {"_ivs": (.iv_hp + .iv_atk + .iv_def + .iv_spa + .iv_spd + .iv_spe)}]) as $bi
+                    | ($bi | map(._ivs) | max) as $mi
+                    | [$bi[] | select(._ivs == $mi) | del(._ivs)]
+                else $best end) as $best
              | ($best[$rnd % ($best | length)] | del(._score))' <<<"${rows}")"
 
         # One jq read pulls the fields the loop needs: form name, the stored

@@ -162,12 +162,13 @@ function legendary_build_encounter {
 
 # legendary_species_is <species>
 # True (exit 0) when PokeAPI marks <species> is_legendary or is_mythical.
-# Non-zero on a fetch failure or an ordinary species.
+# 1 for an ordinary species; 2 when the species could not be fetched (so a
+# caller that needs to tell "not legendary" from "unknown" can).
 function legendary_species_is {
     local species="$1"
     local spec
     if ! spec="$(species "${species}" 2>/dev/null)"; then
-        return 1
+        return 2
     fi
     jq -e '(.is_legendary // false) or (.is_mythical // false)' <<<"${spec}" >/dev/null
 }

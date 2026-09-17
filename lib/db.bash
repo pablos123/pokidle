@@ -60,30 +60,45 @@ function db_init {
         db_exec "ALTER TABLE encounters ADD COLUMN variety TEXT;"
     fi
     # is_legendary marks a captured legendary/mythical so lists/stats/export can
-    # single them out. Rows predating this column default to 0; a one-time
-    # backfill (below) flips known legendaries. See _db_backfill_is_legendary.
+    # single them out. Rows predating this column default to 0; the backfill
+    # (below) flips known legendaries and runs on every init until it has
+    # resolved every species once. See _db_backfill_is_legendary.
     if ! _db_column_exists encounters is_legendary; then
         db_exec "ALTER TABLE encounters ADD COLUMN is_legendary INTEGER NOT NULL DEFAULT 0;"
+    fi
+    if [[ "$(db_state_get is_legendary_backfill)" != "done" ]]; then
         _db_backfill_is_legendary
     fi
 }
 
 # _db_backfill_is_legendary
-# One-time: flip is_legendary=1 for existing rows whose species PokeAPI marks
-# legendary/mythical. Best-effort — a fetch failure leaves a row at 0 rather
-# than aborting db_init. Sourced lazily to avoid a load-time dependency cycle.
+# Flip is_legendary=1 for existing rows whose species PokeAPI marks
+# legendary/mythical. Best-effort per run — a fetch failure leaves that row at
+# 0 rather than aborting db_init — but the daemon_state marker is only written
+# once every species resolved, so a partial pass (offline, empty API cache) is
+# retried on the next init instead of leaving legendaries unflagged forever.
+# Sourced lazily to avoid a load-time dependency cycle.
 function _db_backfill_is_legendary {
     if ! command -v legendary_species_is >/dev/null 2>&1; then
         # shellcheck source=lib/legendary.bash disable=SC2154
         source "${POKIDLE_REPO_ROOT}/lib/legendary.bash" 2>/dev/null || return 0
     fi
     local sp
+    local -i rc
+    local -i unresolved=0
     while IFS= read -r sp; do
         [[ -z "${sp}" ]] && continue
-        if legendary_species_is "${sp}" 2>/dev/null; then
-            db_exec "UPDATE encounters SET is_legendary=1 WHERE species='${sp//\'/\'\'}';"
-        fi
+        rc=0
+        legendary_species_is "${sp}" 2>/dev/null || rc=$?
+        case "${rc}" in
+            0) db_exec "UPDATE encounters SET is_legendary=1 WHERE species='${sp//\'/\'\'}';" ;;
+            2) unresolved=1 ;;
+            *) ;;
+        esac
     done < <(db_query "SELECT DISTINCT species FROM encounters;")
+    if ((unresolved == 0)); then
+        db_state_set is_legendary_backfill 'done'
+    fi
 }
 
 # db_exec <sql>...
@@ -170,7 +185,7 @@ def sqstr: if . == null then "NULL" else "'" + (tostring | gsub("'"; "''")) + "'
     \(.is_hidden_ability),
     \(.gender | sqstr),
     \(.shiny),
-    \(if (.is_legendary // false) then 1 else 0 end),
+    \(if (.is_legendary == true or .is_legendary == 1) then 1 else 0 end),
     \(.held_berry | sqstr),
     \(.friendship),
     \(.ivs[0]), \(.ivs[1]), \(.ivs[2]), \(.ivs[3]), \(.ivs[4]), \(.ivs[5]),

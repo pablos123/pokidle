@@ -186,5 +186,13 @@
     "baseSpecies": "Graveler",
     "prevo": "Geodude-Alola",
     "forme": "Alola"
+  },
+  "corviknightgmax": {
+    "abilities": {
+      "0": "Pressure"
+    },
+    "baseSpecies": "Corviknight",
+    "forme": "Gmax",
+    "name": "Corviknight-Gmax"
   }
 }

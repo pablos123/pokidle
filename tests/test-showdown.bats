@@ -87,6 +87,16 @@ setup() {
     echo "$output" | grep -qx "peck"          # rookidee (grandparent)
 }
 
+@test "showdown_legal_moves: forme without its own learnset still walks the base species' prevo chain" {
+    # corviknight-gmax has no learnset of its own (inherits Corviknight's) and
+    # no prevo on its forme entry; the walk must continue from Corviknight to
+    # reach Corvisquire/Rookidee moves.
+    run showdown_legal_moves "corviknight-gmax"
+    [ "$status" -eq 0 ]
+    echo "$output" | grep -qx "double-edge"   # corviknight (base)
+    echo "$output" | grep -qx "peck"          # rookidee (grandparent of base)
+}
+
 @test "showdown_legal_moves: regional forme uses its own learnset, not the Kanto base" {
     # Graveler-Alola has its own Showdown learnset; it must NOT inherit the
     # Kanto Graveler/Geodude learnset (which teaches Mimic). Its own Alolan
@@ -346,4 +356,27 @@ setup() {
     [ "$status" -eq 0 ]
     run showdown_item_is_holdable abomasite
     [ "$status" -ne 0 ]
+}
+
+@test "_showdown_fetch passes connect + max-time timeouts to curl" {
+    local args="$BATS_TEST_TMPDIR/curlargs"
+    curl() { printf '%s\n' "$*" >"$args"; printf '{}'; }
+    export -f curl
+    # seed_showdown stubs the fetcher; restore the real one for this test.
+    load_lib showdown
+    run _showdown_fetch pokedex
+    [ "$status" -eq 0 ]
+    grep -q -- '--connect-timeout' "$args"
+    grep -q -- '--max-time' "$args"
+}
+
+@test "_showdown_fetch_items passes connect + max-time timeouts to curl" {
+    local args="$BATS_TEST_TMPDIR/curlargs"
+    curl() { printf '%s\n' "$*" >"$args"; printf 'exports.BattleItems = {}'; }
+    export -f curl
+    load_lib showdown
+    run _showdown_fetch_items
+    [ "$status" -eq 0 ]
+    grep -q -- '--connect-timeout' "$args"
+    grep -q -- '--max-time' "$args"
 }

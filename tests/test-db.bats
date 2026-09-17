@@ -265,6 +265,59 @@ teardown() {
     [ "$output" -eq 1 ]
 }
 
+@test "db_insert_encounter stores a numeric is_legendary:0 as 0" {
+    # Sibling flags (shiny, is_hidden_ability) are 0/1 ints; a producer using
+    # the same convention must not be read as "legendary" by jq truthiness.
+    db_init
+    local sid; sid="$(db_open_biome_session cave 100)"
+    db_insert_encounter "$(jq -nc --argjson sid "$sid" '{
+        session_id:$sid, encountered_at:100, species:"pidgey", dex_id:16, level:5,
+        nature:"hardy", ability:"keen-eye", is_hidden_ability:0, gender:"M",
+        shiny:0, held_berry:null, friendship:70, is_legendary:0,
+        ivs:[1,1,1,1,1,1], evs:[0,0,0,0,0,0], stats:[1,1,1,1,1,1],
+        moves:["tackle"], sprite_path:null }')"
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' 'SELECT is_legendary FROM encounters WHERE species=\"pidgey\";'"
+    [ "$output" -eq 0 ]
+}
+
+@test "db_init retries the is_legendary backfill until every species resolved" {
+    load_lib legendary
+    # First migration: the species fetch fails (offline / empty API cache), so
+    # the legendary row stays at 0. The backfill must not be marked complete.
+    pokeapi_get() { return 1; }
+    export -f pokeapi_get
+    sqlite3 "$POKIDLE_DB_PATH" "CREATE TABLE encounters (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id      INTEGER NOT NULL,
+        encountered_at  INTEGER NOT NULL,
+        species         TEXT NOT NULL,
+        variety         TEXT,
+        dex_id          INTEGER NOT NULL,
+        level           INTEGER NOT NULL,
+        nature          TEXT NOT NULL,
+        ability         TEXT NOT NULL,
+        is_hidden_ability INTEGER NOT NULL,
+        gender          TEXT NOT NULL,
+        shiny           INTEGER NOT NULL,
+        held_berry      TEXT,
+        friendship      INTEGER NOT NULL DEFAULT 70,
+        moves_json      TEXT NOT NULL,
+        sprite_path     TEXT
+    );
+    INSERT INTO encounters
+        (session_id, encountered_at, species, dex_id, level, nature, ability,
+         is_hidden_ability, gender, shiny, moves_json)
+        VALUES (1, 100, 'articuno', 144, 50, 'timid', 'pressure', 0, 'genderless', 0, '[\"ice-beam\"]');"
+    db_init
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' \"SELECT is_legendary FROM encounters WHERE species='articuno';\""
+    [ "$output" -eq 0 ]
+    # Fetches work again: the next db_init picks the backfill back up.
+    stub_pokeapi
+    db_init
+    run bash -c "sqlite3 '$POKIDLE_DB_PATH' \"SELECT is_legendary FROM encounters WHERE species='articuno';\""
+    [ "$output" -eq 1 ]
+}
+
 @test "db_insert_encounter defaults is_legendary to 0 when absent" {
     db_init
     local sid; sid="$(db_open_biome_session cave 100)"
